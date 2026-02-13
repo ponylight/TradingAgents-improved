@@ -28,4 +28,16 @@ class SignalProcessor:
             ("human", full_signal),
         ]
 
-        return self.quick_thinking_llm.invoke(messages).content
+        raw = self.quick_thinking_llm.invoke(messages).content.strip().upper()
+
+        valid_signals = {"BUY", "SELL", "HOLD"}
+        if raw in valid_signals:
+            return raw
+
+        # Fallback: search for a valid signal keyword in the response
+        for signal in valid_signals:
+            if signal in raw:
+                return signal
+
+        # Default to HOLD if no valid signal could be extracted
+        return "HOLD"

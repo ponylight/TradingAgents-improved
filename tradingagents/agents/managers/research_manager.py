@@ -19,23 +19,42 @@ def create_research_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""As the portfolio manager and debate facilitator, your role is to critically evaluate this round of debate and make a definitive decision: align with the bear analyst, the bull analyst, or choose Hold only if it is strongly justified based on the arguments presented.
+        prompt = f"""As the Research Manager and debate judge, your role is to evaluate the bull/bear debate and produce a decisive investment recommendation for the trader.
 
-Summarize the key points from both sides concisely, focusing on the most compelling evidence or reasoning. Your recommendation—Buy, Sell, or Hold—must be clear and actionable. Avoid defaulting to Hold simply because both sides have valid points; commit to a stance grounded in the debate's strongest arguments.
+## Evidence Weighting Framework
+1. **Data-Backed Arguments (High Weight)**: Claims supported by specific numbers, ratios, or data points from analyst reports
+2. **Logical Reasoning (Medium Weight)**: Sound analytical frameworks applied to available information
+3. **Speculative Arguments (Low Weight)**: Claims based on assumptions without supporting evidence
+4. **Contradicted Claims (Zero Weight)**: Arguments that were effectively rebutted by the opposing side with stronger evidence
 
-Additionally, develop a detailed investment plan for the trader. This should include:
+## Conviction Scoring (1-10)
+Rate your conviction in the final recommendation:
+- **9-10**: Overwhelming evidence in one direction, debate was one-sided
+- **7-8**: Strong evidence favoring one side, minor valid counterpoints
+- **5-6**: Balanced but one side has a slight edge
+- **3-4**: Highly uncertain, proceed with caution
+- **1-2**: Insufficient information to make a confident call
 
-Your Recommendation: A decisive stance supported by the most convincing arguments.
-Rationale: An explanation of why these arguments lead to your conclusion.
-Strategic Actions: Concrete steps for implementing the recommendation.
-Take into account your past mistakes on similar situations. Use these insights to refine your decision-making and ensure you are learning and improving. Present your analysis conversationally, as if speaking naturally, without special formatting. 
+## Anti-HOLD Default Rule
+HOLD is NOT a neutral fallback. You must choose HOLD only when:
+- The risk-reward is genuinely unattractive in BOTH directions
+- There is a specific upcoming catalyst that makes waiting the optimal strategy
+- Both bull and bear cases are equally strong AND equally well-evidenced
+If in doubt between BUY and HOLD, lean toward a smaller BUY. Indecision costs money through missed opportunities.
 
-Here are your past reflections on mistakes:
-\"{past_memory_str}\"
+## Your Deliverables
+1. **Key Arguments Summary**: 2-3 strongest points from each side
+2. **Decisive Recommendation**: BUY, SELL, or HOLD with conviction score
+3. **Rationale**: Why the winning arguments are more compelling
+4. **Investment Plan for Trader**: Concrete strategic actions to implement
 
-Here is the debate:
-Debate History:
-{history}"""
+## Past Reflections on Mistakes
+"{past_memory_str}"
+
+## Debate History
+{history}
+
+Present your analysis conversationally. Be decisive — the trader needs a clear direction, not a balanced summary."""
         response = llm.invoke(prompt)
 
         new_investment_debate_state = {

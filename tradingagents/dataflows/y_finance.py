@@ -4,6 +4,9 @@ from dateutil.relativedelta import relativedelta
 import yfinance as yf
 import os
 from .stockstats_utils import StockstatsUtils
+from .config import get_config
+from .utils import is_cache_stale
+from .exceptions import DataFetchError
 
 def get_YFin_data_online(
     symbol: Annotated[str, "ticker symbol of the company"],
@@ -231,7 +234,10 @@ def _get_stock_stats_bulk(
             f"{symbol}-YFin-data-{start_date_str}-{end_date_str}.csv",
         )
         
-        if os.path.exists(data_file):
+        cache_ttl = config.get("cache_ttl_hours", 24)
+        timeout = config.get("request_timeout", 30)
+
+        if os.path.exists(data_file) and not is_cache_stale(data_file, cache_ttl):
             data = pd.read_csv(data_file)
             data["Date"] = pd.to_datetime(data["Date"])
         else:
@@ -242,6 +248,7 @@ def _get_stock_stats_bulk(
                 multi_level_index=False,
                 progress=False,
                 auto_adjust=True,
+                timeout=timeout,
             )
             data = data.reset_index()
             data.to_csv(data_file, index=False)
@@ -347,7 +354,7 @@ def get_fundamentals(
         return header + "\n".join(lines)
 
     except Exception as e:
-        return f"Error retrieving fundamentals for {ticker}: {str(e)}"
+        raise DataFetchError(f"Error retrieving fundamentals for {ticker}: {e}") from e
 
 
 def get_balance_sheet(
@@ -377,7 +384,7 @@ def get_balance_sheet(
         return header + csv_string
         
     except Exception as e:
-        return f"Error retrieving balance sheet for {ticker}: {str(e)}"
+        raise DataFetchError(f"Error retrieving balance sheet for {ticker}: {e}") from e
 
 
 def get_cashflow(
@@ -407,7 +414,7 @@ def get_cashflow(
         return header + csv_string
         
     except Exception as e:
-        return f"Error retrieving cash flow for {ticker}: {str(e)}"
+        raise DataFetchError(f"Error retrieving cash flow for {ticker}: {e}") from e
 
 
 def get_income_statement(
@@ -437,7 +444,7 @@ def get_income_statement(
         return header + csv_string
         
     except Exception as e:
-        return f"Error retrieving income statement for {ticker}: {str(e)}"
+        raise DataFetchError(f"Error retrieving income statement for {ticker}: {e}") from e
 
 
 def get_insider_transactions(
@@ -461,4 +468,4 @@ def get_insider_transactions(
         return header + csv_string
         
     except Exception as e:
-        return f"Error retrieving insider transactions for {ticker}: {str(e)}"
+        raise DataFetchError(f"Error retrieving insider transactions for {ticker}: {e}") from e

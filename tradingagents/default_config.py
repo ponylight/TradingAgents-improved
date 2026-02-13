@@ -19,6 +19,9 @@ DEFAULT_CONFIG = {
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,
     "max_recur_limit": 100,
+    # Reliability settings
+    "cache_ttl_hours": 24,      # Cache time-to-live in hours; files older are re-fetched
+    "request_timeout": 30,      # HTTP request timeout in seconds for data fetching
     # Data vendor configuration
     # Category-level configuration (default for all tools in category)
     "data_vendors": {

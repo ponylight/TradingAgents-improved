@@ -4,6 +4,8 @@ from stockstats import wrap
 from typing import Annotated
 import os
 from .config import get_config
+from .utils import is_cache_stale
+from .exceptions import DataFetchError
 
 
 class StockstatsUtils:
@@ -35,30 +37,41 @@ class StockstatsUtils:
             f"{symbol}-YFin-data-{start_date_str}-{end_date_str}.csv",
         )
 
-        if os.path.exists(data_file):
-            data = pd.read_csv(data_file)
-            data["Date"] = pd.to_datetime(data["Date"])
-        else:
-            data = yf.download(
-                symbol,
-                start=start_date_str,
-                end=end_date_str,
-                multi_level_index=False,
-                progress=False,
-                auto_adjust=True,
-            )
-            data = data.reset_index()
-            data.to_csv(data_file, index=False)
+        cache_ttl = config.get("cache_ttl_hours", 24)
+        timeout = config.get("request_timeout", 30)
 
-        df = wrap(data)
-        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
-        curr_date_str = curr_date_dt.strftime("%Y-%m-%d")
+        try:
+            if os.path.exists(data_file) and not is_cache_stale(data_file, cache_ttl):
+                data = pd.read_csv(data_file)
+                data["Date"] = pd.to_datetime(data["Date"])
+            else:
+                data = yf.download(
+                    symbol,
+                    start=start_date_str,
+                    end=end_date_str,
+                    multi_level_index=False,
+                    progress=False,
+                    auto_adjust=True,
+                    timeout=timeout,
+                )
+                if data.empty:
+                    raise DataFetchError(f"No stock data returned for {symbol}")
+                data = data.reset_index()
+                data.to_csv(data_file, index=False)
 
-        df[indicator]  # trigger stockstats to calculate the indicator
-        matching_rows = df[df["Date"].str.startswith(curr_date_str)]
+            df = wrap(data)
+            df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+            curr_date_str = curr_date_dt.strftime("%Y-%m-%d")
 
-        if not matching_rows.empty:
-            indicator_value = matching_rows[indicator].values[0]
-            return indicator_value
-        else:
-            return "N/A: Not a trading day (weekend or holiday)"
+            df[indicator]  # trigger stockstats to calculate the indicator
+            matching_rows = df[df["Date"].str.startswith(curr_date_str)]
+
+            if not matching_rows.empty:
+                indicator_value = matching_rows[indicator].values[0]
+                return indicator_value
+            else:
+                return "N/A: Not a trading day (weekend or holiday)"
+        except DataFetchError:
+            raise
+        except Exception as e:
+            raise DataFetchError(f"Failed to fetch indicator '{indicator}' for {symbol}: {e}") from e

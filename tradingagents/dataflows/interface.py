@@ -23,6 +23,10 @@ from .alpha_vantage import (
     get_global_news as get_alpha_vantage_global_news,
 )
 from .alpha_vantage_common import AlphaVantageRateLimitError
+from .exceptions import DataFetchError, DataFetchTimeout
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Configuration and routing logic
 from .config import get_config
@@ -157,6 +161,10 @@ def route_to_vendor(method: str, *args, **kwargs):
         try:
             return impl_func(*args, **kwargs)
         except AlphaVantageRateLimitError:
-            continue  # Only rate limits trigger fallback
+            logger.warning(f"Vendor '{vendor}' rate-limited for '{method}'. Trying next.")
+            continue
+        except (DataFetchError, DataFetchTimeout, ConnectionError, TimeoutError) as e:
+            logger.warning(f"Vendor '{vendor}' failed for '{method}': {e}. Trying next.")
+            continue
 
-    raise RuntimeError(f"No available vendor for '{method}'")
+    raise RuntimeError(f"All vendors failed for '{method}'. Tried: {fallback_vendors}")

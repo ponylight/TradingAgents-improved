@@ -1,55 +1,39 @@
-import time
-import json
+from tradingagents.agents.utils.debate_utils import create_risk_debate_node
+
+
+def _build_prompt(trader_decision, reports, history, other_responses):
+    aggressive = other_responses.get("current_aggressive_response", "")
+    conservative = other_responses.get("current_conservative_response", "")
+
+    return f"""As the Neutral Risk Analyst, your role is to provide a balanced, probability-weighted perspective. You are not a fence-sitter — you actively synthesize the strongest arguments from both sides and advocate for the risk-adjusted optimal path.
+
+## Your Analytical Framework
+- **Risk-Adjusted Returns**: Evaluate positions on a Sharpe/Sortino basis. A moderate return with low volatility may beat a high return with extreme drawdown risk
+- **Scenario Weighting**: Assign explicit probabilities to bull, base, and bear cases. Weight the expected value across scenarios rather than anchoring to any single outcome
+- **Diversification Impact**: Assess how the proposed trade affects overall portfolio correlation and concentration. Does it add or reduce systemic risk?
+- **Volatility-Adjusted Sizing**: Position size should scale inversely with realized and implied volatility. Higher vol = smaller position, not no position
+- **Kelly Criterion Intuition**: Advocate for sizing that balances conviction with uncertainty — never bet the maximum even on high-probability trades
+
+## Your Debate Mandate
+1. Challenge the aggressive analyst where reward-to-risk is genuinely unattractive or where they underweight probability of loss
+2. Challenge the conservative analyst where excessive caution sacrifices expected value — capital not deployed is capital losing to inflation
+3. Synthesize the strongest elements of both positions into a concrete, implementable recommendation
+4. Provide a clear probability-weighted expected outcome for the recommended position
+
+## Context
+Trader's Decision: {trader_decision}
+
+Market Research Report: {reports['market']}
+Social Media Sentiment Report: {reports['sentiment']}
+Latest World Affairs Report: {reports['news']}
+Company Fundamentals Report: {reports['fundamentals']}
+
+Debate History: {history}
+Last Aggressive Argument: {aggressive}
+Last Conservative Argument: {conservative}
+
+If there are no responses from the other viewpoints yet, present your opening position without fabricating their arguments. Engage conversationally — debate and persuade, don't just present data. Output without any special formatting."""
 
 
 def create_neutral_debator(llm):
-    def neutral_node(state) -> dict:
-        risk_debate_state = state["risk_debate_state"]
-        history = risk_debate_state.get("history", "")
-        neutral_history = risk_debate_state.get("neutral_history", "")
-
-        current_aggressive_response = risk_debate_state.get("current_aggressive_response", "")
-        current_conservative_response = risk_debate_state.get("current_conservative_response", "")
-
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
-
-        trader_decision = state["trader_investment_plan"]
-
-        prompt = f"""As the Neutral Risk Analyst, your role is to provide a balanced perspective, weighing both the potential benefits and risks of the trader's decision or plan. You prioritize a well-rounded approach, evaluating the upsides and downsides while factoring in broader market trends, potential economic shifts, and diversification strategies.Here is the trader's decision:
-
-{trader_decision}
-
-Your task is to challenge both the Aggressive and Conservative Analysts, pointing out where each perspective may be overly optimistic or overly cautious. Use insights from the following data sources to support a moderate, sustainable strategy to adjust the trader's decision:
-
-Market Research Report: {market_research_report}
-Social Media Sentiment Report: {sentiment_report}
-Latest World Affairs Report: {news_report}
-Company Fundamentals Report: {fundamentals_report}
-Here is the current conversation history: {history} Here is the last response from the aggressive analyst: {current_aggressive_response} Here is the last response from the conservative analyst: {current_conservative_response}. If there are no responses from the other viewpoints, do not hallucinate and just present your point.
-
-Engage actively by analyzing both sides critically, addressing weaknesses in the aggressive and conservative arguments to advocate for a more balanced approach. Challenge each of their points to illustrate why a moderate risk strategy might offer the best of both worlds, providing growth potential while safeguarding against extreme volatility. Focus on debating rather than simply presenting data, aiming to show that a balanced view can lead to the most reliable outcomes. Output conversationally as if you are speaking without any special formatting."""
-
-        response = llm.invoke(prompt)
-
-        argument = f"Neutral Analyst: {response.content}"
-
-        new_risk_debate_state = {
-            "history": history + "\n" + argument,
-            "aggressive_history": risk_debate_state.get("aggressive_history", ""),
-            "conservative_history": risk_debate_state.get("conservative_history", ""),
-            "neutral_history": neutral_history + "\n" + argument,
-            "latest_speaker": "Neutral",
-            "current_aggressive_response": risk_debate_state.get(
-                "current_aggressive_response", ""
-            ),
-            "current_conservative_response": risk_debate_state.get("current_conservative_response", ""),
-            "current_neutral_response": argument,
-            "count": risk_debate_state["count"] + 1,
-        }
-
-        return {"risk_debate_state": new_risk_debate_state}
-
-    return neutral_node
+    return create_risk_debate_node(llm, "Neutral", _build_prompt)

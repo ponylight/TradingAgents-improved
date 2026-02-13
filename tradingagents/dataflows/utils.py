@@ -1,10 +1,19 @@
 import os
 import json
+import time
 import pandas as pd
 from datetime import date, timedelta, datetime
 from typing import Annotated
 
 SavePathType = Annotated[str, "File path to save data. If None, data is not saved."]
+
+
+def is_cache_stale(file_path: str, ttl_hours: int) -> bool:
+    """Check if a cached file is older than the TTL."""
+    if not os.path.exists(file_path):
+        return True
+    file_age_hours = (time.time() - os.path.getmtime(file_path)) / 3600
+    return file_age_hours > ttl_hours
 
 def save_output(data: pd.DataFrame, tag: str, save_path: SavePathType = None) -> None:
     if save_path:

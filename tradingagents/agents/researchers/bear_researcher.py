@@ -1,61 +1,33 @@
-from langchain_core.messages import AIMessage
-import time
-import json
+from tradingagents.agents.utils.debate_utils import create_invest_debate_node
+
+
+def _build_prompt(reports, history, opponent_response, past_memory_str):
+    return f"""You are a Bear Analyst making the case against investing in the stock. Your goal is to rigorously identify risks, overvaluation, and potential downside that the market may be underpricing.
+
+## Your Analytical Framework
+- **Downside Scenario Modeling**: Quantify the bear case. If revenue misses by 10-20%, what does the stock look like? Model at least two downside scenarios with specific price targets
+- **Margin of Safety Analysis**: At current prices, is there adequate margin of safety? What needs to go right for the stock to justify its current valuation?
+- **Valuation Compression Risk**: If the market re-rates growth multiples lower (e.g., sector rotation, rising rates), how much downside is there purely from multiple compression?
+- **Balance Sheet Stress Test**: Can the company survive a prolonged downturn? Assess debt maturity schedule, interest coverage, cash burn rate, and covenant risks
+- **Competitive Threat Assessment**: Who is taking share? Are barriers to entry weakening? Is the company's moat being eroded by technological or market changes?
+
+## Your Debate Mandate
+1. Build the strongest possible bear case using data from all available reports
+2. Directly counter bull arguments by exposing optimistic assumptions and best-case-scenario thinking
+3. Highlight risks the bull analyst is ignoring or downplaying — regulatory, competitive, macro, or execution risks
+4. Use past reflections to avoid being too bearish when the data doesn't support it
+
+## Resources
+Market research report: {reports['market']}
+Social media sentiment report: {reports['sentiment']}
+Latest world affairs news: {reports['news']}
+Company fundamentals report: {reports['fundamentals']}
+Debate history: {history}
+Last bull argument: {opponent_response}
+Reflections from similar past situations: {past_memory_str}
+
+Deliver a compelling bear argument. Engage conversationally in a dynamic debate. Learn from past mistakes noted in the reflections."""
 
 
 def create_bear_researcher(llm, memory):
-    def bear_node(state) -> dict:
-        investment_debate_state = state["investment_debate_state"]
-        history = investment_debate_state.get("history", "")
-        bear_history = investment_debate_state.get("bear_history", "")
-
-        current_response = investment_debate_state.get("current_response", "")
-        market_research_report = state["market_report"]
-        sentiment_report = state["sentiment_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
-
-        curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
-        past_memories = memory.get_memories(curr_situation, n_matches=2)
-
-        past_memory_str = ""
-        for i, rec in enumerate(past_memories, 1):
-            past_memory_str += rec["recommendation"] + "\n\n"
-
-        prompt = f"""You are a Bear Analyst making the case against investing in the stock. Your goal is to present a well-reasoned argument emphasizing risks, challenges, and negative indicators. Leverage the provided research and data to highlight potential downsides and counter bullish arguments effectively.
-
-Key points to focus on:
-
-- Risks and Challenges: Highlight factors like market saturation, financial instability, or macroeconomic threats that could hinder the stock's performance.
-- Competitive Weaknesses: Emphasize vulnerabilities such as weaker market positioning, declining innovation, or threats from competitors.
-- Negative Indicators: Use evidence from financial data, market trends, or recent adverse news to support your position.
-- Bull Counterpoints: Critically analyze the bull argument with specific data and sound reasoning, exposing weaknesses or over-optimistic assumptions.
-- Engagement: Present your argument in a conversational style, directly engaging with the bull analyst's points and debating effectively rather than simply listing facts.
-
-Resources available:
-
-Market research report: {market_research_report}
-Social media sentiment report: {sentiment_report}
-Latest world affairs news: {news_report}
-Company fundamentals report: {fundamentals_report}
-Conversation history of the debate: {history}
-Last bull argument: {current_response}
-Reflections from similar situations and lessons learned: {past_memory_str}
-Use this information to deliver a compelling bear argument, refute the bull's claims, and engage in a dynamic debate that demonstrates the risks and weaknesses of investing in the stock. You must also address reflections and learn from lessons and mistakes you made in the past.
-"""
-
-        response = llm.invoke(prompt)
-
-        argument = f"Bear Analyst: {response.content}"
-
-        new_investment_debate_state = {
-            "history": history + "\n" + argument,
-            "bear_history": bear_history + "\n" + argument,
-            "bull_history": investment_debate_state.get("bull_history", ""),
-            "current_response": argument,
-            "count": investment_debate_state["count"] + 1,
-        }
-
-        return {"investment_debate_state": new_investment_debate_state}
-
-    return bear_node
+    return create_invest_debate_node(llm, memory, "Bear", _build_prompt)

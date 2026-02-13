@@ -63,7 +63,9 @@ def _make_api_request(function_name: str, params: dict) -> dict | str:
         # Remove entitlement if it's None or empty
         api_params.pop("entitlement", None)
     
-    response = requests.get(API_BASE_URL, params=api_params)
+    from .config import get_config
+    timeout = get_config().get("request_timeout", 30)
+    response = requests.get(API_BASE_URL, params=api_params, timeout=timeout)
     response.raise_for_status()
 
     response_text = response.text
