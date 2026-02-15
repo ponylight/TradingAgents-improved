@@ -129,6 +129,20 @@ def get_stock_stats_indicators_window(
             "Usage: Identify overbought (>80) or oversold (<20) conditions and confirm the strength of trends or reversals. "
             "Tips: Use alongside RSI or MACD to confirm signals; divergence between price and MFI can indicate potential reversals."
         ),
+        # Counter-Trend Indicators
+        "td_sequential": (
+            "TD Sequential (DeMark): A counter-trend exhaustion indicator. "
+            "Counts consecutive bars where close > close[4] (positive/sell setup) or close < close[4] (negative/buy setup). "
+            "Usage: A completed count of +9 signals potential selling exhaustion (reversal down); -9 signals buying exhaustion (reversal up). "
+            "Tips: Most effective when combined with support/resistance levels. Counts of 7-9 warrant attention; counts reset on direction change."
+        ),
+        # Support/Resistance Indicators
+        "fib_channel": (
+            "Fibonacci Channel: Calculates dynamic support/resistance levels based on rolling 50-bar high/low range. "
+            "Levels: 0% (swing low), 23.6%, 38.2%, 50%, 61.8%, 78.6%, 100% (swing high). "
+            "Usage: Identify potential reversal zones and price targets. The 38.2% and 61.8% levels are the strongest. "
+            "Tips: Price finding support at 61.8% retracement is a strong bullish signal; breaking below 78.6% suggests trend reversal."
+        ),
     }
 
     if indicator not in best_ind_params:
@@ -185,6 +199,80 @@ def get_stock_stats_indicators_window(
     )
 
     return result_str
+
+
+def _calculate_td_sequential(df):
+    """Calculate TD Sequential (DeMark) indicator.
+    Compares each close to the close 4 bars ago and counts consecutive bars
+    in the same direction. A completed count of 9 signals potential exhaustion.
+    Returns a Series with values like '+1' to '+9' (sell setup) or '-1' to '-9' (buy setup).
+    """
+    import pandas as pd
+    close = df["close"] if "close" in df.columns else df["Close"]
+    close_4 = close.shift(4)
+    result = pd.Series(0, index=df.index, dtype=int)
+    count = 0
+    for i in range(len(close)):
+        if pd.isna(close_4.iloc[i]):
+            result.iloc[i] = 0
+            continue
+        if close.iloc[i] > close_4.iloc[i]:
+            count = count + 1 if count > 0 else 1
+        elif close.iloc[i] < close_4.iloc[i]:
+            count = count - 1 if count < 0 else -1
+        else:
+            count = 0
+        # Cap at +/-9
+        if count > 9:
+            count = 9
+        elif count < -9:
+            count = -9
+        result.iloc[i] = count
+    return result
+
+
+def _calculate_fibonacci_channel(df, window=50):
+    """Calculate Fibonacci Channel levels based on rolling high/low.
+    Uses a rolling window to find swing high and low, then calculates
+    Fibonacci retracement levels (0%, 23.6%, 38.2%, 50%, 61.8%, 78.6%, 100%).
+    Returns a Series of formatted strings showing price position relative to levels.
+    """
+    import pandas as pd
+    high = df["high"] if "high" in df.columns else df["High"]
+    low = df["low"] if "low" in df.columns else df["Low"]
+    close = df["close"] if "close" in df.columns else df["Close"]
+
+    rolling_high = high.rolling(window=window, min_periods=1).max()
+    rolling_low = low.rolling(window=window, min_periods=1).min()
+    fib_range = rolling_high - rolling_low
+
+    levels = [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0]
+    result = pd.Series("", index=df.index, dtype=str)
+
+    for i in range(len(df)):
+        h = rolling_high.iloc[i]
+        l = rolling_low.iloc[i]
+        r = fib_range.iloc[i]
+        c = close.iloc[i]
+        if pd.isna(h) or pd.isna(l) or r == 0:
+            result.iloc[i] = "N/A"
+            continue
+        # Fib levels from low to high
+        fib_values = {f"{int(lv*100)}%": round(l + r * lv, 2) for lv in levels}
+        # Determine which two levels the close sits between
+        position = "above 100%"
+        sorted_levels = sorted(fib_values.items(), key=lambda x: x[1])
+        for j in range(len(sorted_levels) - 1):
+            if c <= sorted_levels[j + 1][1]:
+                position = f"between {sorted_levels[j][0]}({sorted_levels[j][1]}) and {sorted_levels[j+1][0]}({sorted_levels[j+1][1]})"
+                break
+        if c < sorted_levels[0][1]:
+            position = "below 0%"
+        result.iloc[i] = f"Close={round(c,2)} | {position} | Range=[{round(l,2)}-{round(h,2)}]"
+    return result
+
+
+_CUSTOM_INDICATORS = {"td_sequential", "fib_channel"}
 
 
 def _get_stock_stats_bulk(
@@ -257,7 +345,13 @@ def _get_stock_stats_bulk(
         df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
     
     # Calculate the indicator for all rows at once
-    df[indicator]  # This triggers stockstats to calculate the indicator
+    if indicator in _CUSTOM_INDICATORS:
+        if indicator == "td_sequential":
+            df[indicator] = _calculate_td_sequential(df)
+        elif indicator == "fib_channel":
+            df[indicator] = _calculate_fibonacci_channel(df)
+    else:
+        df[indicator]  # This triggers stockstats to calculate the indicator
     
     # Create a dictionary mapping date strings to indicator values
     result_dict = {}
