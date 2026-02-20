@@ -102,10 +102,6 @@ def main():
     print(f"\n✅ All data saved to {output_file}")
     print(f"   File size: {os.path.getsize(output_file) / 1024:.1f} KB")
 
-if __name__ == "__main__":
-    main()
-
-
 def fetch_binance_comparison():
     """Fetch Binance BTC data for cross-exchange comparison."""
     import ccxt
@@ -128,3 +124,7 @@ def fetch_binance_comparison():
         )
     except Exception as e:
         return f"ERROR fetching Binance data: {e}"
+
+
+if __name__ == "__main__":
+    main()
