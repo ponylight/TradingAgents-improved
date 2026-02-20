@@ -7,8 +7,8 @@ Post-capitulation base-building. Scale in cautiously.
 ## Regime Rules
 | Regime | Action | Max Leverage | Max Exposure |
 |--------|--------|-------------|-------------|
-| Accumulation | Scale in on dips | 1-2x | 40% of account |
-| Markup | Add to winners | 2-3x | 60% of account |
+| Accumulation | Scale in on dips | 3-5x | 40% of account |
+| Markup | Add to winners | 5-10x | 60% of account |
 | Distribution | Take profits | 1x | 20% of account |
 | Decline | Cash or short | 1x short | 20% of account |
 
@@ -28,9 +28,14 @@ Post-capitulation base-building. Scale in cautiously.
 ## Conviction Scaling
 | Confidence | Allocation | Leverage |
 |-----------|-----------|---------|
-| 5-6/10 | 10% | 1x |
-| 7-8/10 | 25% | 1-2x |
-| 9-10/10 | 40% | 2-3x |
+| 5-6/10 | 10% | 2-3x |
+| 7-8/10 | 25% | 3-5x |
+| 9-10/10 | 40% | 5-10x |
+
+**Leverage Rules:**
+- Max 10x only on highest conviction setups (double/triple divergence + 123 Rule confirmed + near 365-day low)
+- Rolling adds: leverage passively drops as floating profits grow — this is the safe way to compound
+- **Hard cap: 10x.** Never exceed regardless of conviction.
 
 ## Time Horizons
 - **Swing trade (default):** 1-4 weeks, 4h chart decisions
@@ -59,9 +64,10 @@ Post-capitulation base-building. Scale in cautiously.
 - **Stop-loss:** Key K-line low minus ATR(14) for longs, high plus ATR(14) for shorts
 - **Exit:** Half position at **1:1 R/R**, hold rest with trailing stop
 
-### Trend Reversal Detection (123 Rule + 2B Rule)
+### Trend Reversal Detection (123 Rule + 2B Rule) — Confidence Booster, Not Hard Gate
 - **123 Rule:** (1) Break the trendline → (2) Failed retest of previous high/low → (3) Break of previous pivot point
 - **2B Rule:** Price breaks a level but immediately reverses back = fakeout entry with tight stop
+- **Usage:** If 123 Rule is confirmed → **increase leverage by 1 tier** (e.g. 3x → 5x). If not confirmed → still trade but at lower leverage tier
 - **High-probability trends** start after long horizontal consolidation or when volatility hits new lows
 
 ### Rolling Positions (滚仓) — Only Near Market Bottoms
@@ -80,7 +86,7 @@ Post-capitulation base-building. Scale in cautiously.
 ## Lessons Learned
 *(Updated weekly by Strategist)*
 - First trade: entered during Extreme Fear (7/100). Historical edge is strong but timing uncertain.
-- **Backtest V1→V3 evolution:** Raw MACD divergence lost 24.2% over 4 years. Adding trend filters (50/200 SMA), double divergence requirement, 1:1 TP, no bull market shorts, and bottom-only rolling turned it profitable (+4.67%, 2.1% DD, 3.26 profit factor). Quality over quantity — 7 trades beat 220.
+- **Backtest V1→V3→V4 evolution:** Raw MACD divergence lost 24.2% over 4 years. V3 (+4.67%, 2.1% DD, 3.26 PF) is the best balance of return and selectivity. V4 (123 Rule as hard gate) improved win rate to 66.7% and PF to 4.60 but only 3 trades in 4 years — too restrictive. **Conclusion: Use V3 rules as entry, 123 Rule as leverage confidence booster.**
 - **Shorts are dangerous** — V1 shorts lost $1,299. Only short in confirmed bear (price < 200 SMA).
 - **Rolling works at bottoms** — rolling adds were the only profitable part of V1. Restricting to near 365-day lows makes it even better.
 

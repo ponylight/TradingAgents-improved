@@ -1,0 +1,64 @@
+============================================================
+  BTC/USDT MACD REVERSAL BACKTEST — V4
+  V4: 123 Rule trendline confirmation filter
+============================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Candles:   8766 (4h bars)
+  Initial Capital: $10,000.00
+
+============================================================
+  PERFORMANCE SUMMARY
+============================================================
+
+  Final Equity:    $10,290.70
+  Total Return:    +2.91%
+  Max Drawdown:    1.43%
+  Sharpe Ratio:    0.47
+
+============================================================
+  TRADE STATISTICS
+============================================================
+
+  Total Trades:    3
+    Primary:       3
+    Rolling Adds:  0
+    Long Trades:   1  (PnL: $-83.83)
+    Short Trades:  2  (PnL: $+385.97)
+  Win Rate:        66.7%
+  Profit Factor:   4.60
+  R/R Ratio (TP1): 1:1.0
+
+  Avg Win:         $192.98
+  Avg Loss:        $-83.83
+  Largest Win:     $312.07
+  Largest Loss:    $-83.83
+
+  Avg Duration:    9.9 days (239 hours)
+
+============================================================
+  V4 FILTER DETAILS — 123 RULE
+============================================================
+
+  Signals passed 123 Rule:   3
+  Signals blocked by 123:    4
+
+  123 Rule pattern (required before every entry):
+    1. Trendline break: price crosses above/below line from
+       last 2 swing lows/highs (swing lookback = 10 bars)
+    2. Failed retest: price returns within 1 ATR of broken level
+       but closes back in new trend direction
+    3. Pivot break: price exceeds most recent swing point
+
+  Inherited from V3:
+    - No shorts in bull market (price > 200 SMA)
+    - Rolling adds only near market bottoms (within 30% of 365-day low)
+
+  Inherited from V2:
+    - 50 SMA trend filter
+    - TP1 at 1:1 R/R
+    - Double divergence (strength >= 2)
+
+============================================================
+  Report generated: 2026-02-21 10:25:11
+============================================================

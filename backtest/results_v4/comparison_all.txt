@@ -1,0 +1,60 @@
+=========================================================================================================
+  BACKTEST COMPARISON: V1 vs V2 vs V3 vs V4
+=========================================================================================================
+
+  Metric                                 V1              V2              V3              V4       V4 vs V1
+  ------------------------- --------------- --------------- --------------- ---------------   ------------
+
+  Total Return %                    -24.21%           0.17%           4.67%           2.91%   (+27.12 ^^)
+  Final Equity              $     7,579.12 $    10,016.68 $    10,466.75 $    10,290.70   (+2711.58 ^^)
+  Max Drawdown %                     30.33%           5.87%           2.07%           1.43%   (-28.90 ^^)
+  Sharpe Ratio                        -0.62            0.03            0.62            0.47   (+1.09 ^^)
+  Win Rate %                         37.27%          50.00%          57.14%          66.67%   (+29.40 ^^)
+  Profit Factor                        0.82            1.08            3.26            4.60   (+3.78 ^^)
+
+  Total Trades                          220              18               7               3
+    Primary                             128              11               7               3
+    Rolling Adds                         92               7               0               0
+    Long Trades                         N/A               8               5               1
+    Short Trades                        N/A              10               2               2
+    Long PnL                            N/A $       108.62 $       108.94 $       -83.83
+    Short PnL                           N/A $       -43.17 $       385.96 $       385.97
+
+  Avg Win                   $       108.26 $        98.93 $       178.41 $       192.98
+  Avg Loss                  $       -78.28 $       -91.65 $       -72.92 $       -83.83
+  Largest Win               $       407.00 $       295.66 $       310.21 $       312.07
+  Largest Loss              $      -211.33 $      -202.57 $       -85.93 $       -83.83
+  Avg Duration (days)                   4.9             4.3             7.3             9.9
+
+=========================================================================================================
+  V4 — 123 RULE FILTER IMPACT
+=========================================================================================================
+
+  Signals that passed 123 Rule: 3
+  Signals blocked by 123 Rule:  4
+
+=========================================================================================================
+  VERSION CHANGE LOG
+=========================================================================================================
+
+  V1 (baseline):
+    - MACD(13,34,9) divergence + Key K-line detection
+    - TP1 at 1:1.5 R/R, trailing stop at 2.5 ATR
+    - Rolling positions on breakouts / MA30 pullbacks
+
+  V2 changes:
+    - SMA50 trend filter: long only above SMA50, short only below
+    - TP1 tightened to 1:1 R/R
+    - Double divergence minimum (strength >= 2)
+
+  V3 changes:
+    - No shorts in bull market (price > 200 SMA)
+    - Rolling adds only near market bottoms (within 30% of 365-day low)
+
+  V4 changes:
+    - 123 Rule confirmation required before any entry:
+      1. Trendline break (swing lookback = 10 bars)
+      2. Failed retest (within 1 ATR, closes in new direction)
+      3. Pivot break (exceeds most recent swing point)
+
+=========================================================================================================
