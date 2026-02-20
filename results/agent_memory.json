@@ -1,0 +1,39 @@
+{
+  "last_analysis": {
+    "date": "2026-02-20",
+    "signal": "BUY",
+    "confidence": 6.0,
+    "entry_price": 68164,
+    "position": {
+      "side": "long",
+      "size_btc": 0.037,
+      "entry": 68164,
+      "stop_loss": 63500,
+      "take_profit_1": 72000,
+      "leverage": 1
+    },
+    "key_levels": {
+      "support": 60000,
+      "resistance_1": 69000,
+      "resistance_2": 74500
+    },
+    "macro_regime": "Transitioning to Risk-On",
+    "sentiment": "Extreme Fear (7/100)"
+  },
+  "trade_history": [
+    {
+      "date": "2026-02-20T21:07:00",
+      "action": "BUY",
+      "price": 68164,
+      "size_btc": 0.037,
+      "order_id": "6ec9b425-32a8-4027-85ee-02b60b177c2a",
+      "account": "demo"
+    }
+  ],
+  "performance": {
+    "total_trades": 1,
+    "wins": 0,
+    "losses": 0,
+    "open_pnl": 0
+  }
+}

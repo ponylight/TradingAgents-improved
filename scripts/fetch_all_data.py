@@ -81,7 +81,7 @@ def main():
     data["liquidation_info"] = fetch_safe(get_crypto_liquidations_summary, symbol)
     
     # === MACRO DATA ===
-    print("  [5/5] Macro...")
+    print("  [5/6] Macro...")
     data["dxy"] = fetch_safe(get_dxy_data, start_60d, trade_date)
     data["treasury_yields"] = fetch_safe(get_treasury_yields, start_60d, trade_date)
     data["sp500"] = fetch_safe(get_sp500_data, start_60d, trade_date)
@@ -89,6 +89,10 @@ def main():
     data["cpi"] = fetch_safe(get_fred_data, "CPIAUCSL", start_1y, trade_date)
     data["m2_supply"] = fetch_safe(get_fred_data, "M2SL", start_1y, trade_date)
     data["economic_calendar"] = get_economic_calendar_summary()
+    
+    # === CROSS-EXCHANGE ===
+    print("  [6/6] Binance comparison...")
+    data["binance_comparison"] = fetch_binance_comparison()
     
     # Save
     output_file = os.path.join(output_dir, f"btc_data_{trade_date}.json")
@@ -100,3 +104,27 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+def fetch_binance_comparison():
+    """Fetch Binance BTC data for cross-exchange comparison."""
+    import ccxt
+    try:
+        binance = ccxt.binance({'enableRateLimit': True})
+        ticker = binance.fetch_ticker('BTC/USDT')
+        orderbook = binance.fetch_order_book('BTC/USDT', limit=10)
+        
+        total_bid = sum(p * a for p, a in orderbook['bids'][:10])
+        total_ask = sum(p * a for p, a in orderbook['asks'][:10])
+        imbalance = total_bid / total_ask if total_ask > 0 else 0
+        
+        return (
+            f"# Binance BTC/USDT Cross-Exchange Comparison\n"
+            f"Price: ${ticker['last']:,.2f}\n"
+            f"24h Volume: {ticker.get('baseVolume', 'N/A')} BTC\n"
+            f"24h Change: {ticker.get('percentage', 'N/A')}%\n"
+            f"Bid/Ask Imbalance: {imbalance:.4f} ({'Bullish' if imbalance > 1 else 'Bearish'})\n"
+            f"Spread: ${orderbook['asks'][0][0] - orderbook['bids'][0][0]:,.2f}\n"
+        )
+    except Exception as e:
+        return f"ERROR fetching Binance data: {e}"
