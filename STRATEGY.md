@@ -47,6 +47,28 @@ Post-capitulation base-building. Scale in cautiously.
 - **Resistance:** $69,000 (23.6% Fib), $74,500 (38.2% Fib)
 - **Invalidation:** Weekly close below $58,000 → regime shifts to Decline
 
+## Technical Entry Rules (from NotebookLM Strategy KB)
+
+### MACD Reversal Strategy (半木夏)
+- **MACD Settings:** Fast 13, Slow 34 (Fibonacci), focus on histogram only
+- **Long Entry:** Price makes new lows + MACD histogram shows bottom divergence (shrinking red bars) → enter on "Key K-line" (dark red → light red)
+- **Short Entry:** Price makes new highs + MACD histogram shows top divergence → enter on dark green → light green
+- **Filter:** Histogram peak height difference must be >30%. Double/triple divergence = higher probability
+- **Stop-loss:** Key K-line low minus ATR (long) or high plus ATR (short)
+- **Exit:** Half position at 1:1.5 R/R, hold rest with trailing stop for trend
+
+### Rolling Positions (滚仓) — Only in Clear Trends
+- **When:** Only 10% of time market trends clearly. NEVER roll in ranging markets
+- **Add on:** Consolidation breakouts (triangles) or pullbacks to MA30
+- **Confirm breakout:** Big candle bodies + volume + price >2-3% beyond resistance
+- **Sizing:** Pyramid — each addition smaller than previous
+- **Must use:** Trailing stop-losses on all rolling positions
+
+### NotebookLM Knowledge Base
+- **Notebook ID:** 9b6bf693-4196-4266-ad42-6a3e21ffa33b
+- **Query command:** `source ~/trading-agents-env/bin/activate && notebooklm use 9b6bf693-4196-4266-ad42-6a3e21ffa33b && notebooklm ask "<question>"`
+- Agents should query this notebook for strategy clarification before making trading decisions
+
 ## Lessons Learned
 *(Updated weekly by Strategist)*
 - First trade: entered during Extreme Fear (7/100). Historical edge is strong but timing uncertain.
