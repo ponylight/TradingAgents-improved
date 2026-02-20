@@ -1,0 +1,54 @@
+============================================================
+  BTC/USDT MACD REVERSAL BACKTEST — V3
+  V3: SMA200 bull filter + near-bottom rolling only
+============================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Candles:   8766 (4h bars)
+  Initial Capital: $10,000.00
+
+============================================================
+  PERFORMANCE SUMMARY
+============================================================
+
+  Final Equity:    $10,466.75
+  Total Return:    +4.67%
+  Max Drawdown:    2.07%
+  Sharpe Ratio:    0.62
+
+============================================================
+  TRADE STATISTICS
+============================================================
+
+  Total Trades:    7
+    Primary:       7
+    Rolling Adds:  0
+    Long Trades:   5  (PnL: $+108.94)
+    Short Trades:  2  (PnL: $+385.96)
+  Win Rate:        57.1%
+  Profit Factor:   3.26
+  R/R Ratio (TP1): 1:1.0
+
+  Avg Win:         $178.41
+  Avg Loss:        $-72.92
+  Largest Win:     $310.21
+  Largest Loss:    $-85.93
+
+  Avg Duration:    7.3 days (175 hours)
+
+============================================================
+  V3 FILTER DETAILS
+============================================================
+
+  NEW in V3:
+  1. No shorts in bull market (price > 200 SMA) — long only regime
+  2. Rolling adds only near market bottoms (within 30% of 365-day low)
+
+  Inherited from V2:
+  3. 50 SMA trend filter: long only above SMA50, short only below
+  4. TP1 at 1:1 R/R (V1 was 1:1.5)
+  5. Require double divergence (strength >= 2) for entry
+
+============================================================
+  Report generated: 2026-02-21 10:14:29
+============================================================

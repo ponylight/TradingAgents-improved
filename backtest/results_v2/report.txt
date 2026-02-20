@@ -1,0 +1,49 @@
+============================================================
+  BTC/USDT MACD REVERSAL BACKTEST — V2
+  Improvements: SMA50 trend filter, 1:1 TP, double divergence
+============================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Candles:   8766 (4h bars)
+  Initial Capital: $10,000.00
+
+============================================================
+  PERFORMANCE SUMMARY
+============================================================
+
+  Final Equity:    $10,016.68
+  Total Return:    +0.17%
+  Max Drawdown:    5.87%
+  Sharpe Ratio:    0.03
+
+============================================================
+  TRADE STATISTICS
+============================================================
+
+  Total Trades:    18
+    Primary:       11
+    Rolling Adds:  7
+    Long Trades:   8  (PnL: $+108.62)
+    Short Trades:  10  (PnL: $-43.17)
+  Win Rate:        50.0%
+  Profit Factor:   1.08
+  R/R Ratio (TP1): 1:1.0
+
+  Avg Win:         $98.93
+  Avg Loss:        $-91.65
+  Largest Win:     $295.66
+  Largest Loss:    $-202.57
+
+  Avg Duration:    4.3 days (104 hours)
+
+============================================================
+  V2 FILTER DETAILS
+============================================================
+
+  1. 50 SMA trend filter: long only above SMA50, short only below
+  2. TP1 at 1:1 R/R (V1 was 1:1.5)
+  3. Require double divergence (strength >= 2) for entry
+
+============================================================
+  Report generated: 2026-02-21 10:10:26
+============================================================

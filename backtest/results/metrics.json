@@ -1,0 +1,23 @@
+{
+  "total_return_pct": -24.21,
+  "final_equity": 7579.12,
+  "initial_capital": 10000.0,
+  "max_drawdown_pct": 30.33,
+  "sharpe_ratio": -0.62,
+  "win_rate_pct": 37.27,
+  "profit_factor": 0.82,
+  "total_trades": 220,
+  "winning_trades": 82,
+  "losing_trades": 138,
+  "avg_win": 108.26,
+  "avg_loss": -78.28,
+  "largest_win": 407.0,
+  "largest_loss": -211.33,
+  "avg_trade_duration_hours": 117.4,
+  "avg_trade_duration_days": 4.9,
+  "primary_trades": 128,
+  "rolling_adds": 92,
+  "data_start": "2022-02-21 00:00:00",
+  "data_end": "2026-02-20 20:00:00",
+  "total_candles": 8766
+}

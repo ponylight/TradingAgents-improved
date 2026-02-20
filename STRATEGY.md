@@ -47,22 +47,30 @@ Post-capitulation base-building. Scale in cautiously.
 - **Resistance:** $69,000 (23.6% Fib), $74,500 (38.2% Fib)
 - **Invalidation:** Weekly close below $58,000 → regime shifts to Decline
 
-## Technical Entry Rules (from NotebookLM Strategy KB)
+## Technical Entry Rules — V3 (Backtested: +4.67% return, 2.1% max DD, 3.26 PF)
 
 ### MACD Reversal Strategy (半木夏)
 - **MACD Settings:** Fast 13, Slow 34 (Fibonacci), focus on histogram only
-- **Long Entry:** Price makes new lows + MACD histogram shows bottom divergence (shrinking red bars) → enter on "Key K-line" (dark red → light red)
-- **Short Entry:** Price makes new highs + MACD histogram shows top divergence → enter on dark green → light green
-- **Filter:** Histogram peak height difference must be >30%. Double/triple divergence = higher probability
-- **Stop-loss:** Key K-line low minus ATR (long) or high plus ATR (short)
-- **Exit:** Half position at 1:1.5 R/R, hold rest with trailing stop for trend
+- **Long Entry:** Price makes new lows + MACD histogram shows **double divergence minimum** (strength ≥ 2) → enter on "Key K-line" (dark red → light red)
+- **Short Entry:** Price makes new highs + MACD histogram shows double top divergence → enter on dark green → light green
+- **Trend Filter (50 SMA):** Long only above 50 SMA, short only below 50 SMA
+- **Bull Market Filter (200 SMA):** When price > 200 SMA → **NO SHORTS**. Long only.
+- **Filter:** Histogram peak height diff must be >30%. **Double divergence required** (single = skip)
+- **Stop-loss:** Key K-line low minus ATR(14) for longs, high plus ATR(14) for shorts
+- **Exit:** Half position at **1:1 R/R**, hold rest with trailing stop
 
-### Rolling Positions (滚仓) — Only in Clear Trends
-- **When:** Only 10% of time market trends clearly. NEVER roll in ranging markets
-- **Add on:** Consolidation breakouts (triangles) or pullbacks to MA30
-- **Confirm breakout:** Big candle bodies + volume + price >2-3% beyond resistance
-- **Sizing:** Pyramid — each addition smaller than previous
-- **Must use:** Trailing stop-losses on all rolling positions
+### Trend Reversal Detection (123 Rule + 2B Rule)
+- **123 Rule:** (1) Break the trendline → (2) Failed retest of previous high/low → (3) Break of previous pivot point
+- **2B Rule:** Price breaks a level but immediately reverses back = fakeout entry with tight stop
+- **High-probability trends** start after long horizontal consolidation or when volatility hits new lows
+
+### Rolling Positions (滚仓) — Only Near Market Bottoms
+- **When:** Only when price is within 30% of 365-day low (near bottom accumulation)
+- **Never roll** in ranging or mid-trend markets
+- **Add on:** Consolidation breakouts (triangles) or pullbacks to MA30 / Fib 0.5-0.618
+- **Confirm breakout:** Big candles + volume + price >2-3% beyond resistance. If fails to hold 3 candles → exit immediately
+- **Sizing:** Start with 5-10% test position at 2-3x max. Pyramid adds using **floating profits only**. Each add smaller than previous
+- **Must use:** Trailing stop-losses (ATR-based) on all rolling positions
 
 ### NotebookLM Knowledge Base
 - **Notebook ID:** 9b6bf693-4196-4266-ad42-6a3e21ffa33b
@@ -72,6 +80,9 @@ Post-capitulation base-building. Scale in cautiously.
 ## Lessons Learned
 *(Updated weekly by Strategist)*
 - First trade: entered during Extreme Fear (7/100). Historical edge is strong but timing uncertain.
+- **Backtest V1→V3 evolution:** Raw MACD divergence lost 24.2% over 4 years. Adding trend filters (50/200 SMA), double divergence requirement, 1:1 TP, no bull market shorts, and bottom-only rolling turned it profitable (+4.67%, 2.1% DD, 3.26 profit factor). Quality over quantity — 7 trades beat 220.
+- **Shorts are dangerous** — V1 shorts lost $1,299. Only short in confirmed bear (price < 200 SMA).
+- **Rolling works at bottoms** — rolling adds were the only profitable part of V1. Restricting to near 365-day lows makes it even better.
 
 ## Weekly Review Schedule
 - **Sunday 8PM Sydney:** Strategist agent reviews week, updates this document

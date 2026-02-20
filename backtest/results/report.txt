@@ -1,0 +1,38 @@
+============================================================
+  BTC/USDT MACD REVERSAL BACKTEST REPORT
+  Strategy: 半木夏 MACD Divergence + Rolling Positions
+============================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Candles:   8766 (4h bars)
+  Initial Capital: $10,000.00
+
+============================================================
+  PERFORMANCE SUMMARY
+============================================================
+
+  Final Equity:    $7,579.12
+  Total Return:    -24.21%
+  Max Drawdown:    30.33%
+  Sharpe Ratio:    -0.62
+
+============================================================
+  TRADE STATISTICS
+============================================================
+
+  Total Trades:    220
+    Primary:       128
+    Rolling Adds:  92
+  Win Rate:        37.3%
+  Profit Factor:   0.82
+
+  Avg Win:         $108.26
+  Avg Loss:        $-78.28
+  Largest Win:     $407.00
+  Largest Loss:    $-211.33
+
+  Avg Duration:    4.9 days (117 hours)
+
+============================================================
+  Report generated: 2026-02-21 10:04:22
+============================================================

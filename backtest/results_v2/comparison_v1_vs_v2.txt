@@ -1,0 +1,30 @@
+========================================================================
+  BACKTEST COMPARISON: V1 vs V2
+========================================================================
+
+  Metric                                      V1              V2            Change
+  ------------------------------ --------------- ---------------   ---------------
+
+  Total Return %                         -24.21%           0.17%  (+24.38 BETTER)
+  Final Equity                   $     7,579.12 $    10,016.68  (+2437.56 BETTER)
+  Max Drawdown %                          30.33%           5.87%  (-24.46 BETTER)
+  Sharpe Ratio                             -0.62            0.03  (+0.65 BETTER)
+  Win Rate %                              37.27%          50.00%  (+12.73 BETTER)
+  Profit Factor                             0.82            1.08  (+0.26 BETTER)
+
+  Total Trades                               220              18
+    Primary                                  128              11
+    Rolling Adds                              92               7
+  Avg Win                        $       108.26 $        98.93
+  Avg Loss                       $       -78.28 $       -91.65
+  Avg Duration (days)                        4.9             4.3
+
+========================================================================
+  V2 CHANGES APPLIED
+========================================================================
+
+  1. SMA50 trend filter: long only above SMA50, short only below
+  2. TP1 tightened to 1:1 R/R (V1 used 1:1.5)
+  3. Double divergence minimum (strength >= 2 required)
+
+========================================================================
