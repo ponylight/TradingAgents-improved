@@ -502,7 +502,7 @@ def api_data():
     gm_checks = {
         "Cron jobs":     cron_ok,
         "Bybit API":     live.get("fetch_error") is None,
-        "Scanner log":   len(scanner_logs) > 0,
+        "Scanner log":   len(scanner_logs) > 0 or (LOGS_DIR / f"scanner_{(now_syd - timedelta(days=1)).strftime('%Y-%m-%d')}.log").exists(),
         "Data file":     (PROJECT_DIR / "backtest" / "data" / "btc_usdt_4h.csv").exists(),
     }
 
