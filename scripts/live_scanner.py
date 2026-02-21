@@ -396,6 +396,263 @@ def detect_signal(df: pd.DataFrame) -> Optional[SignalResult]:
 
 
 # ══════════════════════════════════════════════════════════════════════
+# MARKET ANALYSIS (always returns context, even without a signal)
+# ══════════════════════════════════════════════════════════════════════
+
+def get_market_analysis(df: pd.DataFrame) -> dict:
+    """Analyze current market state for dashboard reasoning.
+
+    Always returns a rich context dict regardless of whether a signal fires.
+    Uses index -2 (last completed candle), same as detect_signal().
+    """
+    # Compute all indicators
+    df = compute_macd(df, fast=13, slow=34, signal=9)
+    df["atr"]    = compute_atr(df, period=14)
+    df["sma200"] = compute_ma(df, period=200)
+    df = compute_td_sequential(df)
+
+    swing_highs, swing_lows = find_swing_points(
+        df["high"].values, df["low"].values, lookback=20
+    )
+
+    closes  = df["close"].values
+    highs   = df["high"].values
+    lows    = df["low"].values
+    volumes = df["volume"].values
+    atr_arr = df["atr"].values
+    hist    = df["macd_hist"].values
+    sma200  = df["sma200"].values
+
+    td_buy_setup_arr     = df["td_buy_setup"].values
+    td_sell_setup_arr    = df["td_sell_setup"].values
+    td_buy_countdown_arr = df["td_buy_countdown"].values
+
+    # Last COMPLETED candle
+    i = len(df) - 2
+
+    price  = float(closes[i])
+    sma200_val = float(sma200[i]) if not np.isnan(sma200[i]) else None
+    atr_val    = float(atr_arr[i]) if not np.isnan(atr_arr[i]) else None
+
+    # ── Trend ──────────────────────────────────────────────────────
+    trend = "BULL" if (sma200_val and price > sma200_val) else "BEAR"
+
+    # ── TD Sequential ──────────────────────────────────────────────
+    td_buy_setup     = int(td_buy_setup_arr[i])
+    td_sell_setup    = int(td_sell_setup_arr[i])
+    td_buy_countdown = int(td_buy_countdown_arr[i])
+
+    # ── MACD ────────────────────────────────────────────────────────
+    macd_hist_val = float(hist[i])
+
+    # Direction: compare last 3 bars
+    if i >= 2:
+        h0, h1, h2 = hist[i - 2], hist[i - 1], hist[i]
+        if h2 > h1 > h0:
+            macd_direction = "turning_up"
+        elif h2 < h1 < h0:
+            macd_direction = "turning_down"
+        elif h2 > h1:
+            macd_direction = "turning_up"
+        elif h2 < h1:
+            macd_direction = "turning_down"
+        else:
+            macd_direction = "flat"
+    else:
+        macd_direction = "flat"
+
+    macd_div = check_bottom_divergence(i, hist, lows)
+
+    # ── Fibonacci ───────────────────────────────────────────────────
+    fib = get_active_fib_levels(i, swing_highs, swing_lows, closes)
+    fib_levels_out = None
+    nearest_fib    = None
+    fib_distance_pct = None
+
+    if fib:
+        fib_levels_out = {
+            "0.382": float(round(fib["0.382"], 2)),
+            "0.500": float(round(fib["0.500"], 2)),
+            "0.618": float(round(fib["0.618"], 2)),
+        }
+        # Find nearest key fib level
+        best_level = None
+        best_dist  = float("inf")
+        for lvl in ["0.618", "0.500", "0.382"]:
+            dist = abs(price - fib[lvl]) / price
+            if dist < best_dist:
+                best_dist  = dist
+                best_level = lvl
+        nearest_fib      = best_level
+        fib_distance_pct = round(best_dist * 100, 2)
+
+    # ── Volume ──────────────────────────────────────────────────────
+    vol_window  = volumes[max(0, i - 20):i]
+    avg_vol     = float(np.mean(vol_window)) if len(vol_window) > 0 else float(volumes[i])
+    volume_ratio = round(float(volumes[i]) / avg_vol, 2) if avg_vol > 0 else 1.0
+    vol_ok       = volumes[i] > avg_vol * 0.8
+
+    # ── Confluence assessment ───────────────────────────────────────
+    confluence_count = 0
+    missing = []
+
+    has_td9_buy      = td_buy_setup == 9
+    has_td13_buy     = td_buy_countdown == 13
+    has_macd_div     = macd_div >= 1
+    has_fib_near     = nearest_fib is not None and fib_distance_pct is not None and fib_distance_pct <= 1.2
+    has_volume_spike = volume_ratio >= 1.5
+
+    if has_td9_buy or has_td13_buy:
+        confluence_count += 1
+    if has_macd_div:
+        confluence_count += 1
+    if has_fib_near:
+        confluence_count += 1
+    if has_volume_spike:
+        confluence_count += 1
+
+    # ── Signal detection (quick check) ─────────────────────────────
+    signal_fired = False
+    if vol_ok and (
+        (has_td13_buy and has_fib_near)
+        or (has_td9_buy and has_macd_div)
+        or (has_td9_buy and has_fib_near)
+        or has_td13_buy
+        or (has_td9_buy and has_volume_spike)
+        or (has_macd_div and has_fib_near and macd_div >= 2)
+    ):
+        signal_fired = True
+
+    # ── Signal proximity ────────────────────────────────────────────
+    if signal_fired:
+        signal_proximity = "FIRED"
+    elif confluence_count >= 2:
+        signal_proximity = "CLOSE"
+    elif confluence_count >= 1 or td_buy_setup >= 7:
+        signal_proximity = "APPROACHING"
+    else:
+        signal_proximity = "NONE"
+
+    # ── Build reasoning lines ───────────────────────────────────────
+    reasoning = []
+
+    # Trend line
+    if sma200_val:
+        trend_icon = "📈" if trend == "BULL" else "📉"
+        direction  = "above" if trend == "BULL" else "below"
+        reasoning.append(
+            f"{trend_icon} {trend} trend — price ${price:,.0f} {direction} SMA200 ${sma200_val:,.0f}"
+        )
+
+    # TD Setup line
+    if td_buy_setup > 0:
+        remaining = 9 - td_buy_setup
+        if td_buy_setup == 9:
+            reasoning.append(f"🔢 TD buy setup COMPLETE (9/9) — watching for momentum confirmation")
+        else:
+            reasoning.append(f"🔢 TD buy setup at {td_buy_setup}/9 — {remaining} candles from potential TD9")
+    elif td_sell_setup > 0:
+        if td_sell_setup == 9:
+            reasoning.append(f"🔢 TD sell setup COMPLETE (9/9) — potential sell exhaustion zone")
+        else:
+            remaining = 9 - td_sell_setup
+            reasoning.append(f"🔢 TD sell setup at {td_sell_setup}/9 — {remaining} candles to potential sell signal")
+    else:
+        reasoning.append("🔢 TD setup reset — no active setup building")
+
+    # TD Countdown line
+    if td_buy_countdown > 0:
+        remaining_cd = 13 - td_buy_countdown
+        if td_buy_countdown == 13:
+            reasoning.append(f"🎯 TD buy countdown COMPLETE (13/13) — high-probability reversal zone")
+        else:
+            reasoning.append(f"🎯 TD buy countdown at {td_buy_countdown}/13 — {remaining_cd} bars to completion")
+
+    # MACD line
+    if i >= 2:
+        h_prev, h_curr = float(hist[i - 1]), float(hist[i])
+        if macd_direction == "turning_up":
+            reasoning.append(
+                f"📊 MACD histogram turning up ({h_prev:+.0f} → {h_curr:+.0f}) — momentum shifting"
+            )
+        elif macd_direction == "turning_down":
+            reasoning.append(
+                f"📊 MACD histogram turning down ({h_prev:+.0f} → {h_curr:+.0f}) — momentum weakening"
+            )
+        else:
+            reasoning.append(f"📊 MACD histogram flat ({h_curr:+.0f}) — no directional momentum")
+
+    if has_macd_div:
+        reasoning.append(f"✨ Bullish MACD divergence detected (strength {macd_div}/3) — higher lows on price, higher troughs on MACD")
+    else:
+        missing.append("MACD divergence")
+
+    # Fib line
+    if nearest_fib and fib_distance_pct is not None and fib_levels_out:
+        fib_price = fib_levels_out.get(nearest_fib, 0)
+        direction = "above" if price > fib_price else "below"
+        if has_fib_near:
+            reasoning.append(
+                f"📐 Price near Fib {nearest_fib} (${fib_price:,.0f}) — {fib_distance_pct:.1f}% away, within tolerance"
+            )
+        else:
+            reasoning.append(
+                f"📐 Price {fib_distance_pct:.1f}% {direction} Fib {nearest_fib} (${fib_price:,.0f}) — approaching key level"
+            )
+        if not has_fib_near:
+            missing.append(f"Fib {nearest_fib} touch")
+    else:
+        reasoning.append("📐 No clear Fibonacci level in range — waiting for retracement setup")
+        missing.append("Fibonacci confluence")
+
+    # Volume line
+    if volume_ratio >= 1.5:
+        reasoning.append(f"📈 Volume spike ({volume_ratio:.0%} of avg) — strong participation, confirmation present")
+    elif vol_ok:
+        reasoning.append(f"📉 Volume adequate ({volume_ratio:.0%} of avg) — normal participation")
+    else:
+        reasoning.append(f"📉 Volume low ({volume_ratio:.0%} of avg) — needs pickup for valid signal")
+        missing.append("volume confirmation")
+
+    # ATR line
+    if atr_val:
+        reasoning.append(f"📏 ATR ${atr_val:,.0f} — market volatility gauge")
+
+    # Summary / missing line
+    if signal_fired:
+        reasoning.append("⚡ All confluence factors met — SIGNAL FIRED")
+    elif missing:
+        missing_str = " + ".join(missing[:3])
+        reasoning.append(f"⏳ Missing: {missing_str}")
+
+    candle_time = df["timestamp"].iloc[i]
+    if hasattr(candle_time, "isoformat"):
+        candle_time_str = candle_time.isoformat()
+    else:
+        candle_time_str = str(candle_time)
+
+    return {
+        "price":             round(price, 2),
+        "sma200":            round(sma200_val, 2) if sma200_val else None,
+        "trend":             trend,
+        "td_buy_setup":      td_buy_setup,
+        "td_buy_countdown":  td_buy_countdown,
+        "td_sell_setup":     td_sell_setup,
+        "macd_hist":         round(macd_hist_val, 2),
+        "macd_direction":    macd_direction,
+        "macd_divergence":   macd_div,
+        "fib_levels":        fib_levels_out,
+        "nearest_fib":       nearest_fib,
+        "fib_distance_pct":  fib_distance_pct,
+        "volume_ratio":      volume_ratio,
+        "atr":               round(atr_val, 2) if atr_val else None,
+        "candle_time":       candle_time_str,
+        "reasoning":         reasoning,
+        "signal_proximity":  signal_proximity,
+    }
+
+
+# ══════════════════════════════════════════════════════════════════════
 # DATA FETCH (Bybit public OHLCV — no auth required)
 # ══════════════════════════════════════════════════════════════════════
 

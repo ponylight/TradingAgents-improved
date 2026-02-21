@@ -82,6 +82,9 @@ def _to_sydney(ts_str):
 from flask import Flask, jsonify
 app = Flask(__name__)
 
+# ── Market analysis cache (5-minute TTL) ──────────────────────────────────────
+_analysis_cache: dict = {"data": None, "fetched_at": 0.0}
+
 
 # ═══════════════════════════════════════════════════════════════════════════════
 #  DATA FETCHING
@@ -203,6 +206,35 @@ def get_cron_status():
         return f"Error: {e}"
 
 
+def get_market_analysis_cached() -> dict:
+    """Fetch market analysis with a 5-minute cache."""
+    import time
+    global _analysis_cache
+
+    now = time.time()
+    if _analysis_cache["data"] is not None and (now - _analysis_cache["fetched_at"]) < 300:
+        return _analysis_cache["data"]
+
+    try:
+        import ccxt
+        import pandas as pd
+        from live_scanner import get_market_analysis
+
+        exchange = ccxt.binance({"enableRateLimit": True})
+        raw = exchange.fetch_ohlcv("BTC/USDT", "4h", limit=500)
+        df = pd.DataFrame(raw, columns=["timestamp", "open", "high", "low", "close", "volume"])
+        df["timestamp"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
+        df = df.drop_duplicates("timestamp").sort_values("timestamp").reset_index(drop=True)
+
+        result = get_market_analysis(df)
+        _analysis_cache["data"] = result
+        _analysis_cache["fetched_at"] = now
+        return result
+    except Exception as e:
+        err = {"error": str(e), "reasoning": [f"⚠️ Analysis unavailable: {e}"], "signal_proximity": "NONE"}
+        return _analysis_cache.get("data") or err
+
+
 def get_recent_logs(max_entries=100):
     """Parse log files from logs/ directory. Returns list of dicts."""
     entries = []
@@ -297,6 +329,7 @@ def compute_next_briefing():
 @app.route("/api/data")
 def api_data():
     """Return all dashboard data as JSON."""
+    analysis = get_market_analysis_cached()
     live, exchange = get_live_data()
     ws   = get_workflow_state()
     rs   = get_risk_state()
@@ -605,6 +638,9 @@ def api_data():
 
         # Activity
         "activity": activity,
+
+        # Market Analysis
+        "analysis": analysis,
     })
 
 
@@ -892,6 +928,31 @@ HTML = r"""<!DOCTYPE html>
   ::-webkit-scrollbar { width: 6px; height: 6px; }
   ::-webkit-scrollbar-track { background: var(--bg); }
   ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ─── Market Analysis ─── */
+  .pill-orange { background: rgba(255,120,0,0.15); color: #ff7800; border: 1px solid rgba(255,120,0,0.4); }
+  .pill-gray   { background: rgba(136,136,136,0.12); color: #888; border: 1px solid rgba(136,136,136,0.25); }
+  .reasoning-line {
+    padding: 5px 10px;
+    border-left: 2px solid var(--border);
+    margin-bottom: 5px;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--text);
+  }
+  .reasoning-line:last-child { margin-bottom: 0; }
+  #reasoning-lines { margin: 10px 0 14px 0; }
+  .analysis-levels {
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap;
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--border);
+    font-size: 12px;
+    color: var(--text-dim);
+  }
+  .analysis-levels span strong { color: var(--text); }
 </style>
 </head>
 <body>
@@ -1047,6 +1108,26 @@ HTML = r"""<!DOCTYPE html>
     </div>
 
   </div><!-- /agents-grid -->
+
+  <!-- Market Analysis -->
+  <div class="card" style="grid-column: 1 / -1; margin-bottom: 24px;">
+    <div class="card-header">
+      <span class="card-icon">🧠</span>
+      <span class="card-title">Market Analysis</span>
+      <span id="signal-proximity-pill" class="pill pill-gray" style="margin-left:auto">—</span>
+    </div>
+    <div id="reasoning-lines">
+      <div class="reasoning-line dim">Loading market analysis…</div>
+    </div>
+    <div class="analysis-levels" id="analysis-levels">
+      <span>Fib 0.618: <strong id="al-fib618">—</strong></span>
+      <span>SMA200: <strong id="al-sma200">—</strong></span>
+      <span>ATR: <strong id="al-atr">—</strong></span>
+      <span>Vol ratio: <strong id="al-volratio">—</strong></span>
+      <span>TD Buy: <strong id="al-tdsetup">—</strong></span>
+      <span>MACD Hist: <strong id="al-macd">—</strong></span>
+    </div>
+  </div>
 
   <!-- Issues/Warnings banner -->
   <div id="alerts-banner" style="display:none;margin-bottom:18px"></div>
@@ -1449,6 +1530,36 @@ function render(d) {
       </tr>`;
     }).join('');
   }
+
+  // ── Market Analysis ──
+  const an = d.analysis || {};
+  const pill = el('signal-proximity-pill');
+  const proximity = an.signal_proximity || 'NONE';
+  const proximityLabel = { NONE: '● NONE', APPROACHING: '◐ APPROACHING', CLOSE: '◕ CLOSE', FIRED: '⚡ FIRED' }[proximity] || proximity;
+  pill.textContent = proximityLabel;
+  pill.className = 'pill ' + {
+    NONE:       'pill-gray',
+    APPROACHING:'pill-yellow',
+    CLOSE:      'pill-orange',
+    FIRED:      'pill-green',
+  }[proximity];
+
+  const reasoningEl = el('reasoning-lines');
+  const lines = an.reasoning || [];
+  if (lines.length > 0) {
+    reasoningEl.innerHTML = lines.map(line => `<div class="reasoning-line">${escHtml(line)}</div>`).join('');
+  } else {
+    reasoningEl.innerHTML = '<div class="reasoning-line dim">No analysis available yet.</div>';
+  }
+
+  // Key levels row
+  const fib = an.fib_levels || {};
+  el('al-fib618').textContent = fib['0.618'] ? fmt$(fib['0.618'], 0) : '—';
+  el('al-sma200').textContent = an.sma200 ? fmt$(an.sma200, 0) : '—';
+  el('al-atr').textContent    = an.atr ? fmt$(an.atr, 0) : '—';
+  el('al-volratio').textContent = an.volume_ratio != null ? (an.volume_ratio * 100).toFixed(0) + '% of avg' : '—';
+  el('al-tdsetup').textContent  = an.td_buy_setup != null ? an.td_buy_setup + '/9' : '—';
+  el('al-macd').textContent     = an.macd_hist != null ? (an.macd_hist >= 0 ? '+' : '') + Number(an.macd_hist).toFixed(0) + ' (' + (an.macd_direction || '') + ')' : '—';
 
   el('generated-at').textContent = 'Updated: ' + (d.generated_at || '—');
   el('loading').style.display = 'none';
