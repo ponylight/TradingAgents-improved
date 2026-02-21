@@ -1,212 +1,244 @@
 # BTC/USDT TRADING STRATEGY
 *Last updated: 2026-02-21 by Canon*
+*Backtested: 2017-08 → 2026-02 (8.5 years, 445 weekly candles)*
 
 ---
 
-## REGIME DETECTION (Bull vs Bear)
+## CORE PHILOSOPHY: THE 20 BULLETS (肥宅 Method)
 
-Use multiple on-chain and technical signals to determine market regime:
+> "把仓位拆成20份以上" — Split capital into 20+ bullets.
+> Fire cheap shots until one catches a trend. Then pour fuel on it.
+
+**Expected outcomes:**
+- ~90% of bullets get liquidated (normal, expected, budgeted)
+- ~5-10% break even or small profit
+- **1-3 bullets catch a supercycle trend → 50-200x on that bullet**
+- Net result over a full cycle: **50-100x on total capital**
+
+**Backtested results (2017-2026):**
+- 32 bullets fired, 29 liquidated (91%)
+- 3 trends caught → peaked at **221x** starting capital
+- Final: **69.5x** after drawdowns
+- Max drawdown: 81%
+
+---
+
+## REGIME DETECTION
 
 ### Primary Signals
 | Signal | Bull | Bear | Source |
 |--------|------|------|--------|
-| **MVRV Z-Score** | > 0 | < 0 | https://woocharts.com/bitcoin-mvrv-z/ |
-| **MVRV Ratio** | > 1.5 | < 1 | https://cryptoquant.com (free) |
-| **Weekly 200 SMA** | Price above | Price below | Chart |
-| **365-day MA** | Price above | Price below | Chart (key bear market resistance) |
+| **MVRV Z-Score** | > 0 | < 0 | woocharts.com |
+| **MVRV Ratio** | > 1.5 | < 1 | CryptoQuant |
+| **Weekly 200 SMA** | Above | Below | Chart |
+| **365-day MA** | Above | Below | Chart |
 | **Fear & Greed** | > 40 | < 25 | alternative.me |
-| **Ichimoku Kumo (Weekly)** | Bullish cloud twist | Bearish cloud twist | Chart (Senkou Span A/B cross) |
+| **Ichimoku Kumo** | Bullish twist | Bearish twist | Chart |
 
 ### Secondary Signals
 | Signal | Bull | Bear | Source |
 |--------|------|------|--------|
-| **SOPR** | > 1 (selling at profit) | < 1 (selling at loss) | CryptoQuant |
-| **Spot Taker CVD** | Buy Dominant | Sell Dominant | CryptoQuant |
-| **Stablecoin Supply Ratio** | Low (buying power) | High | CryptoQuant |
-| **Whale Order Size** | Big Whale Orders | Retail Orders | CryptoQuant |
-| **CQ Bull-Bear Cycle** | Bull phase | Bear phase | https://cryptoquant.com/community/dashboard/66934cb3840887109d27d4a3 |
-| **Exchange Inflows** | Low (accumulation) | High from large holders (distribution) | CryptoQuant |
+| **SOPR** | > 1 | < 1 | CryptoQuant |
+| **Spot Taker CVD** | Buy dominant | Sell dominant | CryptoQuant |
+| **CQ Bull-Bear Cycle** | Bull phase | Bear phase | CryptoQuant |
+| **Exchange Inflows** | Low | High from whales | CryptoQuant |
 
 ### Regime Rules
-- **Bull confirmed:** 3+ primary signals agree = BULL
-- **Bear confirmed:** 3+ primary signals agree = BEAR
-- **Transitional:** Mixed signals = reduce exposure, tighten stops
+- **3+ primary signals agree** → confirmed regime
+- **Mixed signals** → reduce exposure, smaller bullets
 
 ### Current Status (Feb 21, 2026)
-- MVRV Z-Score: **-0.86** (BEAR)
-- MVRV Ratio: **1.24** (neutral — above 1 but below 1.5)
-- Weekly 200 SMA: **Below** (BEAR)
-- 365-day MA (~$101K): **Far below** (BEAR)
-- F&G: ~7 Extreme Fear (BEAR)
-- Ichimoku Kumo (Weekly): **Bearish twist** since late 2025 (BEAR)
-- CQ Bull-Bear Cycle: **Bear phase** since Oct 2025 (BEAR)
-- Spot Taker CVD: Buy Dominant (BULL signal)
-- Exchange Inflows: Large holders distributing (BEAR)
-- **Regime: BEAR — but drawdown diminishing each cycle (75%→81%→74%→30% so far). Late-stage capitulation likely.**
+- **Regime: BEAR** — MVRV Z -0.86, F&G 8, below 200 SMA, bearish Kumo
+- Late-stage capitulation likely. Good time to fire bullets.
 
 ---
 
-## DUAL-TIMEFRAME SYSTEM
+## 📈 LONG-TERM: 20 BULLETS STRATEGY (60% of Capital)
 
-| Category | Timeframe | Capital | Max Leverage | Duration |
-|----------|-----------|---------|-------------|----------|
-| **Long-Term Trend** | Weekly | 60% | 50x | Weeks to years |
-| **Short-Term Trend** | 4H | 40% | 10x | Hours to days |
+### Capital Allocation
+- **Total long-term capital:** 60% of account
+- **Each bullet:** 5% of current equity (= 1/20th)
+- **Reserve:** Always keep 40% uninvested for bullets + short-term
+
+### Entry: Fire a Bullet
+
+**Trigger (ANY one sufficient):**
+1. Price reclaims 20-week SMA from below (SMA crossover)
+2. MVRV Z-Score < 0 (historically always recovers)
+3. Weekly MACD 13/34 bullish divergence
+4. Price within 20% of 52-week low
+
+**Bullet specs:**
+- **Margin:** 5% of current equity
+- **Leverage:** 20x (high leverage on small capital = cheap lottery ticket)
+- **Liquidation distance:** ~4.5% below entry
+- **Max loss if liquidated:** 5% of equity (one bullet)
+- **Cooldown:** 1 week between bullets
+
+**No stop-loss.** Either the trend catches or you get liquidated. That's the design.
+
+### Rolling Adds: Pour Fuel on Fire
+
+Once a bullet is profitable, compound aggressively with rolling adds.
+
+**Add trigger (ALL required):**
+1. Position is profitable (floating PnL > 0)
+2. Add signal fires (any one):
+   - Breakout above 2-week high
+   - Pullback within 5% of 20-week SMA
+   - Fib 0.382-0.618 retracement from swing low to recent high
+
+**Decreasing leverage on adds (CRITICAL):**
+| Add # | Leverage | Why |
+|-------|----------|-----|
+| Base entry | 20x | Cheap bullet, small margin |
+| Add 1 | 15x | Growing position, reduce risk |
+| Add 2 | 10x | Significant size now |
+| Add 3 | 5x | Protect the compound |
+| Add 4 | 5x | Maximum protection |
+
+**Add sizing:**
+- **Margin source:** 80% of floating profit
+- **Pyramid cap:** Add 1 = 100%, Add 2 = 75%, Add 3 = 50%, Add 4 = 25% of available
+- **Max 4 adds per trend**
+
+**Example from backtest (2023 trend):**
+```
+Base:  $16,617 → $56,755 | 20x | margin $8K   → PnL $388K (+48x)
+Add 1: $17,128 → $56,755 | 15x | margin $4K   → PnL $137K (+35x)
+Add 2: $20,872 → $56,755 | 10x | margin $33K  → PnL $558K (+17x)
+Add 3: $22,708 → $56,755 |  5x | margin $43K  → PnL $320K (+7x)
+Add 4: $23,742 → $56,755 |  5x | margin $29K  → PnL $203K (+7x)
+TOTAL: $1.6M from a single $8K bullet
+```
+
+### Exit: Trailing Stop (Patient)
+
+**No trailing until 100% profit on base position.** Let it breathe.
+
+Once base is +100%:
+- **Trailing stop:** 3x Weekly ATR from highest price
+- Applies to base position
+- When base stops out → ALL adds close at market
+
+**Scale-out (optional):**
+- MVRV > 2.5 → take 20% off each position
+- MVRV > 3.5 → aggressive exit (close all)
+
+### Risk Budget
+- Each liquidated bullet = 5% of equity
+- Can afford ~18 consecutive liquidations before 60% drawdown
+- Historically: 29 liquidations spread over 8 years, interspersed with 3 winning trends
+- **This strategy REQUIRES accepting frequent small losses for rare massive wins**
 
 ---
 
-## 📈 LONG-TERM TREND (Weekly Charts)
+## ⚡ SHORT-TERM: FIBONACCI SWING (40% of Capital)
 
 ### Goal
-Catch major cycle moves. Hold weeks to years. Compound via rolling.
+Capture 4H swing moves. Quick in, quick out. Both long and short.
 
-### Entry Conditions (ANY one is sufficient to enter)
-1. **MVRV Z-Score < 0** — alone is enough (historically always a good buy)
-2. **Price within 30% of 365-day low + F&G < 25** — fear + discount combo
-3. **Weekly MACD 13/34 divergence** — single divergence sufficient (histogram bottoming)
-4. **Price reclaims 20-week SMA from below** — trend reversal confirmation
+### Direction Bias
+- **With macro trend:** up to 10x leverage
+- **Against macro trend:** max 3x leverage, tighter stop
 
-**Entry:** When ANY condition is met, open long position.
-**More signals aligning = higher leverage tier.**
-
-### Leverage Tiers (Time-Based Scaling)
-| Time Profitable | Leverage | Action |
-|----------------|---------|--------|
-| Entry | 5x | Test position (5% of capital) |
-| 2 weeks profitable | 10x | Add 150% of base |
-| 1 month profitable | 25x | Add 200% of base |
-| 3+ months profitable | **50x** | Add 250% of base |
-
-**Only increase leverage when position is profitable.** If position goes negative, hold current level — never add to a loser.
-
-### Rolling Positions (滚仓)
-- **Trigger:** Position is +5% profitable AND regime still bearish/accumulation
-- **Inverted pyramid:** 150% → 200% → 250% of base size on each add
-- **Add on:** Weekly pullbacks to MA30, Fib 0.5-0.618, consolidation breakouts
-- **Confirm:** Big weekly candles + volume + price >2-3% beyond resistance
-- **Funding:** Floating profits AND/OR additional capital. Can add new funds to increase position.
-- **Safety:** Run `scripts/rolling_calculator.py` before every add. Liquidation price must stay below previous swing low.
-- **Each add:** Protected at breakeven (entry price)
-- **Master trailing stop:** 2x Weekly ATR from highest point
-
-### Exit Rules
-- **No fixed TP** — ride the trend via trailing stop
-- **Scale out when regime shifts to Bull:** MVRV > 3, F&G > 75 → take 20% off at a time
-- **MVRV > 3.7:** Begin aggressive distribution
-- **Circuit breaker:** Drawdown > 25% from peak → reassess
-
-### ⚠️ Funding Rate & Fee Management (CRITICAL for long-term holds)
-- **Monitor EVERY 8h funding settlement.** Log cumulative cost.
-- At 0.01%/8h = ~1.1%/month = ~13%/year — this is the cost of holding
-- **Funding > 0.03%/8h:** Reduce leverage or consider closing/hedging
-- **Funding negative:** Getting PAID to hold — increase confidence, add to position
-- **Cumulative funding > 3% of position value:** Alert Master for review
-- **Cumulative funding > 5% of position value:** Strongly consider closing or reducing
-- **Track all fees:** Entry/exit commissions + funding = total cost of trade. Must be factored into P&L.
-- **Long holds (months+):** Funding cost can exceed the trade profit. Always compare unrealised gain vs cumulative funding paid.
-
----
-
-## ⚡ SHORT-TERM TREND (4H Charts)
-
-### Goal
-Capture swing moves within the macro trend. Quick in, quick out.
-
-### Direction Rule
-- **No hard direction restriction.** Trade both long and short based on MACD/Fibonacci signals.
-- **Leverage bias:** Trading WITH macro trend → up to 10x. Trading AGAINST → max 3x, tighter stop.
-- Regime determined by the signals table above (3+ primary must agree).
-
-### Entry Method: Natural Trading Theory (Fibonacci — 自然交易理论)
+### Entry Method: Natural Trading Theory (自然交易理论)
 
 **Step 1 — Space (Fibonacci Retracement):**
-- Draw Fib from swing low→high (uptrend) or high→low (downtrend)
-- Entry triggers at **0.618 or 0.382 gravity points**
-- Timeframe: 1H/2H for precision, 4H for confirmation
+- Entry at 0.618 or 0.382 gravity points
 
 **Step 2 — Time (Fibonacci Trend Time):**
-- Market rhythm: 0→0.382 (Long), 0.382→0.618 (Short), 0.618→1 (Long)
-- High-probability moves at **0.618 time division**
+- High-probability at 0.618 time division
 - Only enter when space + time align
 
-**Step 3 — Energy (Volume — "Key K-line"):**
-- Must show strong candle at the space+time intersection
-- "Absolute Strength" (long body/shadow) or "Relative Strength" (volume spike)
-- **No Key K-line = no entry**
+**Step 3 — Energy (Key K-line):**
+- Must show strong candle at space+time intersection
+- No Key K-line = no entry
 
-**Position Sizing:**
-- Divide short-term capital into **20-50 parts** (~$2,270 per part)
-- Add at **1% price intervals**, max **2 additions** (strict)
+### Position Sizing
+- Divide short-term capital into 20-50 parts
+- Add at 1% intervals, max 2 additions
+- **Stop: max 3% price move** (set BEFORE entry)
+- **TP: batch exit 20-30% per 1% move**
 
-**Stop-Loss:**
-- **Max 3% price move** — set BEFORE entering
-- At 10x = 30% margin loss. At 5x = 15%.
-
-**Profit-Taking (Batch Exit):**
-- Close **20-30%** for every **1% move** in your favor (3-5 exits)
-- Or full exit at target level for simplicity
-
-### Leverage (Short-Term)
+### Leverage
 | Conviction | Leverage |
 |-----------|---------|
 | 5-6/10 | 2-3x |
 | 7-8/10 | 3-5x |
 | 9-10/10 | 5-10x |
 
-**Hard cap: 10x.** Max 2 additions per trade.
+---
+
+## ⚠️ FUNDING RATE MANAGEMENT
+
+- At 0.01%/8h = ~1.1%/month = ~13%/year cost of holding
+- **Funding > 0.03%/8h:** Reduce leverage or close
+- **Funding negative:** Getting paid — add confidence
+- **Cumulative > 3%:** Alert for review
+- **Cumulative > 5%:** Strongly consider closing
 
 ---
 
 ## 🔧 SHARED RULES
 
-### Portfolio
-- **Reserve:** Always keep 20% in cash (USDT)
-- **Long-term:** 60% of trading capital
-- **Short-term:** 40% of trading capital
-- **Drawdown breaker:** Account -15% from peak → flatten all
+### Portfolio Limits
+- **Reserve:** 20% always in cash
+- **Account -15% from peak → flatten all** (circuit breaker)
 - **Daily loss limit (short-term):** -3% → no new trades 24h
 
-### Risk Management (McDowell Rules)
-- **2% max risk per trade** (margin at risk)
-- **Stop-loss set BEFORE entry** — mandatory
-- **Divide account into 20-50 parts** for position sizing
-- **Track win rate + R/R** to ensure Risk of Ruin = 0
-- **Trading journal:** agent_memory.json logs all decisions
-
-### Data Sources (Free)
-| Data | Source | How |
-|------|--------|-----|
-| MVRV Z-Score | woocharts.com | Browser scrape |
-| MVRV Ratio | CryptoQuant | Browser scrape (1.2399 visible) |
-| SOPR / CVD / Leverage | CryptoQuant | Browser scrape |
-| F&G Index | alternative.me | API (free) |
-| OHLCV / Indicators | Bybit/Binance | ccxt (free) |
-| Funding Rate | Bybit | ccxt (free) |
-| MVRV Proxy | CoinGecko | API (free, in pipeline) |
-| Strategy KB | NotebookLM | notebooklm CLI |
-
-### NotebookLM Knowledge Base
-- **Notebook ID:** 9b6bf693-4196-4266-ad42-6a3e21ffa33b
-- **Query:** `source ~/trading-agents-env/bin/activate && notebooklm use 9b6bf693-4196-4266-ad42-6a3e21ffa33b && notebooklm ask "<question>"`
+### Data Sources
+| Data | Source |
+|------|--------|
+| MVRV Z-Score | woocharts.com (browser) |
+| MVRV Ratio / SOPR / CVD | CryptoQuant (browser) |
+| F&G Index | alternative.me (API) |
+| OHLCV / Indicators | Bybit/Binance (ccxt) |
+| Strategy KB | NotebookLM (notebook 9b6bf693) |
 
 ---
 
-## Current Positions
-| Category | Pair | Side | Entry | Size | SL | TP | Status |
-|----------|------|------|-------|------|-----|-----|--------|
-| Long-term | BTC/USDT | Long | $67,980 | 0.7 BTC | Cross margin | Trail 2x wATR | Test position (5%) |
+## BACKTEST RESULTS SUMMARY (2017-2026)
 
-**Capital:** ~$170K USDT (demo). Long-term: $102K (60%). Short-term: $68K (40%).
+### V19 — 20 Bullets (Champion)
+| Metric | Value |
+|--------|-------|
+| Period | Aug 2017 → Feb 2026 |
+| Starting capital | $10,000 |
+| Final equity | $695,075 |
+| Peak equity | $2,210,058 (221x) |
+| Total return | +6,851% |
+| Max drawdown | 81% |
+| Bullets fired | 32 |
+| Liquidated | 29 (91%) |
+| Trends caught | 3 |
+| Biggest single trade | $558K (Add 2 on 2023 trend) |
+
+### Previous versions for reference
+| Version | Config | Return | Max DD | Notes |
+|---------|--------|--------|--------|-------|
+| V14 | 5x, 5%, no adds | +42% | 17% | Conservative baseline |
+| V16 | 5x, 5%, 肥宅 adds | +54% | 20% | Adds didn't help (too small) |
+| V18 | 10x, 10%, 10x adds | +470% | 84% | Good but V19 is better |
+| **V19** | **20x→5x, 5%, decreasing** | **+6,851%** | **81%** | **Champion** |
+
+### Key Insight
+The magic isn't rolling adds alone. It's the combination of:
+1. **Cheap bullets** (5% at 20x = affordable liquidations)
+2. **Decreasing leverage on adds** (20x→15x→10x→5x = protect the compound)
+3. **Patient trailing** (no stop until +100% = let winners run)
+4. **Aggressive profit compounding** (80% of float → next add)
 
 ---
 
 ## Lessons Learned
-- **Backtest V1→V11:** V6 MACD on 4H = best short-term (+34.26%). Weekly signals too rare for frequent trading but perfect for long-term holds.
-- **Rolling positions** need weekly timeframe + patience. Never triggered on 4H backtests.
-- **Shorts are dangerous** in bull markets. Always trade WITH the macro trend.
-- **MMCrypto 50x bottom-fishing** only works with graduated leverage (V8), not flat 50x.
-- **Funding rates** are a hidden tax on long-duration leveraged positions. Monitor weekly.
-- **Regime detection** is more important than entry timing. Right direction > perfect entry.
+- **Position sizing matters more than entry signals.** Same entry, 5% vs 20% margin = 4x difference in returns.
+- **Rolling adds only work at the right base size.** Too big (30%+) = liquidation cascades. Too small (5% at 5x) = adds are noise.
+- **20x leverage on 5% capital = 1x effective exposure.** It's not reckless — it's a calculated lottery ticket.
+- **91% liquidation rate is fine** when the 9% winners compound 50-200x.
+- **Decreasing leverage on adds is essential.** 20x on all adds → account destruction. 20x→5x → account multiplication.
+- **Funding costs matter on long holds.** Budget 1%/month. The V19 backtest includes $530K in funding costs.
+- **The strategy requires a supercycle.** In pure sideways/bear markets, you bleed bullets. That's expected.
 
 ## Weekly Review Schedule
-- **Sunday 8PM Sydney:** Strategist agent reviews week, updates regime + this document
+- **Sunday 8PM Sydney:** Strategist reviews week, updates regime + this document

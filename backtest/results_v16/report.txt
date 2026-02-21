@@ -1,0 +1,115 @@
+======================================================================
+  BACKTEST V16 — 肥宅 (FEIZHAI) ROLLING STRATEGY
+======================================================================
+
+STRATEGY: Long-only weekly, 5 entry conditions (ANY 1 sufficient)
+CONDITIONS:
+  1. MVRV proxy < 0.8
+  2. Price within 30% of 365d low + fear proxy
+  3. Weekly MACD 13/34 single divergence
+  4. Price crosses above 20-week SMA from below
+  5. Price within 20% of 52-week low
+
+ADD LOGIC (肥宅 pyramid, checked every week):
+  PYRAMID SIZING (each add SMALLER):
+    - Base: 100% of entry margin
+    - Add 1: 75% of base margin
+    - Add 2: 50% of base margin
+    - Add 3: 25% of base margin (max 3 adds)
+  ADD TIMING:
+    - Must be in uptrend: price > 20-week SMA
+    - Pullback to 20-week MA (low touched SMA20)
+    - OR Fib 0.5-0.618 retracement
+    - OR Consolidation breakout (> 4-week high + volume)
+  MARGIN: Floating profits only (50% of unrealized PnL)
+  STOPS: Each add = entry - 1.5x weekly ATR
+  FAKEOUT: Price < add entry within 3 weeks → close add only
+
+MASTER TRAILING STOP: 3x weekly ATR (base position)
+CAPITAL:  $6,000
+LEVERAGE: 5x fixed for all positions
+PERIOD:   ~4 years of BTC/USDT weekly data
+
+── PERFORMANCE ──────────────────────────────────────────
+  Final Equity:     $6,998.58
+  Total Return:     +16.64%
+  Max Drawdown:     14.61%
+  Sharpe Ratio:     0.42
+  Profit Factor:    3.13
+  Win Rate:         27.3%
+
+── TRADE SUMMARY ────────────────────────────────────────
+  Total Trades:     11
+  Base Trades:      6
+  Pyramid Adds:     5
+  Winning:          3
+  Losing:           8
+  Avg Win:          $731.52
+  Avg Loss:         $-87.67
+  Largest Win:      $1,519.81
+  Largest Loss:     $-333.33
+  Avg Duration:     67.5 days
+
+── PYRAMID ADD STATS ────────────────────────────────────
+  Pyramid Adds:     5
+  Attempts:         95
+  Skip (no profit): 15
+  Skip (no uptrend):0
+  Skip (no signal): 60
+  Skip (max adds):  1
+  Skip (liq risk):  14
+  Skip (too small): 0
+  Skip (no margin): 0
+  Via SMA20 pullbk: 5
+  Via Fib retrace:  0
+  Via breakout:     0
+  Fakeout closes:   5
+  Margin from profit:$571.96
+
+── COSTS & RISK ─────────────────────────────────────────
+  Total Funding:    $481.59
+  Gross PnL:        $1,493.23
+  Net (after fund): $1,011.64
+  Liquidations:     0
+  Liquidation Loss: $0.00
+  Scale Outs:       0
+  Aggressive Exits: 0
+
+── TRADE LOG ────────────────────────────────────────────
+  [2023-06-18] ENTRY: $26,340 | 5x (base) | margin=$300 | size=0.0569 BTC | conds=1 (SMA20_cross) | SL=$21,599 | liq=$21,072
+  [2023-06-25] PYRAMID ADD #1 (pullback_sma20): $30,463 | 5x | margin=$117 (75% of base) | size=0.0193 BTC | agg_pnl=$235 | total_btc=0.0762 | eff_lev=5.6x | add_stop=$26,642
+  [2023-07-02] EXIT (fakeout_close): $30,463 | pnl=$-1 | funding=$1 | 5x | add=1
+  [2023-08-20] EXIT (trailing_stop): $25,731 | pnl=$-36 | funding=$32 | 5x | add=0
+  [2023-10-01] ENTRY: $27,993 | 5x (base) | margin=$296 | size=0.0529 BTC | conds=1 (SMA20_cross) | SL=$22,954 | liq=$22,394
+  [2023-10-22] PYRAMID ADD #1 (pullback_sma20): $29,992 | 5x | margin=$53 (75% of base) | size=0.0088 BTC | agg_pnl=$106 | total_btc=0.0618 | eff_lev=5.3x | add_stop=$27,138
+  [2023-10-29] EXIT (fakeout_close): $29,992 | pnl=$-0 | funding=$1 | 5x | add=1
+  [2024-05-05] EXIT (trailing_stop): $56,755 | pnl=$1,520 | funding=$168 | 5x | add=0
+  [2024-07-21] ENTRY: $68,165 | 5x (base) | margin=$364 | size=0.0267 BTC | conds=1 (SMA20_cross) | SL=$55,896 | liq=$54,532
+  [2024-08-11] EXIT (trailing_stop): $55,896 | pnl=$-329 | funding=$10 | 5x | add=0
+  [2024-09-22] ENTRY: $63,579 | 5x (base) | margin=$347 | size=0.0273 BTC | conds=1 (SMA20_cross) | SL=$52,135 | liq=$50,863
+  [2025-03-02] EXIT (trailing_stop): $81,336 | pnl=$482 | funding=$117 | 5x | add=0
+  [2025-04-27] ENTRY: $93,749 | 5x (base) | margin=$365 | size=0.0195 BTC | conds=1 (SMA20_cross) | SL=$76,874 | liq=$74,999
+  [2025-08-31] PYRAMID ADD #1 (pullback_sma20): $108,246 | 5x | margin=$141 (75% of base) | size=0.0065 BTC | agg_pnl=$282 | total_btc=0.0260 | eff_lev=5.6x | add_stop=$96,730
+  [2025-09-07] EXIT (fakeout_close): $108,246 | pnl=$-1 | funding=$2 | 5x | add=1
+  [2025-09-07] PYRAMID ADD #2 (pullback_sma20): $111,137 | 5x | margin=$169 (50% of base) | size=0.0076 BTC | agg_pnl=$339 | total_btc=0.0271 | eff_lev=5.6x | add_stop=$99,783
+  [2025-09-14] EXIT (fakeout_close): $111,137 | pnl=$-1 | funding=$2 | 5x | add=2
+  [2025-09-28] PYRAMID ADD #3 (pullback_sma20): $112,164 | 5x | margin=$91 (25% of base) | size=0.0041 BTC | agg_pnl=$358 | total_btc=0.0235 | eff_lev=5.8x | add_stop=$101,744
+  [2025-10-05] EXIT (fakeout_close): $112,164 | pnl=$-0 | funding=$1 | 5x | add=3
+  [2025-10-12] EXIT (trailing_stop): $103,748 | pnl=$193 | funding=$109 | 5x | add=0
+  [2025-11-16] ENTRY: $94,261 | 5x (base) | margin=$369 | size=0.0196 BTC | conds=1 (fear_30%+decline) | SL=$77,294 | liq=$75,409
+  [2026-02-01] EXIT (trailing_stop): $77,294 | pnl=$-333 | funding=$40 | 5x | add=0
+
+── TRADE DETAILS ────────────────────────────────────────
+  #1 (Add #1): 2023-06-25 → 2023-07-02 | $30,463 → $30,463 | 5x | PnL=$-0.59 | funding=$1.24 | fakeout_close | conds: SMA20_cross
+  #2: 2023-06-18 → 2023-08-20 | $26,340 → $25,731 | 5x | PnL=$-36.16 | funding=$31.74 | trailing_stop | conds: SMA20_cross
+  #3 (Add #1): 2023-10-22 → 2023-10-29 | $29,992 → $29,992 | 5x | PnL=$-0.26 | funding=$0.64 | fakeout_close | conds: SMA20_cross
+  #4: 2023-10-01 → 2024-05-05 | $27,993 → $56,755 | 5x | PnL=$1,519.81 | funding=$167.55 | trailing_stop | conds: SMA20_cross
+  #5: 2024-07-21 → 2024-08-11 | $68,165 → $55,896 | 5x | PnL=$-328.99 | funding=$10.38 | trailing_stop | conds: SMA20_cross
+  #6: 2024-09-22 → 2025-03-02 | $63,579 → $81,336 | 5x | PnL=$482.12 | funding=$116.54 | trailing_stop | conds: SMA20_cross
+  #7 (Add #1): 2025-08-31 → 2025-09-07 | $108,246 → $108,246 | 5x | PnL=$-0.71 | funding=$1.52 | fakeout_close | conds: SMA20_cross
+  #8 (Add #2): 2025-09-07 → 2025-09-14 | $111,137 → $111,137 | 5x | PnL=$-0.85 | funding=$1.84 | fakeout_close | conds: SMA20_cross
+  #9 (Add #3): 2025-09-28 → 2025-10-05 | $112,164 → $112,164 | 5x | PnL=$-0.46 | funding=$1.05 | fakeout_close | conds: SMA20_cross
+  #10: 2025-04-27 → 2025-10-12 | $93,749 → $103,748 | 5x | PnL=$192.64 | funding=$109.16 | trailing_stop | conds: SMA20_cross
+  #11: 2025-11-16 → 2026-02-01 | $94,261 → $77,294 | 5x | PnL=$-333.33 | funding=$39.93 | trailing_stop | conds: fear_30%+decline
+
+======================================================================

@@ -1,0 +1,125 @@
+======================================================================
+  BACKTEST V15 — PROFIT+SAFETY BASED ADDS
+======================================================================
+
+STRATEGY: Long-only weekly, 5 entry conditions (ANY 1 sufficient)
+CONDITIONS:
+  1. MVRV proxy < 0.8
+  2. Price within 30% of 365d low + fear proxy
+  3. Weekly MACD 13/34 single divergence
+  4. Price crosses above 20-week SMA from below
+  5. Price within 20% of 52-week low
+
+ADD LOGIC (checked every week):
+  - Position must be profitable
+  - Price making higher lows (low > low from 2 weeks ago)
+  - Available margin = floating_profit * 50%
+  - After 4+ profitable weeks: +10% of remaining capital
+  - Liquidation must stay below lowest low of last 10 weeks
+  - Minimum add size: 0.001 BTC
+  - No cap on number of adds
+  - All positions at 5x leverage
+
+TRAILING STOP: 3x weekly ATR
+CAPITAL:  $6,000
+PERIOD:   ~4 years of BTC/USDT weekly data
+
+── PERFORMANCE ──────────────────────────────────────────
+  Final Equity:     $6,009.82
+  Total Return:     +0.16%
+  Max Drawdown:     25.07%
+  Sharpe Ratio:     0.07
+  Profit Factor:    1.39
+  Win Rate:         16.7%
+
+── TRADE SUMMARY ────────────────────────────────────────
+  Total Trades:     18
+  Base Trades:      6
+  Profit Adds:      12
+  Winning:          3
+  Losing:           15
+  Avg Win:          $719.93
+  Avg Loss:         $-103.68
+  Largest Win:      $1,514.89
+  Largest Loss:     $-869.72
+  Avg Duration:     43.9 days
+
+── PROFIT ADD STATS ─────────────────────────────────────
+  Total Adds:       12
+  Attempts:         95
+  Skip (no profit): 15
+  Skip (no uptrend):26
+  Skip (liq risk):  42
+  Skip (too small): 0
+  With extra cap:   9
+  Margin from profit: $2,888.34
+  Margin from capital:$5,608.67
+
+── COSTS & RISK ─────────────────────────────────────────
+  Total Funding:    $542.66
+  Gross PnL:        $604.63
+  Net (after fund): $61.97
+  Liquidations:     0
+  Liquidation Loss: $0.00
+  Scale Outs:       0
+  Aggressive Exits: 0
+
+── TRADE LOG ────────────────────────────────────────────
+  [2023-06-18] ENTRY: $26,340 | 5x (test) | margin=$300 | size=0.0569 BTC | conds=1 (SMA20_cross) | SL=$21,599 | liq=$21,072
+  [2023-06-25] PROFIT ADD #1: $30,463 | 5x | margin=$117 (profit=$117 + capital=$0) | size=0.0193 BTC | agg_pnl=$235 | total_btc=0.0762 | eff_lev=5.6x | profitweeks=1
+  [2023-07-02] EXIT (breakeven_stop): $30,463 | pnl=$-1 | funding=$1 | 5x | add=1
+  [2023-07-02] PROFIT ADD #2: $30,617 | 5x | margin=$122 (profit=$122 + capital=$0) | size=0.0199 BTC | agg_pnl=$244 | total_btc=0.0768 | eff_lev=5.6x | profitweeks=2
+  [2023-07-09] EXIT (breakeven_stop): $30,617 | pnl=$-1 | funding=$1 | 5x | add=2
+  [2023-07-09] PROFIT ADD #3: $30,161 | 5x | margin=$109 (profit=$109 + capital=$0) | size=0.0180 BTC | agg_pnl=$218 | total_btc=0.0750 | eff_lev=5.5x | profitweeks=3
+  [2023-07-16] EXIT (breakeven_stop): $30,161 | pnl=$-1 | funding=$1 | 5x | add=3
+  [2023-07-16] PROFIT ADD #4: $30,232 | 5x | margin=$709 (profit=$111 + capital=$598) | size=0.1172 BTC | agg_pnl=$222 | total_btc=0.1741 | eff_lev=5.2x | profitweeks=4
+  [2023-07-23] EXIT (breakeven_stop): $30,232 | pnl=$-4 | funding=$7 | 5x | add=4
+  [2023-08-20] EXIT (trailing_stop): $25,731 | pnl=$-36 | funding=$32 | 5x | add=0
+  [2023-10-01] ENTRY: $27,993 | 5x (test) | margin=$295 | size=0.0528 BTC | conds=1 (SMA20_cross) | SL=$22,954 | liq=$22,394
+  [2024-01-14] PROFIT ADD #1: $41,732 | 5x | margin=$947 (profit=$363 + capital=$585) | size=0.1135 BTC | agg_pnl=$725 | total_btc=0.1662 | eff_lev=5.6x | profitweeks=13
+  [2024-01-21] EXIT (breakeven_stop): $41,732 | pnl=$-5 | funding=$10 | 5x | add=1
+  [2024-02-04] PROFIT ADD #2: $42,583 | 5x | margin=$966 (profit=$385 + capital=$581) | size=0.1134 BTC | agg_pnl=$770 | total_btc=0.1662 | eff_lev=5.6x | profitweeks=16
+  [2024-02-11] EXIT (breakeven_stop): $42,583 | pnl=$-5 | funding=$12 | 5x | add=2
+  [2024-05-05] EXIT (trailing_stop): $56,755 | pnl=$1,515 | funding=$167 | 5x | add=0
+  [2024-07-21] ENTRY: $68,165 | 5x (test) | margin=$361 | size=0.0265 BTC | conds=1 (SMA20_cross) | SL=$55,896 | liq=$54,532
+  [2024-08-11] EXIT (trailing_stop): $55,896 | pnl=$-326 | funding=$10 | 5x | add=0
+  [2024-09-22] ENTRY: $63,579 | 5x (test) | margin=$344 | size=0.0270 BTC | conds=1 (SMA20_cross) | SL=$52,135 | liq=$50,863
+  [2025-02-02] PROFIT ADD #1: $97,701 | 5x | margin=$1,139 (profit=$461 + capital=$678) | size=0.0583 BTC | agg_pnl=$923 | total_btc=0.0854 | eff_lev=5.6x | profitweeks=16
+  [2025-02-09] EXIT (breakeven_stop): $97,701 | pnl=$-6 | funding=$12 | 5x | add=1
+  [2025-02-23] PROFIT ADD #2: $96,258 | 5x | margin=$1,116 (profit=$442 + capital=$674) | size=0.0580 BTC | agg_pnl=$884 | total_btc=0.0850 | eff_lev=5.6x | profitweeks=19
+  [2025-03-02] EXIT (trailing_stop): $81,336 | pnl=$478 | funding=$116 | 5x | add=0
+  [2025-03-02] EXIT (base_closed): $81,336 | pnl=$-870 | funding=$11 | 5x | add=2
+  [2025-04-27] ENTRY: $93,749 | 5x (test) | margin=$316 | size=0.0169 BTC | conds=1 (SMA20_cross) | SL=$76,874 | liq=$74,999
+  [2025-07-27] PROFIT ADD #1: $119,416 | 5x | margin=$844 (profit=$217 + capital=$628) | size=0.0353 BTC | agg_pnl=$433 | total_btc=0.0522 | eff_lev=5.4x | profitweeks=13
+  [2025-08-03] EXIT (breakeven_stop): $119,416 | pnl=$-4 | funding=$8 | 5x | add=1
+  [2025-08-17] PROFIT ADD #2: $117,405 | 5x | margin=$824 (profit=$200 + capital=$625) | size=0.0351 BTC | agg_pnl=$399 | total_btc=0.0520 | eff_lev=5.3x | profitweeks=16
+  [2025-08-24] EXIT (breakeven_stop): $117,405 | pnl=$-4 | funding=$8 | 5x | add=2
+  [2025-09-14] PROFIT ADD #3: $115,268 | 5x | margin=$803 (profit=$182 + capital=$621) | size=0.0348 BTC | agg_pnl=$363 | total_btc=0.0517 | eff_lev=5.3x | profitweeks=20
+  [2025-09-21] EXIT (breakeven_stop): $115,268 | pnl=$-4 | funding=$8 | 5x | add=3
+  [2025-09-21] PROFIT ADD #4: $115,232 | 5x | margin=$801 (profit=$181 + capital=$619) | size=0.0347 BTC | agg_pnl=$362 | total_btc=0.0516 | eff_lev=5.3x | profitweeks=21
+  [2025-09-28] EXIT (breakeven_stop): $115,232 | pnl=$-4 | funding=$8 | 5x | add=4
+  [2025-10-12] EXIT (trailing_stop): $103,748 | pnl=$167 | funding=$95 | 5x | add=0
+  [2025-11-16] ENTRY: $94,261 | 5x (test) | margin=$317 | size=0.0168 BTC | conds=1 (fear_30%+decline) | SL=$77,294 | liq=$75,409
+  [2026-02-01] EXIT (trailing_stop): $77,294 | pnl=$-286 | funding=$34 | 5x | add=0
+
+── TRADE DETAILS ────────────────────────────────────────
+  #1 (Add #1): 2023-06-25 → 2023-07-02 | $30,463 → $30,463 | 5x | PnL=$-0.59 | funding=$1.24 | breakeven_stop | conds: SMA20_cross
+  #2 (Add #2): 2023-07-02 → 2023-07-09 | $30,617 → $30,617 | 5x | PnL=$-0.61 | funding=$1.26 | breakeven_stop | conds: SMA20_cross
+  #3 (Add #3): 2023-07-09 → 2023-07-16 | $30,161 → $30,161 | 5x | PnL=$-0.54 | funding=$1.15 | breakeven_stop | conds: SMA20_cross
+  #4 (Add #4): 2023-07-16 → 2023-07-23 | $30,232 → $30,232 | 5x | PnL=$-3.54 | funding=$7.40 | breakeven_stop | conds: SMA20_cross
+  #5: 2023-06-18 → 2023-08-20 | $26,340 → $25,731 | 5x | PnL=$-36.16 | funding=$31.74 | trailing_stop | conds: SMA20_cross
+  #6 (Add #1): 2024-01-14 → 2024-01-21 | $41,732 → $41,732 | 5x | PnL=$-4.74 | funding=$9.91 | breakeven_stop | conds: SMA20_cross
+  #7 (Add #2): 2024-02-04 → 2024-02-11 | $42,583 → $42,583 | 5x | PnL=$-4.83 | funding=$11.51 | breakeven_stop | conds: SMA20_cross
+  #8: 2023-10-01 → 2024-05-05 | $27,993 → $56,755 | 5x | PnL=$1,514.89 | funding=$167.01 | trailing_stop | conds: SMA20_cross
+  #9: 2024-07-21 → 2024-08-11 | $68,165 → $55,896 | 5x | PnL=$-326.15 | funding=$10.29 | trailing_stop | conds: SMA20_cross
+  #10 (Add #1): 2025-02-02 → 2025-02-09 | $97,701 → $97,701 | 5x | PnL=$-5.70 | funding=$11.81 | breakeven_stop | conds: SMA20_cross
+  #11: 2024-09-22 → 2025-03-02 | $63,579 → $81,336 | 5x | PnL=$477.95 | funding=$115.53 | trailing_stop | conds: SMA20_cross
+  #12 (Add #2): 2025-02-23 → 2025-03-02 | $96,258 → $81,336 | 5x | PnL=$-869.72 | funding=$11.48 | base_closed | conds: SMA20_cross
+  #13 (Add #1): 2025-07-27 → 2025-08-03 | $119,416 → $119,416 | 5x | PnL=$-4.22 | funding=$8.48 | breakeven_stop | conds: SMA20_cross
+  #14 (Add #2): 2025-08-17 → 2025-08-24 | $117,405 → $117,405 | 5x | PnL=$-4.12 | funding=$8.37 | breakeven_stop | conds: SMA20_cross
+  #15 (Add #3): 2025-09-14 → 2025-09-21 | $115,268 → $115,268 | 5x | PnL=$-4.01 | funding=$8.43 | breakeven_stop | conds: SMA20_cross
+  #16 (Add #4): 2025-09-21 → 2025-09-28 | $115,232 → $115,232 | 5x | PnL=$-4.00 | funding=$8.18 | breakeven_stop | conds: SMA20_cross
+  #17: 2025-04-27 → 2025-10-12 | $93,749 → $103,748 | 5x | PnL=$166.96 | funding=$94.61 | trailing_stop | conds: SMA20_cross
+  #18: 2025-11-16 → 2026-02-01 | $94,261 → $77,294 | 5x | PnL=$-286.23 | funding=$34.29 | trailing_stop | conds: fear_30%+decline
+
+======================================================================

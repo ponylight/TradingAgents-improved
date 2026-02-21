@@ -1,0 +1,152 @@
+======================================================================
+  BACKTEST V17 — UNLEASHED ROLLING STRATEGY
+======================================================================
+
+CAPITAL:     $10,000
+BASE LEV:    10x | ADD LEV: 15x
+MARGIN:      20% of capital per entry
+ADD SOURCE:  Capital + Profits (50% available)
+PYRAMID:     [0.8, 0.6, 0.5, 0.4, 0.3] (max 5 adds)
+TRAIL STOP:  2.5x ATR (base) | 2.0x ATR (add)
+FAKEOUT:     DISABLED (adds use ATR stops)
+
+── PERFORMANCE ──────────────────────────────────────────
+  final_equity        : $75.61
+  total_return_pct    : -99.24%
+  max_drawdown_pct    : +99.43%
+  sharpe_ratio        : -0.09
+  profit_factor       : 0.69
+  win_rate_pct        : +35.48%
+
+── TRADE SUMMARY ────────────────────────────────────────
+  total_trades        : 31
+  base_trades         : 8
+  pyramid_adds        : 23
+  winning_trades      : 11
+  losing_trades       : 20
+  avg_win             : $1,075.66
+  avg_loss            : $-851.61
+  largest_win         : $3,283.96
+  largest_loss        : $-1,900.35
+  avg_duration_days   : 47.0
+
+── ADD STATS ────────────────────────────────────────────
+  pyramid_adds                  : 23
+  adds_attempted                : 80
+  adds_skipped_no_profit        : 6
+  adds_skipped_no_signal        : 20
+  adds_skipped_max_reached      : 31
+  adds_skipped_liq_unsafe       : 0
+  adds_skipped_too_small        : 0
+  adds_skipped_insufficient_margin: 0
+  adds_via_pullback_sma20       : 9
+  adds_via_fib_retracement      : 3
+  adds_via_consolidation_breakout: 11
+  fakeout_closes                : 0
+  total_add_margin              : $13,677.18
+
+── COSTS ────────────────────────────────────────────────
+  Funding:     $4,432.00
+  Gross PnL:   $-5,199.87
+  Net PnL:     $-9,631.87
+  Liquidations:9
+  Liq Loss:    $6,155.40
+
+── TRADE LOG ────────────────────────────────────────────
+  [2023-06-18] ENTRY: $26,340 | 10x | margin=$2,000 | size=0.7593 BTC | conds=1 (SMA20_cross) | SL=$23,969 | liq=$23,706
+  [2023-06-25] ADD #1 (pullback_sma20): $30,463 | 15x | margin=$1,600 (80% cap) | size=0.7878 BTC | pnl=$3,130 | total_btc=1.5472 | eff_lev=13.1x | stop=$28,635
+  [2023-07-30] ADD #2 (pullback_sma20): $29,281 | 15x | margin=$1,200 (60% cap) | size=0.6147 BTC | pnl=$1,302 | total_btc=2.1619 | eff_lev=13.2x | stop=$27,524
+  [2023-08-06] EXIT (add_stop): $28,635 | pnl=$-1,463 | funding=$297 | 15x | add=1
+  [2023-08-06] ADD #3 (pullback_sma20): $29,088 | 15x | margin=$1,000 (50% cap) | size=0.5157 BTC | pnl=$1,968 | total_btc=1.8897 | eff_lev=13.1x | stop=$27,343
+  [2023-08-13] ADD #4 (pullback_sma20): $29,304 | 15x | margin=$800 (40% cap) | size=0.4095 BTC | pnl=$2,376 | total_btc=2.2992 | eff_lev=13.5x | stop=$27,546
+  [2023-08-20] EXIT (trailing_stop): $26,743 | pnl=$286 | funding=$423 | 10x | add=0
+  [2023-08-20] EXIT (base_closed): $26,743 | pnl=$-1,577 | funding=$109 | 15x | add=2
+  [2023-08-20] EXIT (base_closed): $26,743 | pnl=$-1,223 | funding=$60 | 15x | add=3
+  [2023-08-20] EXIT (base_closed): $26,743 | pnl=$-1,060 | funding=$23 | 15x | add=4
+  [2023-10-01] ENTRY: $27,993 | 10x | margin=$793 | size=0.2831 BTC | conds=1 (SMA20_cross) | SL=$25,473 | liq=$25,193
+  [2023-10-22] ADD #1 (pullback_sma20): $29,992 | 15x | margin=$634 (80% cap) | size=0.3171 BTC | pnl=$566 | total_btc=0.6002 | eff_lev=12.6x | stop=$28,193
+  [2023-10-29] EXIT (add_stop): $30,833 | pnl=$257 | funding=$23 | 15x | add=1
+  [2023-10-29] ADD #2 (consolidation_breakout): $34,526 | 15x | margin=$476 (60% cap) | size=0.2066 BTC | pnl=$1,850 | total_btc=0.4897 | eff_lev=13.3x | stop=$32,454
+  [2023-11-12] ADD #3 (consolidation_breakout): $37,064 | 15x | margin=$396 (50% cap) | size=0.1604 BTC | pnl=$3,093 | total_btc=0.6501 | eff_lev=14.5x | stop=$34,840
+  [2023-11-19] EXIT (add_stop): $34,840 | pnl=$-362 | funding=$13 | 15x | add=3
+  [2023-12-03] ADD #4 (consolidation_breakout): $39,972 | 15x | margin=$317 (40% cap) | size=0.1190 BTC | pnl=$4,517 | total_btc=0.6087 | eff_lev=15.3x | stop=$37,574
+  [2023-12-10] ADD #5 (consolidation_breakout): $43,790 | 15x | margin=$238 (30% cap) | size=0.0814 BTC | pnl=$6,840 | total_btc=0.6901 | eff_lev=16.6x | stop=$41,162
+  [2023-12-17] EXIT (liquidation): $40,870 | pnl=$-238 | funding=$7 | 15x | add=5
+  [2024-01-21] EXIT (add_stop): $41,499 | pnl=$1,432 | funding=$210 | 15x | add=2
+  [2024-01-21] EXIT (add_stop): $41,499 | pnl=$177 | funding=$74 | 15x | add=4
+  [2024-01-28] EXIT (trailing_stop): $39,631 | pnl=$3,284 | funding=$384 | 10x | add=0
+  [2024-07-21] ENTRY: $68,165 | 10x | margin=$1,552 | size=0.2277 BTC | conds=1 (SMA20_cross) | SL=$62,030 | liq=$61,349
+  [2024-07-28] ADD #1 (pullback_sma20): $68,250 | 15x | margin=$1,242 (80% cap) | size=0.2729 BTC | pnl=$19 | total_btc=0.5007 | eff_lev=12.2x | stop=$64,155
+  [2024-08-04] EXIT (liquidation): $61,349 | pnl=$-1,552 | funding=$60 | 10x | add=0
+  [2024-08-04] EXIT (base_closed): $61,349 | pnl=$-1,900 | funding=$33 | 15x | add=1
+  [2024-08-25] ENTRY: $64,220 | 10x | margin=$836 | size=0.1302 BTC | conds=1 (SMA20_cross) | SL=$58,440 | liq=$57,798
+  [2024-09-01] EXIT (liquidation): $57,798 | pnl=$-836 | funding=$16 | 10x | add=0
+  [2024-09-22] ENTRY: $63,579 | 10x | margin=$664 | size=0.1045 BTC | conds=1 (SMA20_cross) | SL=$57,857 | liq=$57,221
+  [2024-09-29] ADD #1 (pullback_sma20): $65,602 | 15x | margin=$531 (80% cap) | size=0.1215 BTC | pnl=$211 | total_btc=0.2260 | eff_lev=12.4x | stop=$61,666
+  [2024-10-06] EXIT (liquidation): $61,229 | pnl=$-531 | funding=$16 | 15x | add=1
+  [2024-10-20] ADD #2 (pullback_sma20): $69,032 | 15x | margin=$399 (60% cap) | size=0.0866 BTC | pnl=$570 | total_btc=0.1911 | eff_lev=12.4x | stop=$64,890
+  [2024-11-10] EXIT (add_stop): $67,045 | pnl=$-178 | funding=$39 | 15x | add=2
+  [2024-11-10] ADD #3 (consolidation_breakout): $80,370 | 15x | margin=$332 (50% cap) | size=0.0620 BTC | pnl=$1,754 | total_btc=0.1664 | eff_lev=13.4x | stop=$75,548
+  [2024-11-17] ADD #4 (consolidation_breakout): $89,856 | 15x | margin=$266 (40% cap) | size=0.0443 BTC | pnl=$3,333 | total_btc=0.2108 | eff_lev=15.0x | stop=$84,465
+  [2024-11-24] ADD #5 (consolidation_breakout): $97,900 | 15x | margin=$199 (30% cap) | size=0.0305 BTC | pnl=$5,029 | total_btc=0.2413 | eff_lev=16.2x | stop=$92,026
+  [2024-12-01] EXIT (liquidation): $91,373 | pnl=$-199 | funding=$6 | 15x | add=5
+  [2025-01-19] EXIT (add_stop): $90,342 | pnl=$612 | funding=$127 | 15x | add=3
+  [2025-01-19] EXIT (add_stop): $90,342 | pnl=$18 | funding=$82 | 15x | add=4
+  [2025-03-02] EXIT (trailing_stop): $85,839 | pnl=$2,316 | funding=$446 | 10x | add=0
+  [2025-04-27] ENTRY: $93,749 | 10x | margin=$922 | size=0.0983 BTC | conds=1 (SMA20_cross) | SL=$85,312 | liq=$84,374
+  [2025-05-04] ADD #1 (pullback_sma20): $94,278 | 15x | margin=$737 (80% cap) | size=0.1173 BTC | pnl=$52 | total_btc=0.2157 | eff_lev=12.3x | stop=$88,621
+  [2025-05-11] ADD #2 (consolidation_breakout): $104,118 | 15x | margin=$553 (60% cap) | size=0.0797 BTC | pnl=$2,174 | total_btc=0.2953 | eff_lev=13.9x | stop=$97,871
+  [2025-05-18] ADD #3 (consolidation_breakout): $106,454 | 15x | margin=$461 (50% cap) | size=0.0649 BTC | pnl=$2,864 | total_btc=0.3603 | eff_lev=14.3x | stop=$100,067
+  [2025-05-25] ADD #4 (consolidation_breakout): $109,004 | 15x | margin=$369 (40% cap) | size=0.0507 BTC | pnl=$3,783 | total_btc=0.4110 | eff_lev=14.7x | stop=$102,464
+  [2025-06-08] EXIT (liquidation): $101,737 | pnl=$-369 | funding=$23 | 15x | add=4
+  [2025-06-22] EXIT (liquidation): $99,357 | pnl=$-461 | funding=$72 | 15x | add=3
+  [2025-07-13] ADD #5 (consolidation_breakout): $119,087 | 15x | margin=$277 (30% cap) | size=0.0348 BTC | pnl=$6,595 | total_btc=0.3302 | eff_lev=15.8x | stop=$111,941
+  [2025-08-03] EXIT (add_stop): $111,941 | pnl=$-253 | funding=$26 | 15x | add=5
+  [2025-08-31] EXIT (add_stop): $109,118 | pnl=$1,729 | funding=$464 | 15x | add=1
+  [2025-08-31] EXIT (add_stop): $109,118 | pnl=$390 | funding=$298 | 15x | add=2
+  [2025-10-12] EXIT (trailing_stop): $107,408 | pnl=$1,333 | funding=$551 | 10x | add=0
+  [2025-10-26] ENTRY: $114,559 | 10x | margin=$1,100 | size=0.0960 BTC | conds=1 (SMA20_cross) | SL=$104,249 | liq=$103,103
+  [2025-11-09] EXIT (liquidation): $103,103 | pnl=$-1,100 | funding=$43 | 10x | add=0
+  [2025-11-23] ENTRY: $86,830 | 10x | margin=$869 | size=0.1001 BTC | conds=2 (fear_30%+decline|52w_low_20%) | SL=$79,015 | liq=$78,147
+  [2025-12-14] ADD #1 (fib_retracement): $88,172 | 15x | margin=$695 (80% cap) | size=0.1183 BTC | pnl=$134 | total_btc=0.2183 | eff_lev=12.3x | stop=$82,882
+  [2025-12-21] ADD #2 (fib_retracement): $88,659 | 15x | margin=$521 (60% cap) | size=0.0882 BTC | pnl=$241 | total_btc=0.3066 | eff_lev=13.0x | stop=$83,339
+  [2025-12-28] ADD #3 (fib_retracement): $87,953 | 15x | margin=$434 (50% cap) | size=0.0741 BTC | pnl=$24 | total_btc=0.3807 | eff_lev=13.3x | stop=$82,676
+  [2026-02-01] EXIT (liquidation): $78,147 | pnl=$-869 | funding=$186 | 10x | add=0
+  [2026-02-01] EXIT (base_closed): $78,147 | pnl=$-1,195 | funding=$153 | 15x | add=1
+  [2026-02-01] EXIT (base_closed): $78,147 | pnl=$-934 | funding=$98 | 15x | add=2
+  [2026-02-01] EXIT (base_closed): $78,147 | pnl=$-732 | funding=$68 | 15x | add=3
+
+── TRADE DETAILS ────────────────────────────────────────
+  #1 (Add #1): 2023-06-25 → 2023-08-06 | $30,463 → $28,635 | 15x | PnL=$-1,462.56 | funding=$296.92 | add_stop | SMA20_cross
+  #2: 2023-06-18 → 2023-08-20 | $26,340 → $26,743 | 10x | PnL=$285.72 | funding=$423.22 | trailing_stop | SMA20_cross
+  #3 (Add #2): 2023-07-30 → 2023-08-20 | $29,281 → $26,743 | 15x | PnL=$-1,576.68 | funding=$109.19 | base_closed | SMA20_cross
+  #4 (Add #3): 2023-08-06 → 2023-08-20 | $29,088 → $26,743 | 15x | PnL=$-1,223.25 | funding=$60.09 | base_closed | SMA20_cross
+  #5 (Add #4): 2023-08-13 → 2023-08-20 | $29,304 → $26,743 | 15x | PnL=$-1,059.62 | funding=$22.52 | base_closed | SMA20_cross
+  #6 (Add #1): 2023-10-22 → 2023-10-29 | $29,992 → $30,833 | 15x | PnL=$256.75 | funding=$22.99 | add_stop | SMA20_cross
+  #7 (Add #3): 2023-11-12 → 2023-11-19 | $37,064 → $34,840 | 15x | PnL=$-362.23 | funding=$12.58 | add_stop | SMA20_cross
+  #8 (Add #5): 2023-12-10 → 2023-12-17 | $43,790 → $40,870 | 15x | PnL=$-237.76 | funding=$7.08 | liquidation | SMA20_cross
+  #9 (Add #2): 2023-10-29 → 2024-01-21 | $34,526 → $41,499 | 15x | PnL=$1,432.00 | funding=$210.21 | add_stop | SMA20_cross
+  #10 (Add #4): 2023-12-03 → 2024-01-21 | $39,972 → $41,499 | 15x | PnL=$176.67 | funding=$74.37 | add_stop | SMA20_cross
+  #11: 2023-10-01 → 2024-01-28 | $27,993 → $39,631 | 10x | PnL=$3,283.96 | funding=$384.18 | trailing_stop | SMA20_cross
+  #12: 2024-07-21 → 2024-08-04 | $68,165 → $61,349 | 10x | PnL=$-1,552.36 | funding=$60.46 | liquidation | SMA20_cross
+  #13 (Add #1): 2024-07-28 → 2024-08-04 | $68,250 → $61,349 | 15x | PnL=$-1,900.35 | funding=$33.34 | base_closed | SMA20_cross
+  #14: 2024-08-25 → 2024-09-01 | $64,220 → $57,798 | 10x | PnL=$-836.23 | funding=$15.67 | liquidation | SMA20_cross
+  #15 (Add #1): 2024-09-29 → 2024-10-06 | $65,602 → $61,229 | 15x | PnL=$-531.34 | funding=$16.03 | liquidation | SMA20_cross
+  #16 (Add #2): 2024-10-20 → 2024-11-10 | $69,032 → $67,045 | 15x | PnL=$-177.83 | funding=$39.49 | add_stop | SMA20_cross
+  #17 (Add #5): 2024-11-24 → 2024-12-01 | $97,900 → $91,373 | 15x | PnL=$-199.25 | funding=$6.23 | liquidation | SMA20_cross
+  #18 (Add #3): 2024-11-10 → 2025-01-19 | $80,370 → $90,342 | 15x | PnL=$612.44 | funding=$126.73 | add_stop | SMA20_cross
+  #19 (Add #4): 2024-11-17 → 2025-01-19 | $89,856 → $90,342 | 15x | PnL=$17.53 | funding=$82.31 | add_stop | SMA20_cross
+  #20: 2024-09-22 → 2025-03-02 | $63,579 → $85,839 | 10x | PnL=$2,316.43 | funding=$446.35 | trailing_stop | SMA20_cross
+  #21 (Add #4): 2025-05-25 → 2025-06-08 | $109,004 → $101,737 | 15x | PnL=$-368.73 | funding=$22.52 | liquidation | SMA20_cross
+  #22 (Add #3): 2025-05-18 → 2025-06-22 | $106,454 → $99,357 | 15x | PnL=$-460.92 | funding=$71.87 | liquidation | SMA20_cross
+  #23 (Add #5): 2025-07-13 → 2025-08-03 | $119,087 → $111,941 | 15x | PnL=$-252.80 | funding=$25.67 | add_stop | SMA20_cross
+  #24 (Add #1): 2025-05-04 → 2025-08-31 | $94,278 → $109,118 | 15x | PnL=$1,728.51 | funding=$464.10 | add_stop | SMA20_cross
+  #25 (Add #2): 2025-05-11 → 2025-08-31 | $104,118 → $109,118 | 15x | PnL=$389.74 | funding=$297.75 | add_stop | SMA20_cross
+  #26: 2025-04-27 → 2025-10-12 | $93,749 → $107,408 | 10x | PnL=$1,332.51 | funding=$551.34 | trailing_stop | SMA20_cross
+  #27: 2025-10-26 → 2025-11-09 | $114,559 → $103,103 | 10x | PnL=$-1,099.82 | funding=$43.40 | liquidation | SMA20_cross
+  #28: 2025-11-23 → 2026-02-01 | $86,830 → $78,147 | 10x | PnL=$-868.97 | funding=$186.08 | liquidation | fear_30%+decline|52w_low_20%
+  #29 (Add #1): 2025-12-14 → 2026-02-01 | $88,172 → $78,147 | 15x | PnL=$-1,194.87 | funding=$153.10 | base_closed | fear_30%+decline|52w_low_20%
+  #30 (Add #2): 2025-12-21 → 2026-02-01 | $88,659 → $78,147 | 15x | PnL=$-934.17 | funding=$97.77 | base_closed | fear_30%+decline|52w_low_20%
+  #31 (Add #3): 2025-12-28 → 2026-02-01 | $87,953 → $78,147 | 15x | PnL=$-732.40 | funding=$68.45 | base_closed | fear_30%+decline|52w_low_20%
+
+======================================================================

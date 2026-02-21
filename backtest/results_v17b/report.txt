@@ -1,0 +1,108 @@
+======================================================================
+  V17b — SMART AGGRESSIVE ROLLING
+======================================================================
+
+CAPITAL: $10,000 | BASE: 3x | ADD: 5x/10x
+MARGIN: 30% | TRAIL: 2.0x ATR | ADD STOP: 2.0x ATR
+PYRAMID: [0.8, 0.6, 0.5, 0.4, 0.3] (max 5)
+
+  total_return_pct                   :       -55.48
+  final_equity                       :     4,451.96
+  initial_capital                    :    10,000.00
+  max_drawdown_pct                   :        64.17
+  sharpe_ratio                       :        -0.22
+  win_rate_pct                       :        45.00
+  profit_factor                      :         0.58
+  total_trades                       :           20
+  base_trades                        :            8
+  pyramid_adds                       :           12
+  winning_trades                     :            9
+  losing_trades                      :           11
+  avg_win                            :       500.45
+  avg_loss                           :      -701.47
+  largest_win                        :     1,341.53
+  largest_loss                       :    -2,147.85
+  gross_pnl                          :    -3,212.07
+  total_funding_cost                 :     2,192.46
+  net_pnl_after_funding              :    -5,404.53
+  signals_generated                  :            8
+  liquidations                       :            0
+  liquidation_loss                   :         0.00
+  total_funding_paid                 :     2,192.46
+  adds_attempted                     :           44
+  adds_skipped_no_profit             :           13
+  adds_skipped_no_signal             :           13
+  adds_skipped_max_reached           :            6
+  adds_skipped_too_small             :            0
+  adds_skipped_insufficient_margin   :            0
+  adds_via_pullback_sma20            :            5
+  adds_via_fib_retracement           :            3
+  adds_via_consolidation_breakout    :            4
+  total_add_margin                   :    17,674.33
+  scale_outs                         :            0
+  aggressive_exits                   :            0
+  high_leverage_adds                 :            0
+
+── TRADE LOG ──
+  [2023-06-18] ENTRY: $26,340 | 3x | margin=$3,000 | size=0.3417 BTC | conds=1 (SMA20_cross) | SL=$21,045 | liq=$17,560
+  [2023-06-25] EXIT (trailing_stop): $26,337 | pnl=$-10 | funding=$22 | 3x | add=0
+  [2023-10-01] ENTRY: $27,993 | 3x | margin=$2,988 | size=0.3202 BTC | conds=1 (SMA20_cross) | SL=$24,280 | liq=$18,662
+  [2023-10-22] ADD #1 (pullback_sma20): $29,992 | 5x | margin=$2,390 | size=0.3985 BTC | pnl=$640 | total=0.7187 BTC | eff_lev=4.0x | stop=$26,187
+  [2023-10-29] EXIT (trailing_stop): $30,833 | pnl=$900 | funding=$80 | 3x | add=0
+  [2023-10-29] EXIT (base_closed): $30,833 | pnl=$323 | funding=$29 | 5x | add=1
+  [2024-07-21] ENTRY: $68,165 | 3x | margin=$3,315 | size=0.1459 BTC | conds=1 (SMA20_cross) | SL=$55,830 | liq=$45,444
+  [2024-07-28] ADD #1 (pullback_sma20): $68,250 | 5x | margin=$2,652 | size=0.1943 BTC | pnl=$12 | total=0.3402 BTC | eff_lev=3.9x | stop=$56,103
+  [2024-08-04] EXIT (trailing_stop): $57,253 | pnl=$-1,601 | funding=$39 | 3x | add=0
+  [2024-08-04] EXIT (base_closed): $57,253 | pnl=$-2,148 | funding=$24 | 5x | add=1
+  [2024-08-25] ENTRY: $64,220 | 3x | margin=$2,165 | size=0.1011 BTC | conds=1 (SMA20_cross) | SL=$50,023 | liq=$42,813
+  [2024-09-29] ADD #1 (pullback_sma20): $65,602 | 5x | margin=$1,732 | size=0.1320 BTC | pnl=$140 | total=0.2332 BTC | eff_lev=3.9x | stop=$53,794
+  [2024-10-20] ADD #2 (pullback_sma20): $69,032 | 5x | margin=$1,299 | size=0.0941 BTC | pnl=$940 | total=0.3273 BTC | eff_lev=4.3x | stop=$56,606
+  [2024-11-10] EXIT (trailing_stop): $67,045 | pnl=$279 | funding=$151 | 3x | add=0
+  [2024-11-10] EXIT (base_closed): $67,045 | pnl=$182 | funding=$114 | 5x | add=1
+  [2024-11-10] EXIT (base_closed): $67,045 | pnl=$-193 | funding=$43 | 5x | add=2
+  [2025-04-27] ENTRY: $93,749 | 3x | margin=$2,146 | size=0.0687 BTC | conds=1 (SMA20_cross) | SL=$74,570 | liq=$62,500
+  [2025-05-04] ADD #1 (pullback_sma20): $94,278 | 5x | margin=$1,717 | size=0.0911 BTC | pnl=$36 | total=0.1597 BTC | eff_lev=3.9x | stop=$77,308
+  [2025-05-11] ADD #2 (consolidation_breakout): $104,118 | 5x | margin=$1,288 | size=0.0618 BTC | pnl=$1,608 | total=0.2216 BTC | eff_lev=4.5x | stop=$85,459
+  [2025-05-18] ADD #3 (consolidation_breakout): $106,454 | 5x | margin=$1,073 | size=0.0504 BTC | pnl=$2,126 | total=0.2720 BTC | eff_lev=4.7x | stop=$88,556
+  [2025-05-25] ADD #4 (consolidation_breakout): $109,004 | 5x | margin=$859 | size=0.0394 BTC | pnl=$2,820 | total=0.3114 BTC | eff_lev=4.8x | stop=$90,357
+  [2025-07-13] ADD #5 (consolidation_breakout): $119,087 | 5x | margin=$644 | size=0.0270 BTC | pnl=$5,959 | total=0.3384 BTC | eff_lev=5.2x | stop=$102,328
+  [2025-08-31] EXIT (trailing_stop): $109,118 | pnl=$1,048 | funding=$285 | 3x | add=0
+  [2025-08-31] EXIT (base_closed): $109,118 | pnl=$1,342 | funding=$360 | 5x | add=1
+  [2025-08-31] EXIT (base_closed): $109,118 | pnl=$302 | funding=$231 | 5x | add=2
+  [2025-08-31] EXIT (base_closed): $109,118 | pnl=$129 | funding=$177 | 5x | add=3
+  [2025-08-31] EXIT (base_closed): $109,118 | pnl=$0 | funding=$129 | 5x | add=4
+  [2025-08-31] EXIT (base_closed): $109,118 | pnl=$-272 | funding=$46 | 5x | add=5
+  [2025-10-26] ENTRY: $114,559 | 3x | margin=$2,532 | size=0.0663 BTC | conds=1 (SMA20_cross) | SL=$96,995 | liq=$76,373
+  [2025-11-16] EXIT (trailing_stop): $98,183 | pnl=$-1,092 | funding=$43 | 3x | add=0
+  [2025-11-23] ENTRY: $86,830 | 3x | margin=$2,189 | size=0.0756 BTC | conds=2 (fear_30%+decline|52w_low_20%) | SL=$65,823 | liq=$57,887
+  [2025-12-14] ADD #1 (fib_retracement): $88,172 | 5x | margin=$1,751 | size=0.0993 BTC | pnl=$102 | total=0.1749 BTC | eff_lev=3.9x | stop=$72,301
+  [2025-12-21] ADD #2 (fib_retracement): $88,659 | 5x | margin=$1,313 | size=0.0741 BTC | pnl=$187 | total=0.2490 BTC | eff_lev=4.2x | stop=$72,700
+  [2025-12-28] ADD #3 (fib_retracement): $87,953 | 5x | margin=$955 | size=0.0543 BTC | pnl=$11 | total=0.3033 BTC | eff_lev=4.3x | stop=$72,121
+  [2026-02-01] EXIT (trailing_stop): $80,531 | pnl=$-483 | funding=$141 | 3x | add=0
+  [2026-02-01] EXIT (base_closed): $80,531 | pnl=$-767 | funding=$129 | 5x | add=1
+  [2026-02-01] EXIT (base_closed): $80,531 | pnl=$-608 | funding=$82 | 5x | add=2
+  [2026-02-01] EXIT (base_closed): $80,531 | pnl=$-407 | funding=$50 | 5x | add=3
+  [2026-02-08] ENTRY: $70,330 | 3x | margin=$1,381 | size=0.0589 BTC | conds=3 (MVRV<0.8|fear_30%+decline|52w_low_20%) | SL=$50,742 | liq=$46,887
+  [2026-02-22] EXIT (end_of_backtest): $68,111 | pnl=$-135 | funding=$17 | 3x | add=0
+
+── TRADE DETAILS ──
+  #1: 2023-06-18 → 2023-06-25 | $26,340 → $26,337 | 3x | PnL=$-9.95 | trailing_stop
+  #2: 2023-10-01 → 2023-10-29 | $27,993 → $30,833 | 3x | PnL=$899.63 | trailing_stop
+  #3 (Add #1): 2023-10-22 → 2023-10-29 | $29,992 → $30,833 | 5x | PnL=$322.63 | base_closed
+  #4: 2024-07-21 → 2024-08-04 | $68,165 → $57,253 | 3x | PnL=$-1,600.55 | trailing_stop
+  #5 (Add #1): 2024-07-28 → 2024-08-04 | $68,250 → $57,253 | 5x | PnL=$-2,147.85 | base_closed
+  #6: 2024-08-25 → 2024-11-10 | $64,220 → $67,045 | 3x | PnL=$278.99 | trailing_stop
+  #7 (Add #1): 2024-09-29 → 2024-11-10 | $65,602 → $67,045 | 5x | PnL=$181.70 | base_closed
+  #8 (Add #2): 2024-10-20 → 2024-11-10 | $69,032 → $67,045 | 5x | PnL=$-193.23 | base_closed
+  #9: 2025-04-27 → 2025-08-31 | $93,749 → $109,118 | 3x | PnL=$1,048.11 | trailing_stop
+  #10 (Add #1): 2025-05-04 → 2025-08-31 | $94,278 → $109,118 | 5x | PnL=$1,341.53 | base_closed
+  #11 (Add #2): 2025-05-11 → 2025-08-31 | $104,118 → $109,118 | 5x | PnL=$302.49 | base_closed
+  #12 (Add #3): 2025-05-18 → 2025-08-31 | $106,454 → $109,118 | 5x | PnL=$128.78 | base_closed
+  #13 (Add #4): 2025-05-25 → 2025-08-31 | $109,004 → $109,118 | 5x | PnL=$0.19 | base_closed
+  #14 (Add #5): 2025-07-13 → 2025-08-31 | $119,087 → $109,118 | 5x | PnL=$-272.45 | base_closed
+  #15: 2025-10-26 → 2025-11-16 | $114,559 → $98,183 | 3x | PnL=$-1,092.36 | trailing_stop
+  #16: 2025-11-23 → 2026-02-01 | $86,830 → $80,531 | 3x | PnL=$-482.54 | trailing_stop
+  #17 (Add #1): 2025-12-14 → 2026-02-01 | $88,172 → $80,531 | 5x | PnL=$-766.88 | base_closed
+  #18 (Add #2): 2025-12-21 → 2026-02-01 | $88,659 → $80,531 | 5x | PnL=$-608.05 | base_closed
+  #19 (Add #3): 2025-12-28 → 2026-02-01 | $87,953 → $80,531 | 5x | PnL=$-407.49 | base_closed
+  #20: 2026-02-08 → 2026-02-22 | $70,330 → $68,111 | 3x | PnL=$-134.76 | end_of_backtest
