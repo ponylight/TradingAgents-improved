@@ -250,6 +250,17 @@ def run_signal_scan(dry_run: bool = False) -> tuple[str, bool]:
         )
         output = result.stdout + result.stderr
         signal_fired = "V20 SIGNAL FIRED" in output
+
+        # Write scanner log for GM health checks
+        log_dir = PROJECT_DIR / "logs"
+        log_dir.mkdir(exist_ok=True)
+        log_file = log_dir / f"scanner_{datetime.now(SYDNEY_TZ).strftime('%Y-%m-%d')}.log"
+        with open(log_file, "a") as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"[{datetime.now(SYDNEY_TZ).strftime('%Y-%m-%d %H:%M:%S %Z')}] Scanner Run\n")
+            f.write(f"{'='*60}\n")
+            f.write(output + "\n")
+
         return output.strip(), signal_fired
     except subprocess.TimeoutExpired:
         return "⚠️ Scanner timed out (120s)", False
