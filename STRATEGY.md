@@ -108,9 +108,10 @@ Capture swing moves within the broader trend. Quick entries, disciplined exits.
 - **Position adds:** Only with floating profits, each smaller than previous
 
 ### Regime Rules (Short-Term)
-- Can trade BOTH directions regardless of long-term regime
-- **Exception:** If long-term regime = Accumulation AND MVRV < 0 → bias heavily toward longs
-- Short-term trades should NOT conflict with long-term position sizing (use separate capital)
+- **Bull market (price > 200 SMA weekly):** LONG ONLY. No shorts.
+- **Bear market (price < 200 SMA weekly):** SHORT ONLY. No longs.
+- Trade WITH the macro trend, not against it. Short-term captures pullbacks/bounces within the larger trend.
+- Short-term trades use separate capital — do NOT conflict with long-term positions.
 
 ---
 
