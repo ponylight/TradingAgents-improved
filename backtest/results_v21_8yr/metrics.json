@@ -1,0 +1,114 @@
+{
+  "version": "v21",
+  "strategy": "V20 Signals + V19 Bullets",
+  "total_return_pct": 786.07,
+  "final_equity": 88607.01,
+  "peak_equity": 90696.43,
+  "peak_multiplier": 9.07,
+  "initial_capital": 10000.0,
+  "max_drawdown_pct": 56.57,
+  "sharpe_ratio": 0.76,
+  "win_rate_pct": 32.81,
+  "profit_factor": 2.22,
+  "total_bullets": 192,
+  "long_bullets": 160,
+  "short_bullets": 32,
+  "long_pnl": 48025.23,
+  "short_pnl": 33868.94,
+  "winning_bullets": 63,
+  "losing_bullets": 129,
+  "liquidated_bullets": 107,
+  "trailing_stop_bullets": 85,
+  "end_of_backtest_bullets": 0,
+  "liquidation_rate_pct": 55.7,
+  "total_legs": 397,
+  "liquidated_legs": 129,
+  "total_adds_fired": 205,
+  "bullets_with_adds": 97,
+  "avg_win_bullet": 2366.84,
+  "avg_loss_bullet": -521.06,
+  "largest_win_bullet": 10944.34,
+  "largest_loss_bullet": -1468.23,
+  "avg_duration_hours": 193.8,
+  "avg_duration_days": 8.1,
+  "top_5_bullets": [
+    {
+      "side": "short",
+      "entry_time": "2018-11-13",
+      "entry_price": 6460.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 10944.34,
+      "pnl_multiple": 21.9,
+      "confluence": [
+        "TD9_sell",
+        "MACD_bear_div_1",
+        "Fib_0.382"
+      ]
+    },
+    {
+      "side": "short",
+      "entry_time": "2018-01-28",
+      "entry_price": 11969.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 9994.69,
+      "pnl_multiple": 20.0,
+      "confluence": [
+        "TD9_sell",
+        "Fib_0.382"
+      ]
+    },
+    {
+      "side": "long",
+      "entry_time": "2022-12-28",
+      "entry_price": 16596.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 8668.87,
+      "pnl_multiple": 17.3,
+      "confluence": [
+        "TD9_buy",
+        "MACD_div_1",
+        "Fib_0.618"
+      ]
+    },
+    {
+      "side": "short",
+      "entry_time": "2022-06-08",
+      "entry_price": 30027.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 8015.37,
+      "pnl_multiple": 16.0,
+      "confluence": [
+        "MACD_bear_div_2",
+        "Fib_0.618"
+      ]
+    },
+    {
+      "side": "short",
+      "entry_time": "2021-05-10",
+      "entry_price": 55734.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 6741.65,
+      "pnl_multiple": 13.5,
+      "confluence": [
+        "MACD_bear_div_3",
+        "Fib_0.618"
+      ]
+    }
+  ],
+  "data_start": "2017-08-17 04:00:00",
+  "data_end": "2026-02-21 04:00:00",
+  "total_candles": 18645,
+  "bullet_margin": 500.0,
+  "base_leverage": 20,
+  "add_leverages": [
+    15,
+    10,
+    5,
+    5
+  ]
+}

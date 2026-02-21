@@ -1,0 +1,114 @@
+{
+  "version": "v21",
+  "strategy": "V20 Signals + V19 Bullets",
+  "total_return_pct": 174.95,
+  "final_equity": 27494.84,
+  "peak_equity": 29584.26,
+  "peak_multiplier": 2.96,
+  "initial_capital": 10000.0,
+  "max_drawdown_pct": 45.96,
+  "sharpe_ratio": 0.72,
+  "win_rate_pct": 35.16,
+  "profit_factor": 1.68,
+  "total_bullets": 91,
+  "long_bullets": 81,
+  "short_bullets": 10,
+  "long_pnl": 7303.7,
+  "short_pnl": 11583.12,
+  "winning_bullets": 32,
+  "losing_bullets": 59,
+  "liquidated_bullets": 50,
+  "trailing_stop_bullets": 41,
+  "end_of_backtest_bullets": 0,
+  "liquidation_rate_pct": 54.9,
+  "total_legs": 175,
+  "liquidated_legs": 55,
+  "total_adds_fired": 84,
+  "bullets_with_adds": 45,
+  "avg_win_bullet": 1459.06,
+  "avg_loss_bullet": -471.24,
+  "largest_win_bullet": 8668.87,
+  "largest_loss_bullet": -1031.4,
+  "avg_duration_hours": 211.7,
+  "avg_duration_days": 8.8,
+  "top_5_bullets": [
+    {
+      "side": "long",
+      "entry_time": "2022-12-28",
+      "entry_price": 16596.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 8668.87,
+      "pnl_multiple": 17.3,
+      "confluence": [
+        "TD9_buy",
+        "MACD_div_1",
+        "Fib_0.618"
+      ]
+    },
+    {
+      "side": "short",
+      "entry_time": "2022-06-08",
+      "entry_price": 30027.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 8015.37,
+      "pnl_multiple": 16.0,
+      "confluence": [
+        "MACD_bear_div_2",
+        "Fib_0.618"
+      ]
+    },
+    {
+      "side": "long",
+      "entry_time": "2023-10-11",
+      "entry_price": 26763.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 5531.12,
+      "pnl_multiple": 11.1,
+      "confluence": [
+        "TD9_buy",
+        "Fib_0.618"
+      ]
+    },
+    {
+      "side": "long",
+      "entry_time": "2023-10-04",
+      "entry_price": 27430.0,
+      "n_adds": 4,
+      "close_reason": "trailing_stop",
+      "pnl": 4904.99,
+      "pnl_multiple": 9.8,
+      "confluence": [
+        "TD9_buy",
+        "Fib_0.500"
+      ]
+    },
+    {
+      "side": "short",
+      "entry_time": "2025-11-10",
+      "entry_price": 105080.0,
+      "n_adds": 3,
+      "close_reason": "trailing_stop",
+      "pnl": 2612.98,
+      "pnl_multiple": 5.2,
+      "confluence": [
+        "TD9_sell",
+        "MACD_bear_div_1",
+        "Fib_0.618"
+      ]
+    }
+  ],
+  "data_start": "2022-02-21 00:00:00",
+  "data_end": "2026-02-20 20:00:00",
+  "total_candles": 8766,
+  "bullet_margin": 500.0,
+  "base_leverage": 20,
+  "add_leverages": [
+    15,
+    10,
+    5,
+    5
+  ]
+}

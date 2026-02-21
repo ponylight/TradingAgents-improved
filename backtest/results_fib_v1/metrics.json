@@ -1,0 +1,20 @@
+{
+  "system": "fib_v1",
+  "total_return_pct": -64.0,
+  "final_equity": 3600.27,
+  "max_drawdown_pct": 64.15,
+  "win_rate_pct": 29.37,
+  "profit_factor": 0.07,
+  "total_trades": 715,
+  "longs": 333,
+  "shorts": 382,
+  "signals": 2459,
+  "entries": 715,
+  "space_only": 2459,
+  "space_time": 485,
+  "space_time_energy": 283,
+  "tp_exits": 1036,
+  "trail_exits": 233,
+  "stop_exits": 449,
+  "total_funding": 239.41916386602182
+}
