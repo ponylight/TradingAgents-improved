@@ -1,0 +1,82 @@
+=========================================================================================================
+  BACKTEST COMPARISON: V6 vs V8 (graduated 5x->50x) vs V9 (V8 + V9 Rolling)
+=========================================================================================================
+
+  Metric                               V6 (MACD only)        V8 (V6+grad MM)        V9 (V8+rolling)       V9 vs V6
+  ---------------------------- ---------------------- ---------------------- ----------------------   ------------
+
+  Total Return %                               34.26%                 21.86%                 23.51%   (-10.75 vv)
+  Final Equity                 $           13,425.74 $           12,185.54 $           12,351.27   (0.9x)
+  Max Drawdown %                               14.59%                 15.60%                 15.97%   (+1.38 vv)
+  Sharpe Ratio                                   0.57                   0.40                   0.42   (-0.15 vv)
+  Win Rate %                                   57.14%                 46.15%                 46.88%   (-10.26 vv)
+  Profit Factor                                  3.16                   1.80                   1.92   (-1.24 vv)
+
+  Total Trades                                      7                     26                     32
+
+=========================================================================================================
+  MODE 2 COMPARISON: V8 (ATR pyramids) vs V9 (V9 rolling adds)
+=========================================================================================================
+
+                                         V8 (ATR pyr)           V9 (rolling)
+                               ---------------------- ----------------------
+  M2 Total Trades                                  19                     25
+  M2 Total PnL                 $             -891.66 $             -759.41
+  M2 Win Rate %                                42.11%                 44.00%
+  M2 Entry Attempts                                16                     25
+  M2 Phase A Stops                                  7                      6
+  M2 Successful Rides                               8                     18
+  M2 Cooldowns                                      1                      0
+  M2 Adds/Pyramids                                  3                      0
+  M2 Best Ride PnL             $              160.60 $              240.78
+  M2 Worst Stop PnL            $             -246.95 $             -248.56
+
+=========================================================================================================
+  V9 ROLLING ADDS SUMMARY
+=========================================================================================================
+
+  Mode 1 Rolling Adds:     0
+    Breakeven Stops:       0
+    Master Trail Closes:   0
+    Rolling PnL:           $+0.00
+
+  Mode 2 Rolling Adds:     0
+    Breakeven Stops:       0
+    Rolling PnL:           $+0.00
+
+=========================================================================================================
+  V9 GRADUATED LEVERAGE BREAKDOWN
+=========================================================================================================
+
+  Leverage    SL Distance    Entries      Stops       Wins
+  ---------- ------------ ---------- ---------- ----------
+   5x              20.0%          19          4         14
+  10x              10.0%           4          1          3
+  15x               6.7%           1          1          0
+  25x               4.0%           1          0          1
+  50x               2.0%           0          0          0
+
+=========================================================================================================
+  STRATEGY DIFFERENCES
+=========================================================================================================
+
+  V6 (MACD only):
+    - V3 MACD Reversal signals only
+    - 3x base, 10x with 123 Rule confirmed
+    - TP1 at 1:1 R/R, trailing stop after
+
+  V8 = V6 + graduated bottom-fishing:
+    - Mode 2: 5x->10x->15x->25x->50x graduated entries
+    - ATR-based pyramiding with 30% of unrealized
+    - Mode 1 rolling requires near-bottom
+
+  V9 = V8 + unified V9 rolling on BOTH modes:
+    - Rolling after +3% (checks every 12 bars)
+    - Adds at 150%/200%/250% of original size
+    - Funded by floating profits ONLY
+    - Each add: breakeven stop at entry
+    - Master trail: 2x ATR from highest (closes group)
+    - NO near-bottom restriction for rolling
+    - Mode 2 profit mode at +3% (was +5% in V8)
+
+=========================================================================================================

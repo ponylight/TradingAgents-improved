@@ -90,8 +90,12 @@ def main():
     data["m2_supply"] = fetch_safe(get_fred_data, "M2SL", start_1y, trade_date)
     data["economic_calendar"] = get_economic_calendar_summary()
     
+    # === MVRV Z-SCORE PROXY ===
+    print("  [6/7] MVRV Z-Score proxy...")
+    data["mvrv_proxy"] = fetch_safe(fetch_mvrv_proxy)
+    
     # === CROSS-EXCHANGE ===
-    print("  [6/6] Binance comparison...")
+    print("  [7/7] Binance comparison...")
     data["binance_comparison"] = fetch_binance_comparison()
     
     # Save
@@ -101,6 +105,53 @@ def main():
     
     print(f"\n✅ All data saved to {output_file}")
     print(f"   File size: {os.path.getsize(output_file) / 1024:.1f} KB")
+
+def fetch_mvrv_proxy():
+    """Calculate MVRV Z-Score proxy using CoinGecko free data.
+    Uses price position in 1-year range as proxy for MVRV.
+    Z-Score < 0 (bottom 20% of range) = undervalued, buy zone.
+    Z-Score > 7 (top 10% of range) = overvalued, sell zone."""
+    import requests
+    r = requests.get('https://api.coingecko.com/api/v3/coins/bitcoin/market_chart?vs_currency=usd&days=365&interval=daily', timeout=30)
+    data = r.json()
+    prices = [p[1] for p in data['prices']]
+    current = prices[-1]
+    avg_1y = sum(prices) / len(prices)
+    low_1y = min(prices)
+    high_1y = max(prices)
+    position = (current - low_1y) / (high_1y - low_1y) * 100
+    price_vs_avg = current / avg_1y
+    
+    if position < 10:
+        signal = "🟢 EXTREME UNDERVALUE (bottom 10%) — strong accumulation zone"
+    elif position < 20:
+        signal = "🟢 UNDERVALUED (bottom 20%) — accumulation zone"  
+    elif position < 40:
+        signal = "🟢 BELOW FAIR VALUE — favorable for longs"
+    elif position < 60:
+        signal = "⚪ FAIR VALUE — neutral"
+    elif position < 80:
+        signal = "🟡 ABOVE FAIR VALUE — reduce exposure"
+    elif position < 90:
+        signal = "🔴 OVERVALUED — take profits"
+    else:
+        signal = "🔴 EXTREME OVERVALUE (top 10%) — distribution zone"
+    
+    return (
+        f"# MVRV Z-Score Proxy (1-Year Range Position)\n"
+        f"BTC Price: ${current:,.0f}\n"
+        f"1Y Average: ${avg_1y:,.0f}\n"
+        f"1Y Low: ${low_1y:,.0f}\n"
+        f"1Y High: ${high_1y:,.0f}\n"
+        f"Position in range: {position:.1f}%\n"
+        f"Price/1Y Avg: {price_vs_avg:.2f}\n"
+        f"From ATH ($126,080): {(current/126080 - 1)*100:.1f}%\n"
+        f"Signal: {signal}\n"
+        f"\nNote: True MVRV uses realized cap (on-chain). This proxy uses\n"
+        f"price position in 1-year range which correlates well with MVRV signals.\n"
+        f"Z < 0 equivalent: bottom 20%. Z > 7 equivalent: top 10%.\n"
+    )
+
 
 def fetch_binance_comparison():
     """Fetch Binance BTC data for cross-exchange comparison."""

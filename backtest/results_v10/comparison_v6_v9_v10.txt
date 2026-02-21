@@ -1,0 +1,101 @@
+===================================================================================================================
+  BACKTEST COMPARISON: V6 vs V9 vs V10 (Looser Rolling)
+===================================================================================================================
+
+  Metric                                 V6 (MACD only)       V9 (tight rolling)      V10 (loose rolling)      V10 vs V6
+  ---------------------------- ------------------------ ------------------------ ------------------------   ------------
+
+  Total Return %                                 34.26%                   23.51%                   19.38%   (-14.88 vv)
+  Final Equity                 $             13,425.74 $             12,351.27 $             11,938.19   (0.9x)
+  Max Drawdown %                                 14.59%                   15.97%                   16.15%   (+1.56 vv)
+  Sharpe Ratio                                     0.57                     0.42                     0.37   (-0.20 vv)
+  Win Rate %                                     57.14%                   46.88%                   29.27%   (-27.87 vv)
+  Profit Factor                                    3.16                     1.92                     1.78   (-1.38 vv)
+
+  Total Trades                                        7                       32                       41
+
+===================================================================================================================
+  ROLLING ADDS COMPARISON: V9 (tight) vs V10 (loose)
+===================================================================================================================
+
+                                             V9 (tight)              V10 (loose)
+                               ------------------------ ------------------------
+  Check Interval                          12 bars (48h)             4 bars (16h)
+  Profit Trigger                                    +3%                      +2%
+  Float Requirement                                100%                      80%
+  Add Conditions               MA30/Fib50%/breakout(2+) MA20+1ATR/Fib38.2%/brk(all)
+
+  M1 Rolling Adds                                     0                        0
+  M1 Breakeven Stops                                  0                        0
+  M1 Master Trail Closes                              0                        0
+  M1 Rolling PnL               $                  0.00 $                  0.00
+
+  M2 Rolling Adds                                     0                        0
+  M2 Breakeven Stops                                  0                        0
+  M2 Rolling PnL               $                  0.00 $                  0.00
+
+===================================================================================================================
+  MODE 2 COMPARISON: V9 vs V10
+===================================================================================================================
+
+                                                     V9                      V10
+                               ------------------------ ------------------------
+  M2 Total Trades                                    25                       34
+  M2 Total PnL                 $               -759.41 $             -1,102.74
+  M2 Win Rate %                                  44.00%                   23.53%
+  M2 Entry Attempts                                  25                       34
+  M2 Phase A Stops                                    6                        6
+  M2 Successful Rides                                18                       27
+  M2 Cooldowns                                        0                        0
+  M2 V-Rolling Adds                                   0                        0
+  M2 Best Ride PnL             $                240.78 $                 92.22
+  M2 Worst Stop PnL            $               -248.56 $               -243.31
+
+===================================================================================================================
+  V10 ROLLING ADDS SUMMARY
+===================================================================================================================
+
+  Mode 1 Rolling Adds:     0
+    Breakeven Stops:       0
+    Master Trail Closes:   0
+    Rolling PnL:           $+0.00
+
+  Mode 2 Rolling Adds:     0
+    Breakeven Stops:       0
+    Rolling PnL:           $+0.00
+
+===================================================================================================================
+  V10 GRADUATED LEVERAGE BREAKDOWN
+===================================================================================================================
+
+  Leverage    SL Distance    Entries      Stops       Wins
+  ---------- ------------ ---------- ---------- ----------
+   5x              20.0%          28          4         23
+  10x              10.0%           4          1          3
+  15x               6.7%           1          1          0
+  25x               4.0%           1          0          1
+  50x               2.0%           0          0          0
+
+===================================================================================================================
+  STRATEGY DIFFERENCES
+===================================================================================================================
+
+  V6 (MACD only):
+    - V3 MACD Reversal signals only
+    - 3x base, 10x with 123 Rule confirmed
+    - TP1 at 1:1 R/R, trailing stop after
+
+  V9 = V8 + tight rolling:
+    - Rolling after +3% (checks every 12 bars / 48h)
+    - MA30 pullback (1% tolerance) or Fib 50%
+    - Funded by 100% of floating profits
+
+  V10 = V9 + looser rolling:
+    - Rolling after +2% (checks every 4 bars / 16h)
+    - ANY of: MA20 within 1 ATR / Fib 38.2% / 20-bar high breakout
+    - Funded by 80% of floating profits
+    - Adds at 150%/200%/250% (inverted pyramid)
+    - Each add: breakeven stop at entry
+    - Master trail: 2x ATR from highest (closes group)
+
+===================================================================================================================

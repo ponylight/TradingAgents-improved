@@ -1,0 +1,103 @@
+=================================================================
+  BTC/USDT BACKTEST -- V9
+  Mode 1: V6 MACD Reversal (3x/10x) + V9 Rolling
+  Mode 2: Graduated Bottom-Fishing (5x->50x) + V9 Rolling
+=================================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Candles:   8766 (4h bars)
+  Initial Capital: $10,000.00
+
+=================================================================
+  COMBINED PERFORMANCE
+=================================================================
+
+  Final Equity:    $12,351.27
+  Total Return:    +23.51%
+  Max Drawdown:    15.97%
+  Sharpe Ratio:    0.42
+  Total Trades:    32
+  Win Rate:        46.9%
+  Profit Factor:   1.92
+
+  Avg Win:         $358.15
+  Avg Loss:        $-164.49
+  Largest Win:     $2,813.48
+  Largest Loss:    $-1,113.50
+
+=================================================================
+  MODE 1: V6 MACD REVERSAL + V9 ROLLING
+=================================================================
+
+  Total Trades:    7
+    Primary:       7
+    V9 Rolling:    0
+    Long:          5  (PnL: $-403.67)
+    Short:         2  (PnL: $+3,739.08)
+  Total PnL:       $+3,335.41
+  Win Rate:        57.1%
+  Avg Duration:    7.3 days
+
+  Avg Leverage:    6.0x
+  Trades at 3x:    4
+  Trades at 10x:   3
+  Liquidations:    0
+  Liquidation Loss:$0.00
+
+  V9 Rolling (Mode 1):
+    Adds Executed:     0
+    Breakeven Stops:   0
+    Master Trail Closes:0
+    Rolling PnL:       $+0.00
+
+=================================================================
+  MODE 2: GRADUATED BOTTOM-FISHING + V9 ROLLING
+=================================================================
+
+  Total Trades:    25
+    Base Entries:   25
+    V9 Rolling:    0
+  Total PnL:       $-759.41
+  Win Rate:        44.0%
+  Avg Duration:    6.7 days
+  Avg Leverage:    7.0x
+
+  Entry Attempts:  25
+  Phase A Stops:   6  (stopped before +3%)
+  Successful Rides:18  (reached profit mode)
+  Cooldowns:       0  (5 fails -> 30d disable)
+  V9 Rolling Adds: 0
+
+  Best Ride PnL:   $+240.78
+  Worst Stop PnL:  $-248.56
+
+  V9 Rolling (Mode 2):
+    Adds Executed:     0
+    Breakeven Stops:   0
+    Rolling PnL:       $+0.00
+
+  Graduated Leverage Breakdown:
+     5x:  19 entries,   4 stops,  14 wins  (SL ~20.0% away)
+    10x:   4 entries,   1 stops,   3 wins  (SL ~10.0% away)
+    15x:   1 entries,   1 stops,   0 wins  (SL ~6.7% away)
+    25x:   1 entries,   0 stops,   1 wins  (SL ~4.0% away)
+    50x:   0 entries,   0 stops,   0 wins  (SL ~2.0% away)
+
+=================================================================
+  V9 ROLLING RULES (BOTH MODES)
+=================================================================
+
+  Trigger:         Position +3% profitable
+  Check Interval:  Every 12 bars (48h)
+  Max Adds:        3 per trade
+  Add 1:           150% of original size (pullback to MA30 or Fib 0.5)
+  Add 2:           200% of original size (pullback/breakout)
+  Add 3:           250% of original size (pullback/breakout)
+  Funding:         Floating profits ONLY (skip if insufficient)
+  Add Stop:        Breakeven (at entry price of add)
+  Master Trail:    2x ATR from highest point (closes group)
+  Near-bottom:     NOT required for rolling (V9 change)
+
+=================================================================
+  Report generated: 2026-02-21 12:37:23
+=================================================================

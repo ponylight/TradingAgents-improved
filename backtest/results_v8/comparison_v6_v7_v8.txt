@@ -1,0 +1,68 @@
+====================================================================================================
+  BACKTEST COMPARISON: V6 vs V7 (50x flat) vs V8 (graduated 5x→50x)
+====================================================================================================
+
+  Metric                             V6 (MACD only)       V7 (V6+50x MM)      V8 (V6+grad MM)       V8 vs V6
+  ---------------------------- -------------------- -------------------- --------------------   ------------
+
+  Total Return %                             34.26%              -26.08%               21.86%   (-12.40 vv)
+  Final Equity                 $         13,425.74 $          7,392.50 $         12,185.54   (0.9x)
+  Max Drawdown %                             14.59%               55.49%               15.60%   (+1.01 vv)
+  Sharpe Ratio                                 0.57                -0.02                 0.40   (-0.17 vv)
+  Win Rate %                                 57.14%               23.40%               46.15%   (-10.99 vv)
+  Profit Factor                                3.16                 0.78                 1.80   (-1.36 vv)
+
+  Total Trades                                    7                   47                   26
+
+====================================================================================================
+  MODE 2 COMPARISON: V7 (flat 50x) vs V8 (graduated)
+====================================================================================================
+
+                                      V7 (50x flat)       V8 (graduated)
+                               -------------------- --------------------
+  M2 Total Trades                                40                   19
+  M2 Total PnL                 $         -4,206.76 $           -891.66
+  M2 Win Rate %                              17.50%               42.11%
+  M2 Entry Attempts                              34                   16
+  M2 Phase A Stops                               29                    7
+  M2 Successful Rides                             5                    8
+  M2 Cooldowns                                    4                    1
+  M2 Pyramid Adds                                 6                    3
+  M2 Best Ride PnL             $            701.75 $            160.60
+  M2 Worst Stop PnL            $         -2,887.32 $           -246.95
+  M2 Avg Leverage                              50.0                 10.0
+
+====================================================================================================
+  V8 GRADUATED LEVERAGE BREAKDOWN
+====================================================================================================
+
+  Leverage    SL Distance    Entries      Stops       Wins
+  ---------- ------------ ---------- ---------- ----------
+   5x              20.0%          10          3          6
+  10x              10.0%           3          1          2
+  15x               6.7%           1          1          0
+  25x               4.0%           1          1          0
+  50x               2.0%           1          1          0
+
+====================================================================================================
+  STRATEGY DIFFERENCES
+====================================================================================================
+
+  V6 (MACD only):
+    - V3 MACD Reversal signals only
+    - 3x base, 10x with 123 Rule confirmed
+    - TP1 at 1:1 R/R, trailing stop after
+
+  V7 = V6 + flat 50x bottom-fishing:
+    - Mode 2 always 50x (stop ~2% away)
+    - High risk of liquidation in volatile markets
+    - All-or-nothing conviction
+
+  V8 = V6 + GRADUATED bottom-fishing:
+    - Mode 2 starts at 5x (stop ~20% away — survives noise)
+    - Escalates: 5x → 10x → 15x → 25x → 50x
+    - Earlier attempts survive more volatility
+    - Later attempts increase conviction after confirms
+    - Same 2% capital per attempt, 10% total risk
+
+====================================================================================================
