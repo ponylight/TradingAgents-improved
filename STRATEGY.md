@@ -84,7 +84,8 @@ Catch major cycle moves. Hold weeks to years. Compound via rolling.
 - **Inverted pyramid:** 150% → 200% → 250% of base size on each add
 - **Add on:** Weekly pullbacks to MA30, Fib 0.5-0.618, consolidation breakouts
 - **Confirm:** Big weekly candles + volume + price >2-3% beyond resistance
-- **Funding:** Floating profits only. Never add new capital.
+- **Funding:** Floating profits AND/OR additional capital. Can add new funds to increase position.
+- **Safety:** Run `scripts/rolling_calculator.py` before every add. Liquidation price must stay below previous swing low.
 - **Each add:** Protected at breakeven (entry price)
 - **Master trailing stop:** 2x Weekly ATR from highest point
 
@@ -94,11 +95,15 @@ Catch major cycle moves. Hold weeks to years. Compound via rolling.
 - **MVRV > 3.7:** Begin aggressive distribution
 - **Circuit breaker:** Drawdown > 25% from peak → reassess
 
-### ⚠️ Funding Rate Management
-- Monitor funding rate weekly. At 0.01%/8h ≈ 13%/year
-- **Funding > 0.03%/8h:** Reduce leverage or hedge
-- **Funding negative:** Getting PAID to hold — increase confidence
-- **Cumulative funding > 5% of position:** Reassess hold vs. close
+### ⚠️ Funding Rate & Fee Management (CRITICAL for long-term holds)
+- **Monitor EVERY 8h funding settlement.** Log cumulative cost.
+- At 0.01%/8h = ~1.1%/month = ~13%/year — this is the cost of holding
+- **Funding > 0.03%/8h:** Reduce leverage or consider closing/hedging
+- **Funding negative:** Getting PAID to hold — increase confidence, add to position
+- **Cumulative funding > 3% of position value:** Alert Master for review
+- **Cumulative funding > 5% of position value:** Strongly consider closing or reducing
+- **Track all fees:** Entry/exit commissions + funding = total cost of trade. Must be factored into P&L.
+- **Long holds (months+):** Funding cost can exceed the trade profit. Always compare unrealised gain vs cumulative funding paid.
 
 ---
 
