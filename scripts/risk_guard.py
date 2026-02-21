@@ -12,8 +12,11 @@ import os
 import sys
 import json
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Optional
+
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
 import ccxt
 from dotenv import load_dotenv
@@ -44,10 +47,10 @@ DEFAULT_STATE = {
     "peak_equity":      INITIAL_CAPITAL,
     "initial_capital":  INITIAL_CAPITAL,
     "day_start_equity": INITIAL_CAPITAL,
-    "day_start_date":   datetime.now(timezone.utc).strftime("%Y-%m-%d"),
+    "day_start_date":   datetime.now(SYDNEY_TZ).strftime("%Y-%m-%d"),
     "no_trade_until":   None,
     "milestones_hit":   [],
-    "last_check":       datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+    "last_check":       datetime.now(SYDNEY_TZ).strftime("%Y-%m-%dT%H:%M:%S"),
 }
 
 
@@ -62,7 +65,7 @@ def load_state() -> dict:
 
 
 def save_state(state: dict):
-    state["last_check"] = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    state["last_check"] = datetime.now(SYDNEY_TZ).strftime("%Y-%m-%dT%H:%M:%S")
     with open(STATE_FILE, "w") as f:
         json.dump(state, f, indent=2)
 
@@ -200,9 +203,9 @@ def check_circuit_breaker(equity: float, state: dict, exchange: ccxt.Exchange, p
 
 def check_daily_loss(equity: float, state: dict) -> str:
     """If equity dropped >3% from day start, block new trades for 24h."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(SYDNEY_TZ).strftime("%Y-%m-%d")
 
-    # Reset day start if it's a new day
+    # Reset day start if it's a new day (Sydney calendar day)
     if state.get("day_start_date") != today:
         state["day_start_date"]   = today
         state["day_start_equity"] = equity
@@ -214,17 +217,18 @@ def check_daily_loss(equity: float, state: dict) -> str:
         drop_pct = (1 - equity / day_start) * 100
         # Set block for 24h if not already set
         if not state.get("no_trade_until"):
-            until_dt = datetime.now(timezone.utc) + timedelta(hours=24)
-            state["no_trade_until"] = until_dt.strftime("%Y-%m-%dT%H:%M:%S")
+            until_dt = datetime.now(SYDNEY_TZ) + timedelta(hours=24)
+            state["no_trade_until"] = until_dt.isoformat()
             print(f"🚨 ALERT: DAILY LOSS LIMIT HIT — equity ${equity:,.2f} is {drop_pct:.1f}% below day start ${day_start:,.2f}")
-            print(f"🚨 ALERT: New trades BLOCKED until {state['no_trade_until']} UTC")
+            print(f"🚨 ALERT: New trades BLOCKED until {state['no_trade_until']} Sydney")
         return f"⚠️  Daily loss: ${equity:,.2f} vs day start ${day_start:,.2f} (−{drop_pct:.1f}%) — TRADES BLOCKED until {state['no_trade_until']}"
     else:
         # Check if block has expired
         if state.get("no_trade_until"):
             until_dt = datetime.fromisoformat(state["no_trade_until"])
-            until_dt = until_dt.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) >= until_dt:
+            if until_dt.tzinfo is None:
+                until_dt = until_dt.replace(tzinfo=SYDNEY_TZ)
+            if datetime.now(SYDNEY_TZ) >= until_dt:
                 state["no_trade_until"] = None
                 print("ℹ️  Daily trade block expired — trading resumed")
         return f"✅ Daily loss: OK (${equity:,.2f} vs day start ${day_start:,.2f})"
@@ -303,7 +307,7 @@ def check_orphaned_orders(exchange: ccxt.Exchange, positions: list, open_orders:
 # ── Main ──────────────────────────────────────────────────────────────
 
 def main():
-    now_str = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC")
+    now_str = datetime.now(SYDNEY_TZ).strftime("%Y-%m-%d %H:%M %Z")
     print(f"Risk Guard — {now_str}")
     print("-" * 50)
 

@@ -31,8 +31,11 @@ import shutil
 import subprocess
 import argparse
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Optional, Tuple, List
+
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
 import numpy as np
 import pandas as pd
@@ -80,12 +83,12 @@ def get_exchange() -> ccxt.Exchange:
 
 def check_scanner_health() -> Tuple[str, bool]:
     """Count scanner runs in the last 24h from log files."""
-    now_utc = datetime.now(timezone.utc)
-    cutoff  = now_utc - timedelta(hours=24)
+    now_syd = datetime.now(SYDNEY_TZ)
+    cutoff  = now_syd - timedelta(hours=24)
 
     dates_to_check = [
-        now_utc.strftime("%Y-%m-%d"),
-        (now_utc - timedelta(days=1)).strftime("%Y-%m-%d"),
+        now_syd.strftime("%Y-%m-%d"),
+        (now_syd - timedelta(days=1)).strftime("%Y-%m-%d"),
     ]
 
     run_times = []
@@ -321,7 +324,7 @@ def check_volatility() -> Tuple[str, Optional[float]]:
         _save_state_key("last_atr",       round(float(current_atr), 2))
         _save_state_key("avg_atr_100",    round(avg_atr, 2))
         _save_state_key("atr_ratio",      round(ratio, 3))
-        _save_state_key("atr_updated_at", datetime.now(timezone.utc).isoformat())
+        _save_state_key("atr_updated_at", datetime.now(SYDNEY_TZ).isoformat())
 
         if ratio < 0.5:
             msg = (
@@ -357,7 +360,7 @@ def run_log_cleanup() -> str:
     lines = ["🧹 Log Cleanup"]
 
     # ── 1. Delete old log files ────────────────────────────────────
-    cutoff_30 = datetime.now(timezone.utc) - timedelta(days=30)
+    cutoff_30 = datetime.now(SYDNEY_TZ) - timedelta(days=30)
     deleted_logs = []
 
     if LOGS_DIR.exists():
@@ -380,7 +383,7 @@ def run_log_cleanup() -> str:
         lines.append("  No old log files to delete")
 
     # ── 2. Prune trade history older than 90 days ──────────────────
-    cutoff_90 = datetime.now(timezone.utc) - timedelta(days=90)
+    cutoff_90 = datetime.now(SYDNEY_TZ) - timedelta(days=90)
 
     if HISTORY_FILE.exists():
         try:
@@ -393,7 +396,9 @@ def run_log_cleanup() -> str:
 
             for t in history.get("trades", []):
                 try:
-                    entry_dt = datetime.fromisoformat(t["entry_time"]).replace(tzinfo=timezone.utc)
+                    entry_dt = datetime.fromisoformat(t["entry_time"])
+                    if entry_dt.tzinfo is None:
+                        entry_dt = entry_dt.replace(tzinfo=timezone.utc)
                     if entry_dt >= cutoff_90 or t.get("status") == "open":
                         kept_trades.append(t)
                     else:
@@ -440,7 +445,9 @@ def check_signal_drought() -> str:
     latest_dt = None
     for t in trades:
         try:
-            dt = datetime.fromisoformat(t["entry_time"]).replace(tzinfo=timezone.utc)
+            dt = datetime.fromisoformat(t["entry_time"])
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
             if latest_dt is None or dt > latest_dt:
                 latest_dt = dt
         except Exception:
@@ -449,7 +456,7 @@ def check_signal_drought() -> str:
     if latest_dt is None:
         return "ℹ️  Signal drought: Could not parse trade timestamps"
 
-    days_since = (datetime.now(timezone.utc) - latest_dt).days
+    days_since = (datetime.now(SYDNEY_TZ) - latest_dt).days
 
     if days_since >= 14:
         return (
@@ -583,7 +590,7 @@ def run_git_commit() -> str:
     env = os.environ.copy()
     env["PATH"] = f"{nvm_node_path}:{env.get('PATH', '')}"
 
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today = datetime.now(SYDNEY_TZ).strftime("%Y-%m-%d")
 
     try:
         # Check if there are changes to commit
@@ -640,19 +647,7 @@ def generate_weekly_report() -> str:
 
     Week = Monday 00:00 → Sunday 23:59 Sydney time.
     """
-    try:
-        from zoneinfo import ZoneInfo
-        sydney_tz = ZoneInfo("Australia/Sydney")
-    except Exception:
-        sydney_tz = None
-
-    now_utc = datetime.now(timezone.utc)
-
-    # Sydney-aware now
-    if sydney_tz:
-        now_syd = now_utc.astimezone(sydney_tz)
-    else:
-        now_syd = now_utc + timedelta(hours=11)
+    now_syd = datetime.now(SYDNEY_TZ)
 
     # Week start = last Monday
     days_since_monday = now_syd.weekday()  # 0=Mon, 6=Sun
@@ -661,8 +656,8 @@ def generate_weekly_report() -> str:
     )
     week_end_syd = week_start_syd + timedelta(days=7)
 
-    week_start_utc = week_start_syd.astimezone(timezone.utc) if sydney_tz else week_start_syd - timedelta(hours=11)
-    week_end_utc   = week_end_syd.astimezone(timezone.utc)   if sydney_tz else week_end_syd   - timedelta(hours=11)
+    week_start_utc = week_start_syd.astimezone(timezone.utc)
+    week_end_utc   = week_end_syd.astimezone(timezone.utc)
 
     week_label = (
         f"Week of {week_start_syd.strftime('%b %-d')}–"
@@ -686,7 +681,9 @@ def generate_weekly_report() -> str:
     week_trades = []
     for t in all_trades:
         try:
-            entry_dt = datetime.fromisoformat(t["entry_time"]).replace(tzinfo=timezone.utc)
+            entry_dt = datetime.fromisoformat(t["entry_time"])
+            if entry_dt.tzinfo is None:
+                entry_dt = entry_dt.replace(tzinfo=timezone.utc)
             if week_start_utc <= entry_dt < week_end_utc:
                 week_trades.append(t)
         except Exception:
@@ -738,16 +735,8 @@ def generate_weekly_report() -> str:
 # ════════════════════════════════════════════════════════════════════
 
 def main(args=None):
-    try:
-        from zoneinfo import ZoneInfo
-        sydney_tz = ZoneInfo("Australia/Sydney")
-        now_local = datetime.now(sydney_tz)
-        tz_label  = now_local.strftime("%Z")
-    except Exception:
-        now_local = datetime.now(timezone.utc)
-        tz_label  = "UTC"
-
-    now_str = now_local.strftime(f"%Y-%m-%d %H:%M {tz_label}")
+    now_local = datetime.now(SYDNEY_TZ)
+    now_str   = now_local.strftime("%Y-%m-%d %H:%M %Z")
 
     # Parse CLI flags
     parser = argparse.ArgumentParser(description="V20 General Manager")

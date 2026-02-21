@@ -38,6 +38,7 @@ import json
 import argparse
 import subprocess
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 
 import numpy as np
@@ -62,8 +63,7 @@ BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "hr3xN6ozshJJhFbgxs")
 BYBIT_SECRET  = os.getenv("BYBIT_SECRET",  "Q5LcRuP4XxcUiasxAZm76FKbdrCcoCFDRQy0")
 SYMBOL        = "BTC/USDT:USDT"
 
-# Sydney AEDT offset (UTC+11). DST-safe approximation — adjust to +10 if needed.
-AEDT_OFFSET = timedelta(hours=11)
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
 # 4H candle close times in UTC: 0, 4, 8, 12, 16, 20
 CANDLE_CLOSE_HOURS_UTC = {0, 4, 8, 12, 16, 20}
@@ -121,7 +121,7 @@ def load_state() -> dict:
 
 def save_state(state: dict):
     """Merge state with current file contents (preserves keys written by submodules)."""
-    state["last_run"] = datetime.now(timezone.utc).isoformat()
+    state["last_run"] = datetime.now(SYDNEY_TZ).isoformat()
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
 
     # Read current file to preserve keys written by submodules (e.g., ATR from volatility monitor)
@@ -147,8 +147,8 @@ def now_utc() -> datetime:
 
 
 def now_sydney() -> datetime:
-    """Current time in approximate Sydney AEDT (UTC+11)."""
-    return now_utc() + AEDT_OFFSET
+    """Current time in Sydney (Australia/Sydney), DST-aware."""
+    return datetime.now(SYDNEY_TZ)
 
 
 def is_4h_candle_close() -> bool:

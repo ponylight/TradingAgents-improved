@@ -15,8 +15,11 @@ Usage (standalone):
 import json
 import uuid
 from datetime import datetime, timezone, timedelta
+from zoneinfo import ZoneInfo
 from pathlib import Path
 from typing import Optional
+
+SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 
 import ccxt
 
@@ -142,7 +145,7 @@ def record_trade(signal_data, order_data: dict) -> dict:
     size_btc = float(entry_order.get("amount", 0) or 0)
 
     trade_id = str(uuid.uuid4())[:8]
-    now_iso  = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+    now_iso  = datetime.now(SYDNEY_TZ).strftime("%Y-%m-%dT%H:%M:%S")
 
     trade = {
         "id":          trade_id,
@@ -243,7 +246,7 @@ def update_trades(exchange: ccxt.Exchange) -> list[str]:
             exit_price   = current_price
 
         if close_reason and exit_price:
-            now_iso = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S")
+            now_iso = datetime.now(SYDNEY_TZ).strftime("%Y-%m-%dT%H:%M:%S")
 
             # Compute PnL (simplified: does not account for partial closes at TP1)
             if side == "long":
@@ -300,7 +303,9 @@ def get_week_trades(week_start: "datetime") -> list[dict]:
     result = []
     for t in trades:
         try:
-            entry_dt = datetime.fromisoformat(t["entry_time"]).replace(tzinfo=timezone.utc)
+            entry_dt = datetime.fromisoformat(t["entry_time"])
+            if entry_dt.tzinfo is None:
+                entry_dt = entry_dt.replace(tzinfo=timezone.utc)
             if week_start <= entry_dt < week_end:
                 result.append(t)
         except Exception:
