@@ -78,6 +78,15 @@ Post-capitulation base-building. Scale in cautiously.
 - **Sizing:** Start with 5-10% test position at 2-3x max. Pyramid adds using **floating profits only**. Each add smaller than previous
 - **Must use:** Trailing stop-losses (ATR-based) on all rolling positions
 
+### MVRV Z-Score (On-Chain Valuation)
+- **Source:** https://woocharts.com/bitcoin-mvrv-z/ (check via browser)
+- **Current (Feb 21, 2026):** -0.86 (below 0 = market cap below realized cap)
+- **Z < 0:** 🟢 Undervalued — strong accumulation zone. Historical bottoms.
+- **Z 0-2:** ⚪ Fair value — normal trading
+- **Z 3-5:** 🟡 Getting expensive — reduce leverage, tighten stops
+- **Z > 7:** 🔴 Extreme overvaluation — take profits, distribution regime
+- **Use:** Agents should check MVRV Z-Score as a regime confirmation signal. Also available as proxy in data pipeline (1-year price range position).
+
 ### NotebookLM Knowledge Base
 - **Notebook ID:** 9b6bf693-4196-4266-ad42-6a3e21ffa33b
 - **Query command:** `source ~/trading-agents-env/bin/activate && notebooklm use 9b6bf693-4196-4266-ad42-6a3e21ffa33b && notebooklm ask "<question>"`
