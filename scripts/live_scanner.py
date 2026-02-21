@@ -643,6 +643,25 @@ def main(dry_run: bool = False):
     print(f"  Candle time: {signal.candle_time}")
     print()
 
+    # 3.5. Risk Guard pre-trade check
+    try:
+        from scripts.risk_guard import load_state as rg_load_state
+        rg_state = rg_load_state()
+        no_trade = rg_state.get("no_trade_until")
+        if no_trade:
+            from datetime import timezone as _tz
+            until_dt = datetime.fromisoformat(no_trade).replace(tzinfo=_tz.utc)
+            if datetime.now(_tz.utc) < until_dt:
+                print(f"  🛡️ RISK GUARD: Trading BLOCKED until {no_trade} UTC (daily loss limit)")
+                print("  Signal detected but NOT executed. Skipping.")
+                return
+            else:
+                print("  🛡️ Risk Guard: Trade block expired, proceeding.")
+    except ImportError:
+        log.warning("Risk guard module not found — skipping pre-trade check")
+    except Exception as e:
+        log.warning(f"Risk guard pre-check failed: {e} — proceeding anyway")
+
     # 4. Get balance and calculate size
     exchange  = get_exchange()
     balance   = get_balance(exchange)
@@ -673,6 +692,15 @@ def main(dry_run: bool = False):
     print(alert_msg)
     print("----------------------\n")
     send_telegram(alert_msg)
+
+    # 7. Run Risk Guard post-trade check
+    try:
+        from scripts.risk_guard import main as risk_guard_main
+        print("\n--- Risk Guard Post-Check ---")
+        risk_guard_main()
+        print("-----------------------------\n")
+    except Exception as e:
+        log.warning(f"Risk guard post-check failed: {e}")
 
     print("✓ Scanner complete.")
     return signal
