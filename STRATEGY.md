@@ -182,7 +182,7 @@ Capture swing moves within the macro trend. Quick in, quick out.
 ## Current Positions
 | Category | Pair | Side | Entry | Size | SL | TP | Status |
 |----------|------|------|-------|------|-----|-----|--------|
-| — | — | — | — | — | — | — | No open positions |
+| Long-term | BTC/USDT | Long | $67,980 | 0.7 BTC | Cross margin | Trail 2x wATR | Test position (5%) |
 
 **Capital:** ~$170K USDT (demo). Long-term: $102K (60%). Short-term: $68K (40%).
 
