@@ -117,13 +117,16 @@ def check_scanner_health() -> Tuple[str, bool]:
                     pass
 
     run_times = sorted(set(run_times))
-    expected  = 6
-    actual    = len(run_times)
+    # 4H candles = 6/day, but only warn if we've missed more than 2 consecutive
+    # Calculate expected based on hours since first log today
+    hours_covered = (now_syd - cutoff).total_seconds() / 3600
+    expected = max(1, int(hours_covered / 4))
+    actual   = len(run_times)
 
-    if actual >= 4:
-        return f"✅ Scanner: {actual}/{expected} runs in last 24h", True
+    if actual >= max(1, expected - 2):
+        return f"✅ Scanner: {actual} runs in last 24h (expected ~{expected})", True
     else:
-        return f"⚠️  Scanner: Only {actual}/{expected} runs in last 24h — MISSING RUNS", False
+        return f"⚠️  Scanner: Only {actual} runs in last 24h (expected ~{expected}) — MISSING RUNS", False
 
 
 def check_bybit_api() -> Tuple[str, bool, Optional[float], Optional[ccxt.Exchange]]:
@@ -180,7 +183,7 @@ def check_orphaned_positions(exchange: Optional[ccxt.Exchange]) -> Tuple[str, bo
     return f"✅ Positions: {len(open_pos)} open, all have stop-loss orders", True
 
 
-CRON_JOBS_REQUIRED = ["v20-scanner", "morning-briefing"]
+CRON_JOBS_REQUIRED = ["v20-workflow"]
 
 
 def check_cron_health() -> Tuple[str, bool]:
