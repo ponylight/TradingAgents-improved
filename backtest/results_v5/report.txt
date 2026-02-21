@@ -1,0 +1,72 @@
+============================================================
+  BTC/USDT MACD REVERSAL BACKTEST — V5
+  V5: LEVERAGE (3x / 5x / 10x) on V3 base strategy
+============================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Candles:   8766 (4h bars)
+  Initial Capital: $10,000.00
+
+============================================================
+  PERFORMANCE SUMMARY
+============================================================
+
+  Final Equity:    $11,997.16
+  Total Return:    +19.97%
+  Max Drawdown:    8.59%
+  Sharpe Ratio:    0.60
+
+============================================================
+  TRADE STATISTICS
+============================================================
+
+  Total Trades:    7
+    Primary:       7
+    Rolling Adds:  0
+    Long Trades:   5  (PnL: $+141.11)
+    Short Trades:  2  (PnL: $+1,977.08)
+  Win Rate:        57.1%
+  Profit Factor:   3.22
+  R/R Ratio (TP1): 1:1.0
+
+  Avg Win:         $768.18
+  Avg Loss:        $-318.17
+  Largest Win:     $1,532.42
+  Largest Loss:    $-517.97
+
+  Avg Duration:    7.3 days (175 hours)
+
+============================================================
+  LEVERAGE DETAILS
+============================================================
+
+  Avg Leverage:    3.9x
+  Trades at 3x:    4  (base — no 123 Rule)
+  Trades at 5x:    3  (123 Rule confirmed)
+  Trades at 10x:   0  (123 Rule + near 365d low)
+
+  Liquidations:    0
+  Liquidation Loss:$0.00
+
+  Leverage rules:
+    Base:    3x for all entries
+    5x:      if 123 Rule confirmed (trendline break +
+             failed retest + pivot break)
+    10x:     if 123 Rule confirmed AND price within
+             20% of 365-day low (highest conviction)
+
+  Liquidation: force close when unrealised loss
+    exceeds margin (notional / leverage)
+
+============================================================
+  BASE STRATEGY: V3
+============================================================
+
+  - No shorts in bull market (price > 200 SMA)
+  - Rolling adds only near market bottoms (within 30% of 365d low)
+  - 50 SMA trend filter
+  - TP1 at 1:1 R/R, double divergence (strength >= 2)
+
+============================================================
+  Report generated: 2026-02-21 10:46:12
+============================================================

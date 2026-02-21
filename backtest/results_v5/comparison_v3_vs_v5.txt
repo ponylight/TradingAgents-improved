@@ -1,0 +1,57 @@
+================================================================================
+  BACKTEST COMPARISON: V3 (Unleveraged) vs V5 (Leveraged)
+================================================================================
+
+  Metric                               V3 (1x)           V5 (Lev)             Delta
+  ------------------------- ------------------ ------------------   ---------------
+
+  Total Return %                         4.67%             19.97%   (+15.30 ^^)
+  Final Equity              $       10,466.75 $       11,997.16   (1.1x)
+  Max Drawdown %                         2.07%              8.59%   (+6.52 vv)
+  Sharpe Ratio                            0.62               0.60   (-0.02 vv)
+  Win Rate %                            57.14%             57.14%   
+  Profit Factor                           3.26               3.22   (-0.04 vv)
+
+  Total Trades                               7                  7
+    Primary                                  7                  7
+    Rolling Adds                             0                  0
+    Long Trades                              5                  5
+    Short Trades                             2                  2
+
+  Long PnL                  $          108.94 $          141.11   (1.3x)
+  Short PnL                 $          385.96 $        1,977.08   (5.1x)
+
+  Avg Win                   $          178.41 $          768.18   (4.3x)
+  Avg Loss                  $          -72.92 $         -318.17   (4.4x)
+  Largest Win               $          310.21 $        1,532.42   (4.9x)
+  Largest Loss              $          -85.93 $         -517.97   (6.0x)
+  Avg Duration (days)                      7.3                7.3
+
+================================================================================
+  V5 LEVERAGE BREAKDOWN
+================================================================================
+
+  Average Leverage:     3.9x
+  Trades at 3x (base):  4
+  Trades at 5x (123):   3
+  Trades at 10x (max):  0
+  Liquidations:         0
+  Liquidation Losses:   $0.00
+
+================================================================================
+  NOTES
+================================================================================
+
+  V3 (unleveraged baseline):
+    - Spot trading (1x), no leverage
+    - Same signal generation, same filters
+
+  V5 (leveraged):
+    - Same V3 signals, but position sizes multiplied by leverage
+    - 3x base leverage on all entries
+    - 5x when 123 Rule pattern is confirmed
+    - 10x when 123 Rule + price within 20% of 365-day low
+    - Liquidation at margin exhaustion (notional / leverage)
+    - Commission on full notional exposure
+
+================================================================================

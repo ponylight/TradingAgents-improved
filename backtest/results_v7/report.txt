@@ -1,0 +1,78 @@
+=================================================================
+  BTC/USDT BACKTEST — V7
+  Mode 1: V6 MACD Reversal (3x/10x)
+  Mode 2: MMCrypto Bottom-Fishing (50x, max 5 attempts)
+=================================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Candles:   8766 (4h bars)
+  Initial Capital: $10,000.00
+
+=================================================================
+  COMBINED PERFORMANCE
+=================================================================
+
+  Final Equity:    $7,392.50
+  Total Return:    -26.08%
+  Max Drawdown:    55.49%
+  Sharpe Ratio:    -0.02
+  Total Trades:    47
+  Win Rate:        23.4%
+  Profit Factor:   0.78
+
+  Avg Win:         $643.41
+  Avg Loss:        $-253.53
+  Largest Win:     $1,819.29
+  Largest Loss:    $-2,887.32
+
+=================================================================
+  MODE 1: V6 MACD REVERSAL
+=================================================================
+
+  Total Trades:    7
+    Primary:       7
+    Rolling Adds:  0
+    Long:          5  (PnL: $-260.67)
+    Short:         2  (PnL: $+2,417.81)
+  Total PnL:       $+2,157.14
+  Win Rate:        57.1%
+  Avg Duration:    7.3 days
+
+  Avg Leverage:    6.0x
+  Trades at 3x:    4
+  Trades at 10x:   3
+  Liquidations:    0
+  Liquidation Loss:$0.00
+
+=================================================================
+  MODE 2: MMCRYPTO BOTTOM-FISHING
+=================================================================
+
+  Total Trades:    40
+    Base Entries:   34
+    Pyramid Adds:  6
+  Total PnL:       $-4,206.76
+  Win Rate:        17.5%
+  Avg Duration:    1.7 days
+
+  Entry Attempts:  34
+  Phase A Stops:   29  (stopped before +5%)
+  Successful Rides:5  (reached profit mode)
+  Cooldowns:       4  (5 fails → 30d disable)
+  Pyramid Adds:    6
+
+  Best Ride PnL:   $+701.75
+  Worst Stop PnL:  $-2,887.32
+
+  Mode 2 Rules:
+    Entry: price within 30% of 365d low + below SMA200 + wRSI<30
+    50x leverage, 2% capital as margin per attempt
+    SL just above liquidation price (~2% from entry)
+    Max 5 attempts (10% capital risk), then 30-day cooldown
+    Profit mode at +5%: trail to breakeven
+    2x ATR trailing stop, pyramid with floating profits
+    No fixed TP — ride until trailing stop hit
+
+=================================================================
+  Report generated: 2026-02-21 11:43:33
+=================================================================

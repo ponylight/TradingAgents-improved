@@ -1,0 +1,58 @@
+===============================================================================================
+  BACKTEST COMPARISON: V6 (MACD 3x/10x) vs V7 (V6 + MMCrypto Bottom-Fishing)
+===============================================================================================
+
+  Metric                                         V6                   V7             Delta
+  ---------------------------- -------------------- --------------------   ---------------
+
+  Total Return %                             34.26%              -26.08%   (-60.34 vv)
+  Final Equity                 $         13,425.74 $          7,392.50   (0.6x)
+  Max Drawdown %                             14.59%               55.49%   (+40.90 vv)
+  Sharpe Ratio                                 0.57                -0.02   (-0.59 vv)
+  Win Rate %                                 57.14%               23.40%   (-33.74 vv)
+  Profit Factor                                3.16                 0.78   (-2.38 vv)
+
+  Total Trades                                    7                   47
+
+===============================================================================================
+  V7 MODE BREAKDOWN
+===============================================================================================
+
+                                      Mode 1 (MACD)          Mode 2 (MM)
+                               -------------------- --------------------
+  Total Trades                                    7                   40
+  Total PnL                    $          2,157.14 $         -4,206.76
+  Win Rate %                                 57.14%               17.50%
+  Avg Duration (days)                           7.3                  1.7
+
+===============================================================================================
+  MODE 2 DETAILS (MMCrypto Bottom-Fishing)
+===============================================================================================
+
+  Entry Attempts:          34
+  Phase A Stops:           29  (stopped before +5%)
+  Successful Rides:        5  (caught the bottom)
+  Cooldowns Triggered:     4
+  Pyramid Adds:            6
+  Best Ride PnL:           $+701.75
+  Worst Stop PnL:          $-2,887.32
+
+===============================================================================================
+  STRATEGY DIFFERENCES
+===============================================================================================
+
+  V6 (MACD only):
+    - V3 MACD Reversal signals only
+    - 3x base, 10x with 123 Rule confirmed
+    - TP1 at 1:1 R/R, trailing stop after
+
+  V7 = V6 + MMCrypto Bottom-Fishing:
+    - Mode 1: identical to V6
+    - Mode 2: 50x bottom-fishing when price in oversold zone
+      * Entry: within 30% of 365d low + below SMA200 + wRSI<30
+      * 2% capital per attempt, max 5 attempts (10% risk)
+      * 30-day cooldown after 5 consecutive fails
+      * Profit mode at +5%: breakeven trail, pyramid adds
+      * 2x ATR trailing stop, no fixed TP
+
+===============================================================================================

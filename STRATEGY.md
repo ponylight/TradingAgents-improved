@@ -52,7 +52,7 @@ Post-capitulation base-building. Scale in cautiously.
 - **Resistance:** $69,000 (23.6% Fib), $74,500 (38.2% Fib)
 - **Invalidation:** Weekly close below $58,000 → regime shifts to Decline
 
-## Technical Entry Rules — V3 (Backtested: +4.67% return, 2.1% max DD, 3.26 PF)
+## Technical Entry Rules — V6 (Backtested: +34.26% return, 14.6% max DD, 3.16 PF, 57% WR)
 
 ### MACD Reversal Strategy (半木夏)
 - **MACD Settings:** Fast 13, Slow 34 (Fibonacci), focus on histogram only
@@ -86,9 +86,10 @@ Post-capitulation base-building. Scale in cautiously.
 ## Lessons Learned
 *(Updated weekly by Strategist)*
 - First trade: entered during Extreme Fear (7/100). Historical edge is strong but timing uncertain.
-- **Backtest V1→V3→V4 evolution:** Raw MACD divergence lost 24.2% over 4 years. V3 (+4.67%, 2.1% DD, 3.26 PF) is the best balance of return and selectivity. V4 (123 Rule as hard gate) improved win rate to 66.7% and PF to 4.60 but only 3 trades in 4 years — too restrictive. **Conclusion: Use V3 rules as entry, 123 Rule as leverage confidence booster.**
+- **Backtest evolution (V1→V7):** Raw MACD lost -24.2%. V3 filters (+4.67%). V6 with leverage 3x/10x = **+34.26% over 4 years** (final strategy). V4 123 Rule too restrictive as hard gate but great as leverage booster. V7 MMCrypto 50x bottom-fishing destroyed returns (-26%) — only works at massive capital scale, not $10K.
 - **Shorts are dangerous** — V1 shorts lost $1,299. Only short in confirmed bear (price < 200 SMA).
 - **Rolling works at bottoms** — rolling adds were the only profitable part of V1. Restricting to near 365-day lows makes it even better.
+- **MMCrypto lesson:** 50x leverage bottom-fishing with 5 liquidation budget sounds logical but backtests terribly on small accounts. 29/34 entries stopped out in 2022 bear. Don't copy whale strategies without whale capital.
 
 ## Weekly Review Schedule
 - **Sunday 8PM Sydney:** Strategist agent reviews week, updates this document

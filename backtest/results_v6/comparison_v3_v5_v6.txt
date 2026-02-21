@@ -1,0 +1,62 @@
+===============================================================================================
+  BACKTEST COMPARISON: V3 (Unleveraged) vs V5 (3x/5x/10x) vs V6 (3x/10x)
+===============================================================================================
+
+  Metric                               V3 (1x)       V5 (3/5/10x)         V6 (3/10x)       V6 vs V3
+  ------------------------- ------------------ ------------------ ------------------   ------------
+
+  Total Return %                         4.67%             19.97%             34.26%   (+29.59 ^^)
+  Final Equity              $       10,466.75 $       11,997.16 $       13,425.74   (1.3x)
+  Max Drawdown %                         2.07%              8.59%             14.59%   (+12.52 vv)
+  Sharpe Ratio                            0.62               0.60               0.57   (-0.05 vv)
+  Win Rate %                            57.14%             57.14%             57.14%   
+  Profit Factor                           3.26               3.22               3.16   (-0.10 vv)
+
+  Total Trades                               7                  7                  7
+    Primary                                  7                  7                  7
+    Rolling Adds                             0                  0                  0
+    Long Trades                              5                  5                  5
+    Short Trades                             2                  2                  2
+
+  Long PnL                  $          108.94 $          141.11 $         -439.44   (-4.0x)
+  Short PnL                 $          385.96 $        1,977.08 $        4,073.13   (10.6x)
+
+  Avg Win                   $          178.41 $          768.18 $        1,328.84   (7.4x)
+  Avg Loss                  $          -72.92 $         -318.17 $         -560.55   (7.7x)
+  Largest Win               $          310.21 $        1,532.42 $        3,064.84   (9.9x)
+  Largest Loss              $          -85.93 $         -517.97 $       -1,212.99   (14.1x)
+  Avg Duration (days)                      7.3                7.3                7.3
+
+===============================================================================================
+  LEVERAGE BREAKDOWN
+===============================================================================================
+
+                                            V5                 V6
+                            ------------------ ------------------
+  Avg Leverage                             3.9                6.0
+  Trades at 3x                               4                  4
+  Trades at 5x                               3                N/A
+  Trades at 10x                              0                  3
+  Liquidations                               0                  0
+  Liquidation Loss          $            0.00 $            0.00
+
+===============================================================================================
+  STRATEGY DIFFERENCES
+===============================================================================================
+
+  V3 (baseline, unleveraged):
+    - Spot trading (1x), no leverage
+    - Same signal generation, same filters
+
+  V5 (3-tier leverage):
+    - 3x base leverage on all entries
+    - 5x when 123 Rule pattern confirmed
+    - 10x when 123 Rule + price within 20% of 365-day low
+
+  V6 (simplified 2-tier leverage):
+    - 3x base leverage on all entries
+    - 10x when 123 Rule pattern confirmed (ANY price level)
+    - No 5x tier — binary 3x or 10x
+    - Removed near-bottom requirement for max leverage
+
+===============================================================================================

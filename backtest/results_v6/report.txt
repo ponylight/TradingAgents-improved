@@ -1,0 +1,71 @@
+============================================================
+  BTC/USDT MACD REVERSAL BACKTEST — V6
+  V6: SIMPLIFIED LEVERAGE (3x / 10x) on V3 base strategy
+============================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Candles:   8766 (4h bars)
+  Initial Capital: $10,000.00
+
+============================================================
+  PERFORMANCE SUMMARY
+============================================================
+
+  Final Equity:    $13,425.74
+  Total Return:    +34.26%
+  Max Drawdown:    14.59%
+  Sharpe Ratio:    0.57
+
+============================================================
+  TRADE STATISTICS
+============================================================
+
+  Total Trades:    7
+    Primary:       7
+    Rolling Adds:  0
+    Long Trades:   5  (PnL: $-439.44)
+    Short Trades:  2  (PnL: $+4,073.13)
+  Win Rate:        57.1%
+  Profit Factor:   3.16
+  R/R Ratio (TP1): 1:1.0
+
+  Avg Win:         $1,328.84
+  Avg Loss:        $-560.55
+  Largest Win:     $3,064.84
+  Largest Loss:    $-1,212.99
+
+  Avg Duration:    7.3 days (175 hours)
+
+============================================================
+  LEVERAGE DETAILS
+============================================================
+
+  Avg Leverage:    6.0x
+  Trades at 3x:    4  (base — no 123 Rule)
+  Trades at 10x:   3  (123 Rule confirmed)
+
+  Liquidations:    0
+  Liquidation Loss:$0.00
+
+  Leverage rules (V6 simplified):
+    Base:    3x for all entries
+    10x:     if 123 Rule confirmed (trendline break +
+             failed retest + pivot break)
+    No 5x tier — either 3x or 10x
+    No near-bottom requirement for 10x
+
+  Liquidation: force close when unrealised loss
+    exceeds margin (notional / leverage)
+
+============================================================
+  BASE STRATEGY: V3
+============================================================
+
+  - No shorts in bull market (price > 200 SMA)
+  - Rolling adds only near market bottoms (within 30% of 365d low)
+  - 50 SMA trend filter
+  - TP1 at 1:1 R/R, double divergence (strength >= 2)
+
+============================================================
+  Report generated: 2026-02-21 10:53:13
+============================================================
