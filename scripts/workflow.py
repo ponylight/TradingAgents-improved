@@ -89,31 +89,55 @@ def get_exchange():
 
 # ── State ──────────────────────────────────────────────────────────────────────
 
+# Keys owned by the workflow scheduler (not written by submodules)
+_WORKFLOW_KEYS = {
+    "last_scan_candle",
+    "last_briefing_date",
+    "last_gm_date",
+    "last_weekly_report_date",
+    "last_cleanup_date",
+    "last_drought_date",
+    "last_git_date",
+    "last_data_date",
+    "last_run",
+}
+
+
 def load_state() -> dict:
+    """Load ONLY workflow scheduling keys (ignores submodule keys like ATR)."""
+    defaults = {k: None for k in _WORKFLOW_KEYS}
     if STATE_FILE.exists():
         try:
             with open(STATE_FILE) as f:
-                return json.load(f)
+                raw = json.load(f)
+            # Only return keys we own
+            for k in _WORKFLOW_KEYS:
+                if k in raw:
+                    defaults[k] = raw[k]
         except (json.JSONDecodeError, IOError):
             pass
-    return {
-        "last_scan_candle":        None,
-        "last_briefing_date":      None,
-        "last_gm_date":            None,
-        "last_weekly_report_date": None,
-        "last_cleanup_date":       None,
-        "last_drought_date":       None,
-        "last_git_date":           None,
-        "last_data_date":          None,
-        "last_run":                None,
-    }
+    return defaults
 
 
 def save_state(state: dict):
+    """Merge state with current file contents (preserves keys written by submodules)."""
     state["last_run"] = datetime.now(timezone.utc).isoformat()
     STATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+    # Read current file to preserve keys written by submodules (e.g., ATR from volatility monitor)
+    existing = {}
+    if STATE_FILE.exists():
+        try:
+            with open(STATE_FILE) as f:
+                existing = json.load(f)
+        except Exception:
+            pass
+
+    # Merge: existing keys updated by state (our keys take precedence)
+    merged = {**existing, **state}
+
     with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2)
+        json.dump(merged, f, indent=2)
 
 
 # ── Timing Helpers ─────────────────────────────────────────────────────────────
