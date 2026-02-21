@@ -147,7 +147,7 @@ Capture swing moves within the broader trend. Quick entries, disciplined exits.
 ## Current Positions
 | Category | Pair | Side | Entry | Size | SL | TP1 | TP2 | TP3 | Status |
 |----------|------|------|-------|------|-----|-----|-----|-----|--------|
-| Short-term | BTC/USDT | Long | $68,164 | 0.037 BTC | $63,500 | $72,000 | $75,500 | $82,000 | Open |
+| Long-term | BTC/USDT | Long | $68,164 | 0.037 BTC | $63,500 | $72,000 | $75,500 | $82,000 | Open |
 
 ## Key Levels
 - **Support:** $60,000 (must hold), $63,500 (current stop)
