@@ -46,6 +46,24 @@ BYBIT_SECRET  = os.getenv("BYBIT_SECRET",  "Q5LcRuP4XxcUiasxAZm76FKbdrCcoCFDRQy0
 SYMBOL        = "BTC/USDT:USDT"
 INITIAL_CAPITAL = 169_751.0
 
+# 4H candle close hours UTC → workflow runs at :05 past these in Sydney
+CANDLE_CLOSE_HOURS_UTC = [0, 4, 8, 12, 16, 20]
+
+
+def _next_4h_scan() -> str:
+    """Calculate next 4H scan time in Sydney."""
+    from zoneinfo import ZoneInfo
+    now = datetime.now(timezone.utc)
+    for h in sorted(CANDLE_CLOSE_HOURS_UTC * 2):  # double to wrap next day
+        candidate = now.replace(hour=h % 24, minute=5, second=0, microsecond=0)
+        if h >= 24:
+            candidate += timedelta(days=1)
+            candidate = candidate.replace(hour=h % 24)
+        if candidate > now:
+            syd = candidate.astimezone(SYDNEY_TZ)
+            return syd.strftime("%H:%M %Z")
+    return "—"
+
 
 def _to_sydney(ts_str):
     """Convert a UTC timestamp string to Sydney time string for display."""
@@ -532,6 +550,7 @@ def api_data():
         "scanner": {
             "status":        "Active" if scanner_active else "Idle",
             "last_run":      last_scan_str,
+            "next_run":      _next_4h_scan(),
             "last_signal":   last_signal,
             "signals_today": signals_today,
             "signals_week":  signals_week,
@@ -918,6 +937,10 @@ HTML = r"""<!DOCTYPE html>
         <span class="card-val" id="scanner-last-run">—</span>
       </div>
       <div class="card-row">
+        <span class="card-key">Next scan</span>
+        <span class="card-val" id="scanner-next-run" style="color:var(--blue)">—</span>
+      </div>
+      <div class="card-row">
         <span class="card-key">Last signal</span>
         <span class="card-val" id="scanner-last-signal">No signal</span>
       </div>
@@ -1280,6 +1303,7 @@ function render(d) {
     scanPill.className = 'pill pill-dim';
   }
   el('scanner-last-run').textContent = sc.last_run || '—';
+  el('scanner-next-run').textContent = sc.next_run || '—';
   el('scanner-last-signal').textContent = sc.last_signal || 'No signal';
   el('scanner-last-signal').className = 'card-val ' + (sc.last_signal ? 'ok' : 'dim');
   el('scanner-counts').textContent = (sc.signals_today || 0) + ' / ' + (sc.signals_week || 0);
