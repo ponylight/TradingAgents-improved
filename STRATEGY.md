@@ -13,7 +13,9 @@ Use multiple on-chain and technical signals to determine market regime:
 | **MVRV Z-Score** | > 0 | < 0 | https://woocharts.com/bitcoin-mvrv-z/ |
 | **MVRV Ratio** | > 1.5 | < 1 | https://cryptoquant.com (free) |
 | **Weekly 200 SMA** | Price above | Price below | Chart |
+| **365-day MA** | Price above | Price below | Chart (key bear market resistance) |
 | **Fear & Greed** | > 40 | < 25 | alternative.me |
+| **Ichimoku Kumo (Weekly)** | Bullish cloud twist | Bearish cloud twist | Chart (Senkou Span A/B cross) |
 
 ### Secondary Signals
 | Signal | Bull | Bear | Source |
@@ -22,6 +24,8 @@ Use multiple on-chain and technical signals to determine market regime:
 | **Spot Taker CVD** | Buy Dominant | Sell Dominant | CryptoQuant |
 | **Stablecoin Supply Ratio** | Low (buying power) | High | CryptoQuant |
 | **Whale Order Size** | Big Whale Orders | Retail Orders | CryptoQuant |
+| **CQ Bull-Bear Cycle** | Bull phase | Bear phase | https://cryptoquant.com/community/dashboard/66934cb3840887109d27d4a3 |
+| **Exchange Inflows** | Low (accumulation) | High from large holders (distribution) | CryptoQuant |
 
 ### Regime Rules
 - **Bull confirmed:** 3+ primary signals agree = BULL
@@ -32,9 +36,13 @@ Use multiple on-chain and technical signals to determine market regime:
 - MVRV Z-Score: **-0.86** (BEAR)
 - MVRV Ratio: **1.24** (neutral — above 1 but below 1.5)
 - Weekly 200 SMA: **Below** (BEAR)
+- 365-day MA (~$101K): **Far below** (BEAR)
 - F&G: ~7 Extreme Fear (BEAR)
+- Ichimoku Kumo (Weekly): **Bearish twist** since late 2025 (BEAR)
+- CQ Bull-Bear Cycle: **Bear phase** since Oct 2025 (BEAR)
 - Spot Taker CVD: Buy Dominant (BULL signal)
-- **Regime: BEAR / Late Capitulation → potential Accumulation**
+- Exchange Inflows: Large holders distributing (BEAR)
+- **Regime: BEAR — but drawdown diminishing each cycle (75%→81%→74%→30% so far). Late-stage capitulation likely.**
 
 ---
 
