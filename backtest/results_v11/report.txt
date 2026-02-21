@@ -11,16 +11,36 @@
   COMBINED PERFORMANCE
 ======================================================================
 
-  Final Equity:    $10,185.52
-  Total Return:    +1.86%
-  Max Drawdown:    9.19%
-  Sharpe Ratio:    0.11
+  Final Equity:    $11,197.07
+  Total Return:    +11.97%
+  Max Drawdown:    30.94%
+  Sharpe Ratio:    0.26
 
 ======================================================================
   SYSTEM 1: LONG-TERM TREND (Weekly Charts, 60%)
 ======================================================================
 
-  No trades
+  Final Equity:    $7,011.55  (from $6,000)
+  Total Return:    +16.86%
+  Max Drawdown:    39.95%
+  Sharpe Ratio:    0.29
+  Win Rate:        27.3%
+  Profit Factor:   1.55
+
+  Total Trades:    11
+    Base Entries:  8
+    Rolling Adds:  3
+  Avg Win:         $1,957.74
+  Avg Loss:        $-474.71
+  Largest Win:     $4,064.89
+  Largest Loss:    $-970.12
+  Avg Duration:    65.5 days
+
+  Funding Paid:    $1,030.52
+
+  Leverage Tiers:  5x=8 | 10x=0 | 25x=0 | 50x=0
+  Liquidations:    0  (Loss: $0.00)
+  Shorts blocked:  0 (bull market filter)
 
 ======================================================================
   SYSTEM 2: SHORT-TERM TREND (4H Charts, 40%)
@@ -53,12 +73,12 @@
 ======================================================================
 
   SYSTEM 1 (Long-Term):
-    - Weekly MACD 13/34 double divergence
+    - Weekly MACD 13/34 divergence (classical + hidden)
     - Trend: long > weekly 50 SMA, short < weekly 50 SMA
     - Bull filter: price > weekly 200 SMA = NO SHORTS
     - Leverage: 5x/10x/25x/50x based on conviction + MVRV + 123 Rule
     - Rolling: inverted pyramid (150%/200%/250%) on pullbacks
-    - Exit: trailing stop at 2x weekly ATR, no fixed TP
+    - Exit: trailing stop at 3x weekly ATR, no fixed TP
     - Funding: 0.01% per 8h deducted
 
   SYSTEM 2 (Short-Term):
@@ -70,5 +90,5 @@
     - Max 2 rolling additions per trade
 
 ======================================================================
-  Report generated: 2026-02-21 13:11:45
+  Report generated: 2026-02-21 13:16:26
 ======================================================================

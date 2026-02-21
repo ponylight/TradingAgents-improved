@@ -58,7 +58,7 @@ FUNDING_RATE_PER_8H = 0.0001  # 0.01% per 8h
 LT_SWING_LOOKBACK = 4  # weekly bars for swing detection
 LT_MVRV_LOOKBACK = 52  # 52 weeks = ~1 year
 LT_MVRV_BOTTOM_PCT = 0.20  # bottom 20% of range = undervalued
-LT_TRAILING_ATR_MULT = 2.0
+LT_TRAILING_ATR_MULT = 3.0  # wider stop for weekly positions
 LT_ROLLING_SCALES = [1.5, 2.0, 2.5]  # inverted pyramid multipliers
 
 # ── System 2 (Short-Term) constants ──────────────────────────────────
@@ -186,6 +186,94 @@ def _check_123_short(idx, closes, highs, lows, atr_vals, swing_highs, swing_lows
         if closes[j] < pivot_val:
             return True
     return False
+
+
+def check_hidden_bottom_divergence(current_idx, hist, lows, lookback=100):
+    """Check for hidden bullish divergence: price higher lows + MACD lower lows.
+    This is a trend continuation signal in uptrends.
+    Returns (strength, peak_diff) or None."""
+    troughs = []
+    start = max(0, current_idx - lookback)
+    in_trough = False
+    trough_val = 0
+    trough_idx = 0
+
+    for j in range(start, current_idx):
+        if hist[j] < 0:
+            if not in_trough or hist[j] < trough_val:
+                trough_val = hist[j]
+                trough_idx = j
+            in_trough = True
+        else:
+            if in_trough and trough_val < 0:
+                troughs.append((trough_idx, trough_val))
+            in_trough = False
+            trough_val = 0
+
+    if in_trough and trough_val < 0:
+        troughs.append((trough_idx, trough_val))
+
+    if len(troughs) < 2:
+        return None
+
+    # Hidden bullish: price HIGHER lows + MACD LOWER lows
+    divergence_count = 0
+    for k in range(len(troughs) - 1):
+        t1_idx, t1_val = troughs[k]
+        t2_idx, t2_val = troughs[k + 1]
+        if lows[t2_idx] > lows[t1_idx] and t2_val < t1_val:
+            divergence_count += 1
+
+    if divergence_count == 0:
+        return None
+
+    last_two = troughs[-2:]
+    peak_diff = abs(abs(last_two[1][1]) - abs(last_two[0][1])) / abs(last_two[0][1])
+    return (min(divergence_count, 3), peak_diff)
+
+
+def check_hidden_top_divergence(current_idx, hist, highs, lookback=100):
+    """Check for hidden bearish divergence: price lower highs + MACD higher highs.
+    This is a trend continuation signal in downtrends.
+    Returns (strength, peak_diff) or None."""
+    peaks = []
+    start = max(0, current_idx - lookback)
+    in_peak = False
+    peak_val = 0
+    peak_idx = 0
+
+    for j in range(start, current_idx):
+        if hist[j] > 0:
+            if not in_peak or hist[j] > peak_val:
+                peak_val = hist[j]
+                peak_idx = j
+            in_peak = True
+        else:
+            if in_peak and peak_val > 0:
+                peaks.append((peak_idx, peak_val))
+            in_peak = False
+            peak_val = 0
+
+    if in_peak and peak_val > 0:
+        peaks.append((peak_idx, peak_val))
+
+    if len(peaks) < 2:
+        return None
+
+    # Hidden bearish: price LOWER highs + MACD HIGHER peaks
+    divergence_count = 0
+    for k in range(len(peaks) - 1):
+        p1_idx, p1_val = peaks[k]
+        p2_idx, p2_val = peaks[k + 1]
+        if highs[p2_idx] < highs[p1_idx] and p2_val > p1_val:
+            divergence_count += 1
+
+    if divergence_count == 0:
+        return None
+
+    last_two = peaks[-2:]
+    peak_diff = abs(last_two[0][1] - last_two[1][1]) / last_two[0][1]
+    return (min(divergence_count, 3), peak_diff)
 
 
 def check_bottom_divergence(current_idx, hist, lows, lookback=80):
@@ -465,21 +553,33 @@ class LongTermSystem:
                         and hist[i - 1] < 0
                         and hist[i - 1] < hist[i - 2]
                     )
-                    min_hist_size = closes[i] * 0.0005  # relaxed for weekly
+                    min_hist_size = closes[i] * 0.0005
                     if is_key_kline and abs(hist[i - 1]) > min_hist_size:
-                        div = check_bottom_divergence(i, hist, lows, lookback=40)
+                        # Check classical divergence first (strongest signal)
+                        div = check_bottom_divergence(i, hist, lows, lookback=80)
+                        # Also check hidden bullish divergence (trend continuation)
+                        # Hidden: price higher lows + MACD lower lows = uptrend continues
+                        hdiv = check_hidden_bottom_divergence(i, hist, lows, lookback=100)
+
+                        strength = 0
+                        peak_diff = 0
                         if div is not None:
-                            strength, peak_diff = div
-                            if strength >= 2 and peak_diff > 0.15:
-                                sl = lows[i] - atr[i] * LT_TRAILING_ATR_MULT
-                                signals.append({
-                                    "idx": i, "side": "long",
-                                    "entry_price": closes[i], "stop_loss": sl,
-                                    "strength": strength,
-                                    "time": self.weekly["timestamp"].iloc[i],
-                                })
-                                last_signal_idx = i
-                                self.stats["signals_generated"] += 1
+                            strength = div[0]
+                            peak_diff = div[1]
+                        elif hdiv is not None:
+                            strength = hdiv[0]
+                            peak_diff = hdiv[1]
+
+                        if strength >= 1 and peak_diff > 0.10:
+                            sl = lows[i] - atr[i] * LT_TRAILING_ATR_MULT
+                            signals.append({
+                                "idx": i, "side": "long",
+                                "entry_price": closes[i], "stop_loss": sl,
+                                "strength": strength,
+                                "time": self.weekly["timestamp"].iloc[i],
+                            })
+                            last_signal_idx = i
+                            self.stats["signals_generated"] += 1
 
             # ── SHORT SIGNAL (below weekly 50 SMA, not in bull) ──
             if hist[i] > 0 and i >= 3:
@@ -490,8 +590,9 @@ class LongTermSystem:
                             and hist[i - 1] > hist[i - 2]
                         )
                         if is_key_kline:
-                            div = check_top_divergence(i, hist, highs, lookback=40)
-                            if div is not None and div[0] >= 2:
+                            div = check_top_divergence(i, hist, highs, lookback=80)
+                            hdiv = check_hidden_top_divergence(i, hist, highs, lookback=100)
+                            if (div and div[0] >= 1) or (hdiv and hdiv[0] >= 1):
                                 self.stats["shorts_blocked_bull"] += 1
                     continue
 
@@ -502,19 +603,28 @@ class LongTermSystem:
                     )
                     min_hist_size = closes[i] * 0.0005
                     if is_key_kline and abs(hist[i - 1]) > min_hist_size:
-                        div = check_top_divergence(i, hist, highs, lookback=40)
+                        div = check_top_divergence(i, hist, highs, lookback=80)
+                        hdiv = check_hidden_top_divergence(i, hist, highs, lookback=100)
+
+                        strength = 0
+                        peak_diff = 0
                         if div is not None:
-                            strength, peak_diff = div
-                            if strength >= 2 and peak_diff > 0.15:
-                                sl = highs[i] + atr[i] * LT_TRAILING_ATR_MULT
-                                signals.append({
-                                    "idx": i, "side": "short",
-                                    "entry_price": closes[i], "stop_loss": sl,
-                                    "strength": strength,
-                                    "time": self.weekly["timestamp"].iloc[i],
-                                })
-                                last_signal_idx = i
-                                self.stats["signals_generated"] += 1
+                            strength = div[0]
+                            peak_diff = div[1]
+                        elif hdiv is not None:
+                            strength = hdiv[0]
+                            peak_diff = hdiv[1]
+
+                        if strength >= 1 and peak_diff > 0.10:
+                            sl = highs[i] + atr[i] * LT_TRAILING_ATR_MULT
+                            signals.append({
+                                "idx": i, "side": "short",
+                                "entry_price": closes[i], "stop_loss": sl,
+                                "strength": strength,
+                                "time": self.weekly["timestamp"].iloc[i],
+                            })
+                            last_signal_idx = i
+                            self.stats["signals_generated"] += 1
 
         return signals
 
@@ -583,15 +693,15 @@ class LongTermSystem:
             idx, sig["side"], sig["strength"]
         )
 
-        # Position sizing: use percentage of available capital
-        risk_pct = 0.10  # risk 10% of LT capital per trade
+        # Position sizing: conservative for weekly leveraged trades
+        risk_pct = 0.04  # risk 4% of LT capital per trade
         risk_amount = self.capital * risk_pct
         risk = abs(sig["entry_price"] - sig["stop_loss"])
         if risk <= 0:
             return
 
         base_size_btc = risk_amount / risk
-        max_base = (self.capital * 0.50) / sig["entry_price"]  # max 50% of capital as margin
+        max_base = (self.capital * 0.30) / sig["entry_price"]  # max 30% of capital as margin
         base_size_btc = min(base_size_btc, max_base)
 
         if base_size_btc * sig["entry_price"] < 10:
@@ -608,8 +718,13 @@ class LongTermSystem:
         # Liquidation price
         if sig["side"] == "long":
             liq_price = sig["entry_price"] * (1 - 1 / leverage)
+            # Ensure stop is always closer than liquidation (with 10% buffer)
+            max_stop = sig["entry_price"] - (sig["entry_price"] - liq_price) * 0.90
+            sig["stop_loss"] = max(sig["stop_loss"], max_stop)
         else:
             liq_price = sig["entry_price"] * (1 + 1 / leverage)
+            max_stop = sig["entry_price"] + (liq_price - sig["entry_price"]) * 0.90
+            sig["stop_loss"] = min(sig["stop_loss"], max_stop)
 
         # Track leverage tier
         if leverage >= 50:
@@ -745,46 +860,48 @@ class LongTermSystem:
             if trade.side == "long":
                 trade.highest_price = max(trade.highest_price, high)
 
-                # Liquidation check
+                # Update trailing stop first (3x weekly ATR from highest)
+                if w_atr > 0:
+                    new_trail = trade.highest_price - w_atr * LT_TRAILING_ATR_MULT
+                    trade.stop_loss = max(trade.stop_loss, new_trail)
+
+                # Check stops BEFORE liquidation (stop is always closer)
+                # Breakeven stop for adds
+                if trade.is_add and low <= trade.breakeven_stop:
+                    self._close_trade(trade, trade.breakeven_stop, idx, ts, "breakeven_stop")
+                    continue
+
+                # Trailing stop
+                if low <= trade.stop_loss:
+                    self._close_trade(trade, trade.stop_loss, idx, ts, "trailing_stop")
+                    continue
+
+                # Liquidation only if stop somehow didn't catch it (gap through)
                 if low <= trade.liquidation_price:
                     self.stats["liquidations"] += 1
                     self.stats["liquidation_loss"] += trade.margin
                     self._close_trade(trade, trade.liquidation_price, idx, ts, "liquidation")
                     continue
 
-                # Breakeven stop for adds
-                if trade.is_add and low <= trade.breakeven_stop:
-                    self._close_trade(trade, trade.breakeven_stop, idx, ts, "breakeven_stop")
-                    continue
-
-                # Trailing stop: 2x weekly ATR from highest
-                if w_atr > 0:
-                    new_trail = trade.highest_price - w_atr * LT_TRAILING_ATR_MULT
-                    trade.stop_loss = max(trade.stop_loss, new_trail)
-
-                if low <= trade.stop_loss:
-                    self._close_trade(trade, trade.stop_loss, idx, ts, "trailing_stop")
-                    continue
-
             else:  # short
                 trade.lowest_price = min(trade.lowest_price, low)
-
-                if high >= trade.liquidation_price:
-                    self.stats["liquidations"] += 1
-                    self.stats["liquidation_loss"] += trade.margin
-                    self._close_trade(trade, trade.liquidation_price, idx, ts, "liquidation")
-                    continue
-
-                if trade.is_add and high >= trade.breakeven_stop:
-                    self._close_trade(trade, trade.breakeven_stop, idx, ts, "breakeven_stop")
-                    continue
 
                 if w_atr > 0:
                     new_trail = trade.lowest_price + w_atr * LT_TRAILING_ATR_MULT
                     trade.stop_loss = min(trade.stop_loss, new_trail)
 
+                if trade.is_add and high >= trade.breakeven_stop:
+                    self._close_trade(trade, trade.breakeven_stop, idx, ts, "breakeven_stop")
+                    continue
+
                 if high >= trade.stop_loss:
                     self._close_trade(trade, trade.stop_loss, idx, ts, "trailing_stop")
+                    continue
+
+                if high >= trade.liquidation_price:
+                    self.stats["liquidations"] += 1
+                    self.stats["liquidation_loss"] += trade.margin
+                    self._close_trade(trade, trade.liquidation_price, idx, ts, "liquidation")
                     continue
 
     def _close_trade(self, trade: LTTrade, exit_price: float, idx: int,
@@ -1596,12 +1713,12 @@ def generate_report(lt_metrics: dict, st_metrics: dict, combined_eq: pd.DataFram
         sep,
         "",
         "  SYSTEM 1 (Long-Term):",
-        "    - Weekly MACD 13/34 double divergence",
+        "    - Weekly MACD 13/34 divergence (classical + hidden)",
         "    - Trend: long > weekly 50 SMA, short < weekly 50 SMA",
         "    - Bull filter: price > weekly 200 SMA = NO SHORTS",
         "    - Leverage: 5x/10x/25x/50x based on conviction + MVRV + 123 Rule",
         "    - Rolling: inverted pyramid (150%/200%/250%) on pullbacks",
-        "    - Exit: trailing stop at 2x weekly ATR, no fixed TP",
+        "    - Exit: trailing stop at 3x weekly ATR, no fixed TP",
         "    - Funding: 0.01% per 8h deducted",
         "",
         "  SYSTEM 2 (Short-Term):",

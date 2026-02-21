@@ -1,95 +1,125 @@
 # BTC/USDT TRADING STRATEGY
 *Last updated: 2026-02-21 by Canon*
 
-## Current Regime: ACCUMULATION
-Post-capitulation base-building. MVRV Z-Score: -0.86 (extreme undervalue).
+---
+
+## REGIME DETECTION (Bull vs Bear)
+
+Use multiple on-chain and technical signals to determine market regime:
+
+### Primary Signals
+| Signal | Bull | Bear | Source |
+|--------|------|------|--------|
+| **MVRV Z-Score** | > 0 | < 0 | https://woocharts.com/bitcoin-mvrv-z/ |
+| **MVRV Ratio** | > 1.5 | < 1 | https://cryptoquant.com (free) |
+| **Weekly 200 SMA** | Price above | Price below | Chart |
+| **Fear & Greed** | > 40 | < 25 | alternative.me |
+
+### Secondary Signals
+| Signal | Bull | Bear | Source |
+|--------|------|------|--------|
+| **SOPR** | > 1 (selling at profit) | < 1 (selling at loss) | CryptoQuant |
+| **Spot Taker CVD** | Buy Dominant | Sell Dominant | CryptoQuant |
+| **Stablecoin Supply Ratio** | Low (buying power) | High | CryptoQuant |
+| **Whale Order Size** | Big Whale Orders | Retail Orders | CryptoQuant |
+
+### Regime Rules
+- **Bull confirmed:** 3+ primary signals agree = BULL
+- **Bear confirmed:** 3+ primary signals agree = BEAR
+- **Transitional:** Mixed signals = reduce exposure, tighten stops
+
+### Current Status (Feb 21, 2026)
+- MVRV Z-Score: **-0.86** (BEAR)
+- MVRV Ratio: **1.24** (neutral — above 1 but below 1.5)
+- Weekly 200 SMA: **Below** (BEAR)
+- F&G: ~7 Extreme Fear (BEAR)
+- Spot Taker CVD: Buy Dominant (BULL signal)
+- **Regime: BEAR / Late Capitulation → potential Accumulation**
 
 ---
 
 ## DUAL-TIMEFRAME SYSTEM
-
-Two independent strategies running on separate capital allocations:
 
 | Category | Timeframe | Capital | Max Leverage | Duration |
 |----------|-----------|---------|-------------|----------|
 | **Long-Term Trend** | Weekly | 60% | 50x | Weeks to years |
 | **Short-Term Trend** | 4H | 40% | 10x | Hours to days |
 
-**Rules:** Each category manages its own P&L, stops, and positions independently. Never mix capital between categories.
-
 ---
 
 ## 📈 LONG-TERM TREND (Weekly Charts)
 
 ### Goal
-Catch major market cycle moves. Hold for weeks, months, or even years. Compound via rolling positions.
+Catch major cycle moves. Hold weeks to years. Compound via rolling.
 
-### Entry Rules
-- **MACD Divergence on WEEKLY:** Fast 13, Slow 34, histogram only. Double divergence minimum.
-- **Trend Filter:** Long only above Weekly 50 SMA. Short only below Weekly 50 SMA.
-- **Bull Market Filter (200 SMA):** When weekly price > 200 SMA → **NO SHORTS**.
-- **MVRV Z-Score confirmation:** Z < 0 = strong long signal. Z > 5 = distribution/exit.
-- **123 Rule as leverage booster:** If confirmed → increase leverage tier.
+### Entry Conditions (need 2+ to enter)
+1. **MVRV Z-Score < 0** — generational accumulation zone
+2. **MVRV Ratio < 1** — market cap below realized cap (holders underwater)
+3. **Weekly MACD 13/34** divergence (single or double) on histogram
+4. **123 Rule** trendline break confirmed
+5. **F&G < 15** — extreme fear / capitulation
+6. **SOPR < 1** — coins moving at a loss (capitulation selling)
+
+**Entry:** When 2+ conditions met, open long position.
+**More conditions = higher leverage tier.**
 
 ### Leverage Tiers
-| Conviction | Base Leverage | With 123 Rule |
-|-----------|-------------|--------------|
-| Normal setup | 5x | 10x |
-| Double divergence + bottom zone | 10x | 25x |
-| Triple divergence + MVRV < 0 + 123 confirmed | 25x | **50x** |
+| Conditions Met | Leverage |
+|---------------|---------|
+| 2 conditions | 5x |
+| 3 conditions | 10x |
+| 4 conditions | 25x |
+| 5-6 conditions | **50x** |
 
-**Hard cap: 50x.** Only at extreme conviction with multiple confirmations.
-
-### Rolling Positions (滚仓) — The Core Strategy
-- **When:** MVRV Z < 0 OR within 30% of 365-day low OR confirmed cycle bottom
-- **Inverted pyramid:** Each add LARGER as trend proves itself (150% → 200% → 250% of base)
+### Rolling Positions (滚仓)
+- **Trigger:** Position is +5% profitable AND regime still bearish/accumulation
+- **Inverted pyramid:** 150% → 200% → 250% of base size on each add
 - **Add on:** Weekly pullbacks to MA30, Fib 0.5-0.618, consolidation breakouts
-- **Confirm:** Big weekly candles + volume + price >2-3% beyond resistance. Fails to hold 3 weekly candles → exit add
-- **Funding:** Use floating profits only for adds. Never add new capital at risk
-- **Trailing stop:** 2x Weekly ATR from highest point reached
+- **Confirm:** Big weekly candles + volume + price >2-3% beyond resistance
+- **Funding:** Floating profits only. Never add new capital.
 - **Each add:** Protected at breakeven (entry price)
-
-### ⚠️ Funding Rate & Fee Management
-- **Monitor weekly funding rate cost.** At 0.01% per 8h = ~1.1% per month = ~13% per year
-- **If funding > 0.03% per 8h (bullish sentiment extreme):** Consider reducing leverage or hedging
-- **If funding negative (bearish sentiment):** You get PAID to hold longs — increase position confidence
-- **Rule:** If cumulative funding fees exceed 5% of position value, reassess hold vs. close
-- **Prefer low-fee exchanges** for long-duration holds
+- **Master trailing stop:** 2x Weekly ATR from highest point
 
 ### Exit Rules
-- **No fixed TP** — ride the trend. Let trailing stop close the position
-- **Regime shift to Distribution (MVRV > 5, RSI weekly > 70):** Begin scaling out 20% at a time
-- **Circuit breaker:** If drawdown from peak > 25%, reassess entire position
+- **No fixed TP** — ride the trend via trailing stop
+- **Scale out when regime shifts to Bull:** MVRV > 3, F&G > 75 → take 20% off at a time
+- **MVRV > 3.7:** Begin aggressive distribution
+- **Circuit breaker:** Drawdown > 25% from peak → reassess
 
-### Regime Rules (Long-Term)
-| Regime | Action | Max Leverage | MVRV Zone |
-|--------|--------|-------------|-----------|
-| Accumulation | Scale in + rolling | 25-50x | Z < 0 |
-| Markup | Hold + add on pullbacks | 10-25x | Z 0-3 |
-| Distribution | Scale out gradually | 1-5x | Z 3-5 |
-| Decline | Cash or hedge | 1x short max | Z > 5 then falling |
+### ⚠️ Funding Rate Management
+- Monitor funding rate weekly. At 0.01%/8h ≈ 13%/year
+- **Funding > 0.03%/8h:** Reduce leverage or hedge
+- **Funding negative:** Getting PAID to hold — increase confidence
+- **Cumulative funding > 5% of position:** Reassess hold vs. close
 
 ---
 
 ## ⚡ SHORT-TERM TREND (4H Charts)
 
 ### Goal
-Capture swing moves within the broader trend. Quick entries, disciplined exits.
+Capture swing moves within the macro trend. Quick in, quick out.
 
-### Entry Rules — V6 MACD Strategy (Backtested: +34.26% over 4 years)
-- **MACD Settings:** Fast 13, Slow 34 (Fibonacci), histogram only
-- **Long Entry:** Price new lows + MACD histogram double bottom divergence → Key K-line (dark red → light red)
-- **Short Entry:** Price new highs + double top divergence → dark green → light green
-- **Trend Filter (50 SMA on 4H):** Long only above, short only below
-- **Bull Market Filter (200 SMA on 4H):** Price > 200 SMA → NO SHORTS
-- **Filter:** Histogram peak height diff >30%. Double divergence required.
+### Direction Rule
+- **Bull regime:** LONG ONLY. No shorts.
+- **Bear regime:** SHORT ONLY. No longs.
+- Regime determined by the signals table above (3+ primary must agree).
 
-### Entry Rules — Natural Trading Theory (Fibonacci)
-- **Space:** Enter at Fibonacci gravity points (0.382, 0.618)
-- **Time:** Fibonacci Trend Time alignment (long-short-long rhythm)
-- **Energy:** K-line volume confirmation (absolute/relative strength)
-- **Entry:** All three (space + time + energy) must align
-- **Timeframes:** 1H/2H for precision, 4H for confirmation
+### Entry Methods
+
+**Method A: MACD Reversal (V6 — backtested +34.26%)**
+- MACD 13/34 histogram, double divergence minimum on 4H
+- Trend filter: 4H 50 SMA direction
+- Stop-loss: ATR(14) based. Never exceed 3%.
+- Exit: Half at 1:1 R/R, trail rest
+
+**Method B: Natural Trading Theory (Fibonacci)**
+- Space: Fibonacci gravity points (0.382, 0.618)
+- Time: Fibonacci Trend Time alignment
+- Energy: K-line volume confirmation
+- Entry: All three align
+- Timeframe: 1H/2H for precision, 4H confirmation
+- Stop-loss: Never exceed 3%
+- Exit: Batch profit-taking (20-30% per 1% move, 3-5 times)
 
 ### Leverage (Short-Term)
 | Conviction | Leverage |
@@ -98,75 +128,60 @@ Capture swing moves within the broader trend. Quick entries, disciplined exits.
 | 7-8/10 | 3-5x |
 | 9-10/10 | 5-10x |
 
-**Hard cap: 10x** for short-term trades.
-
-### Stop-Loss & Exit (Short-Term)
-- **Stop-loss:** ATR-based. Key K-line low minus ATR(14). **Never exceed 3% price movement.**
-- **Exit option A:** Half at 1:1 R/R, trail rest
-- **Exit option B (Natural Trading Theory):** Batch profit-taking — 20-30% off for every 1% move, repeated 3-5 times
-- **Max 2 additions** per short-term trade (strict limit)
-- **Position adds:** Only with floating profits, each smaller than previous
-
-### Regime Rules (Short-Term)
-- **Bull market (price > 200 SMA weekly):** LONG ONLY. No shorts.
-- **Bear market (price < 200 SMA weekly):** SHORT ONLY. No longs.
-- Trade WITH the macro trend, not against it. Short-term captures pullbacks/bounces within the larger trend.
-- Short-term trades use separate capital — do NOT conflict with long-term positions.
+**Hard cap: 10x.** Max 2 additions per trade.
 
 ---
 
 ## 🔧 SHARED RULES
 
-### MVRV Z-Score (On-Chain Valuation)
-- **Source:** https://woocharts.com/bitcoin-mvrv-z/
-- **Current (Feb 21, 2026):** -0.86 (extreme undervalue)
-- **Z < 0:** 🟢 Strong accumulation. Long-term: max aggression. Short-term: long bias.
-- **Z 0-2:** ⚪ Fair value. Normal trading both timeframes.
-- **Z 3-5:** 🟡 Expensive. Long-term: start scaling out. Short-term: reduce leverage.
-- **Z > 7:** 🔴 Extreme. Long-term: distribution mode. Short-term: short bias.
+### Portfolio
+- **Reserve:** Always keep 20% in cash (USDT)
+- **Long-term:** 60% of trading capital
+- **Short-term:** 40% of trading capital
+- **Drawdown breaker:** Account -15% from peak → flatten all
+- **Daily loss limit (short-term):** -3% → no new trades 24h
 
-### Trend Reversal Detection (123 Rule + 2B Rule)
-- **123 Rule:** (1) Trendline break → (2) Failed retest → (3) Pivot break
-- **2B Rule:** Fakeout reversal entry with tight stop
-- **Usage:** Confidence booster for leverage decisions in BOTH timeframes
+### Risk Management (McDowell Rules)
+- **2% max risk per trade** (margin at risk)
+- **Stop-loss set BEFORE entry** — mandatory
+- **Divide account into 20-50 parts** for position sizing
+- **Track win rate + R/R** to ensure Risk of Ruin = 0
+- **Trading journal:** agent_memory.json logs all decisions
 
-### Portfolio Rules
-- **Reserve:** Always keep 20% in cash (USDT) — combined across both categories
-- **Long-term allocation:** 60% of trading capital
-- **Short-term allocation:** 40% of trading capital
-- **Drawdown circuit breaker:** Account -15% from peak → flatten all, review
-- **Daily loss limit (short-term only):** -3% of short-term capital → no new short-term trades for 24h
+### Data Sources (Free)
+| Data | Source | How |
+|------|--------|-----|
+| MVRV Z-Score | woocharts.com | Browser scrape |
+| MVRV Ratio | CryptoQuant | Browser scrape (1.2399 visible) |
+| SOPR / CVD / Leverage | CryptoQuant | Browser scrape |
+| F&G Index | alternative.me | API (free) |
+| OHLCV / Indicators | Bybit/Binance | ccxt (free) |
+| Funding Rate | Bybit | ccxt (free) |
+| MVRV Proxy | CoinGecko | API (free, in pipeline) |
+| Strategy KB | NotebookLM | notebooklm CLI |
 
 ### NotebookLM Knowledge Base
 - **Notebook ID:** 9b6bf693-4196-4266-ad42-6a3e21ffa33b
-- **Query command:** `source ~/trading-agents-env/bin/activate && notebooklm use 9b6bf693-4196-4266-ad42-6a3e21ffa33b && notebooklm ask "<question>"`
-- Agents should query for strategy clarification before trading decisions
+- **Query:** `source ~/trading-agents-env/bin/activate && notebooklm use 9b6bf693-4196-4266-ad42-6a3e21ffa33b && notebooklm ask "<question>"`
 
 ---
 
 ## Current Positions
-| Category | Pair | Side | Entry | Size | SL | TP1 | TP2 | TP3 | Status |
-|----------|------|------|-------|------|-----|-----|-----|-----|--------|
-| — | — | — | — | — | — | — | — | — | No open positions |
+| Category | Pair | Side | Entry | Size | SL | TP | Status |
+|----------|------|------|-------|------|-----|-----|--------|
+| — | — | — | — | — | — | — | No open positions |
 
 **Capital:** ~$170K USDT (demo). Long-term: $102K (60%). Short-term: $68K (40%).
-
-*Note: SL updated to $66,200 (actual Bybit position SL, confirmed Feb 21 analysis)*
-
-## Key Levels
-- **Support:** $60,000 (must hold), $65,000 (consolidation floor), $66,200 (current stop)
-- **Resistance:** $68,956 (23.6% Fib), $69,751 (BB midline), $72,000 (TP1), $77,423 (BB upper)
-- **Invalidation:** Weekly close below $60,000 → regime shifts to Decline
 
 ---
 
 ## Lessons Learned
-- **Backtest evolution (V1→V10):** V6 is the champion for short-term (+34.26%, 4yr). Rolling adds never triggered on 4H — needs weekly timeframe or active monitoring.
-- **Shorts are dangerous** — only short in confirmed bear (price < 200 SMA).
-- **Rolling works at bottoms** — best done on weekly charts with patient holds.
-- **MMCrypto lesson:** 50x bottom-fishing works conceptually but needs graduated entry (V8) not flat 50x (V7).
-- **Funding rates matter** for long-duration positions. Monitor weekly.
-- **Dual-timeframe** prevents mixing long-term conviction with short-term noise.
+- **Backtest V1→V11:** V6 MACD on 4H = best short-term (+34.26%). Weekly signals too rare for frequent trading but perfect for long-term holds.
+- **Rolling positions** need weekly timeframe + patience. Never triggered on 4H backtests.
+- **Shorts are dangerous** in bull markets. Always trade WITH the macro trend.
+- **MMCrypto 50x bottom-fishing** only works with graduated leverage (V8), not flat 50x.
+- **Funding rates** are a hidden tax on long-duration leveraged positions. Monitor weekly.
+- **Regime detection** is more important than entry timing. Right direction > perfect entry.
 
 ## Weekly Review Schedule
-- **Sunday 8PM Sydney:** Strategist agent reviews week, updates this document
+- **Sunday 8PM Sydney:** Strategist agent reviews week, updates regime + this document
