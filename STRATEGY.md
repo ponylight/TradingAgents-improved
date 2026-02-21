@@ -121,9 +121,12 @@ Once base is +100%:
 - Applies to base position
 - When base stops out → ALL adds close at market
 
-**Scale-out (optional):**
+**Scale-out (mandatory):**
+- **Account equity hits 100x starting capital → take 50% off ALL positions**
+- **Account equity hits 200x → take another 50% (keep 25% riding)**
 - MVRV > 2.5 → take 20% off each position
 - MVRV > 3.5 → aggressive exit (close all)
+- **Withdraw profits to cold storage at each milestone. Don't let 221x become 69x.**
 
 ### Risk Budget
 - Each liquidated bullet = 5% of equity
