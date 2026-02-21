@@ -1,0 +1,74 @@
+======================================================================
+  BACKTEST V13 — LONG-TERM WEEKLY (LOOSENED ENTRY)
+======================================================================
+
+STRATEGY: Long-only weekly, 4 entry conditions (ANY 1 sufficient)
+CONDITIONS:
+  1. MVRV proxy < 0.8
+  2. Price within 30% of 365d low + fear proxy (below SMA50 declining 3w)
+  3. Weekly MACD 13/34 single divergence
+  4. Price crosses above 20-week SMA from below
+CAPITAL:  $6,000
+PERIOD:   ~4 years of BTC/USDT weekly data
+
+── PERFORMANCE ──────────────────────────────────────────
+  Final Equity:     $5,603.23
+  Total Return:     -6.61%
+  Max Drawdown:     11.24%
+  Sharpe Ratio:     -0.33
+  Profit Factor:    0.67
+  Win Rate:         42.9%
+
+── TRADE SUMMARY ────────────────────────────────────────
+  Total Trades:     7
+  Base Trades:      7
+  Rolling Adds:     0
+  Winning:          3
+  Losing:           4
+  Avg Win:          $176.50
+  Avg Loss:         $-196.69
+  Largest Win:      $237.04
+  Largest Loss:     $-287.47
+  Avg Duration:     36.0 days
+
+── LEVERAGE DISTRIBUTION ─────────────────────────────────
+  5x trades:        7
+  10x trades:       0
+  25x trades:       0
+  50x trades:       0
+
+── COSTS & RISK ─────────────────────────────────────────
+  Total Funding:    $128.15
+  Gross PnL:        $-257.25
+  Net (after fund): $-385.40
+  Liquidations:     0
+  Liquidation Loss: $0.00
+  Scale Outs:       0
+  Aggressive Exits: 0
+
+── TRADE LOG ────────────────────────────────────────────
+  [2023-06-18] ENTRY: $26,340 | 5x | margin=$298 | conds=1 (SMA20_cross) | SL=$21,599 | liq=$21,072
+  [2023-06-25] EXIT (trailing_stop): $26,337 | pnl=$-2 | funding=$4 | add=0
+  [2023-10-01] ENTRY: $27,993 | 5x | margin=$452 | conds=1 (SMA20_cross) | SL=$24,280 | liq=$22,394
+  [2023-10-29] EXIT (trailing_stop): $30,833 | pnl=$227 | funding=$20 | add=0
+  [2024-07-21] ENTRY: $68,165 | 5x | margin=$342 | conds=1 (SMA20_cross) | SL=$55,896 | liq=$54,532
+  [2024-08-04] EXIT (trailing_stop): $57,253 | pnl=$-276 | funding=$7 | add=0
+  [2024-09-22] ENTRY: $63,579 | 5x | margin=$246 | conds=1 (SMA20_cross) | SL=$52,135 | liq=$50,863
+  [2024-11-10] EXIT (trailing_stop): $67,045 | pnl=$66 | funding=$19 | add=0
+  [2025-04-27] ENTRY: $93,749 | 5x | margin=$291 | conds=1 (SMA20_cross) | SL=$76,874 | liq=$74,999
+  [2025-08-31] EXIT (trailing_stop): $109,118 | pnl=$237 | funding=$65 | add=0
+  [2025-10-26] ENTRY: $114,559 | 5x | margin=$400 | conds=1 (SMA20_cross) | SL=$96,995 | liq=$91,648
+  [2025-11-16] EXIT (trailing_stop): $98,183 | pnl=$-287 | funding=$11 | add=0
+  [2026-02-01] ENTRY: $76,968 | 5x | margin=$246 | conds=1 (MVRV<0.8) | SL=$63,114 | liq=$61,575
+  [2026-02-08] EXIT (trailing_stop): $63,114 | pnl=$-222 | funding=$2 | add=0
+
+── TRADE DETAILS ────────────────────────────────────────
+  #1: 2023-06-18 → 2023-06-25 | $26,340 → $26,337 | 5x | PnL=$-1.65 | funding=$3.62 | trailing_stop | conds: SMA20_cross
+  #2: 2023-10-01 → 2023-10-29 | $27,993 → $30,833 | 5x | PnL=$226.78 | funding=$20.27 | trailing_stop | conds: SMA20_cross
+  #3: 2024-07-21 → 2024-08-04 | $68,165 → $57,253 | 5x | PnL=$-275.55 | funding=$6.67 | trailing_stop | conds: SMA20_cross
+  #4: 2024-09-22 → 2024-11-10 | $63,579 → $67,045 | 5x | PnL=$65.67 | funding=$19.37 | trailing_stop | conds: SMA20_cross
+  #5: 2025-04-27 → 2025-08-31 | $93,749 → $109,118 | 5x | PnL=$237.04 | funding=$64.52 | trailing_stop | conds: SMA20_cross
+  #6: 2025-10-26 → 2025-11-16 | $114,559 → $98,183 | 5x | PnL=$-287.47 | funding=$11.34 | trailing_stop | conds: SMA20_cross
+  #7: 2026-02-01 → 2026-02-08 | $76,968 → $63,114 | 5x | PnL=$-222.07 | funding=$2.36 | trailing_stop | conds: MVRV<0.8
+
+======================================================================

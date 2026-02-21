@@ -1,0 +1,54 @@
+======================================================================
+  BACKTEST V12 — LONG-TERM WEEKLY ACCUMULATION STRATEGY
+======================================================================
+
+STRATEGY: Long-only weekly, 5 entry conditions (need 2+)
+CAPITAL:  $6,000
+PERIOD:   ~4 years of BTC/USDT weekly data
+
+── PERFORMANCE ──────────────────────────────────────────
+  Final Equity:     $5,656.37
+  Total Return:     -5.73%
+  Max Drawdown:     7.97%
+  Sharpe Ratio:     -0.43
+  Profit Factor:    0.00
+  Win Rate:         0.0%
+
+── TRADE SUMMARY ────────────────────────────────────────
+  Total Trades:     2
+  Base Trades:      2
+  Rolling Adds:     0
+  Winning:          0
+  Losing:           2
+  Avg Win:          $0.00
+  Avg Loss:         $-145.12
+  Largest Win:      $-85.73
+  Largest Loss:     $-204.51
+  Avg Duration:     52.5 days
+
+── LEVERAGE DISTRIBUTION ─────────────────────────────────
+  5x trades:        2
+  10x trades:       0
+  25x trades:       0
+  50x trades:       0
+
+── COSTS & RISK ─────────────────────────────────────────
+  Total Funding:    $49.69
+  Gross PnL:        $-290.25
+  Net (after fund): $-339.94
+  Liquidations:     0
+  Liquidation Loss: $0.00
+  Scale Outs:       0
+  Aggressive Exits: 0
+
+── TRADE LOG ────────────────────────────────────────────
+  [2025-09-14] ENTRY: $115,268 | 5x | margin=$458 | conds=2 (MACD_div|123_rule) | SL=$100,183 | liq=$92,214
+  [2025-10-12] EXIT (trailing_stop): $111,068 | pnl=$-86 | funding=$19 | add=0
+  [2025-11-16] ENTRY: $94,261 | 5x | margin=$279 | conds=2 (123_rule|SOPR_cap) | SL=$77,294 | liq=$75,409
+  [2026-02-01] EXIT (trailing_stop): $80,531 | pnl=$-205 | funding=$30 | add=0
+
+── TRADE DETAILS ────────────────────────────────────────
+  #1: 2025-09-14 → 2025-10-12 | $115,268 → $111,068 | 5x | PnL=$-85.73 | funding=$19.46 | trailing_stop | conds: MACD_div|123_rule
+  #2: 2025-11-16 → 2026-02-01 | $94,261 → $80,531 | 5x | PnL=$-204.51 | funding=$30.23 | trailing_stop | conds: 123_rule|SOPR_cap
+
+======================================================================

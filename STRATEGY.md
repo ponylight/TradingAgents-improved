@@ -60,24 +60,24 @@ Use multiple on-chain and technical signals to determine market regime:
 ### Goal
 Catch major cycle moves. Hold weeks to years. Compound via rolling.
 
-### Entry Conditions (need 2+ to enter)
-1. **MVRV Z-Score < 0** — generational accumulation zone
-2. **MVRV Ratio < 1** — market cap below realized cap (holders underwater)
-3. **Weekly MACD 13/34** divergence (single or double) on histogram
-4. **123 Rule** trendline break confirmed
-5. **F&G < 15** — extreme fear / capitulation
-6. **SOPR < 1** — coins moving at a loss (capitulation selling)
+### Entry Conditions (ANY one is sufficient to enter)
+1. **MVRV Z-Score < 0** — alone is enough (historically always a good buy)
+2. **Price within 30% of 365-day low + F&G < 25** — fear + discount combo
+3. **Weekly MACD 13/34 divergence** — single divergence sufficient (histogram bottoming)
+4. **Price reclaims 20-week SMA from below** — trend reversal confirmation
 
-**Entry:** When 2+ conditions met, open long position.
-**More conditions = higher leverage tier.**
+**Entry:** When ANY condition is met, open long position.
+**More signals aligning = higher leverage tier.**
 
-### Leverage Tiers
-| Conditions Met | Leverage |
-|---------------|---------|
-| 2 conditions | 5x |
-| 3 conditions | 10x |
-| 4 conditions | 25x |
-| 5-6 conditions | **50x** |
+### Leverage Tiers (Time-Based Scaling)
+| Time Profitable | Leverage | Action |
+|----------------|---------|--------|
+| Entry | 5x | Test position (5% of capital) |
+| 2 weeks profitable | 10x | Add 150% of base |
+| 1 month profitable | 25x | Add 200% of base |
+| 3+ months profitable | **50x** | Add 250% of base |
+
+**Only increase leverage when position is profitable.** If position goes negative, hold current level — never add to a loser.
 
 ### Rolling Positions (滚仓)
 - **Trigger:** Position is +5% profitable AND regime still bearish/accumulation
@@ -113,8 +113,8 @@ Catch major cycle moves. Hold weeks to years. Compound via rolling.
 Capture swing moves within the macro trend. Quick in, quick out.
 
 ### Direction Rule
-- **Bull regime:** LONG ONLY. No shorts.
-- **Bear regime:** SHORT ONLY. No longs.
+- **No hard direction restriction.** Trade both long and short based on MACD/Fibonacci signals.
+- **Leverage bias:** Trading WITH macro trend → up to 10x. Trading AGAINST → max 3x, tighter stop.
 - Regime determined by the signals table above (3+ primary must agree).
 
 ### Entry Methods
