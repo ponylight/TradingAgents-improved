@@ -1,0 +1,86 @@
+======================================================================
+  BACKTEST V14 — TIME-BASED LEVERAGE SCALING
+======================================================================
+
+STRATEGY: Long-only weekly, 5 entry conditions (ANY 1 sufficient)
+CONDITIONS:
+  1. MVRV proxy < 0.8
+  2. Price within 30% of 365d low + fear proxy
+  3. Weekly MACD 13/34 single divergence
+  4. Price crosses above 20-week SMA from below
+  5. Price within 20% of 52-week low (NEW)
+
+LEVERAGE SCALING (time-based):
+  Entry:     5x  (test position, 5% capital)
+  +2 weeks:  10x (add 150% base size)
+  +4 weeks:  25x (add 200% base size)
+  +12 weeks: 50x (add 250% base size)
+  Only adds when position is profitable.
+
+TRAILING STOP: 3x weekly ATR (wider than V13's 2x)
+CAPITAL:  $6,000
+PERIOD:   ~4 years of BTC/USDT weekly data
+
+── PERFORMANCE ──────────────────────────────────────────
+  Final Equity:     $7,010.56
+  Total Return:     +16.84%
+  Max Drawdown:     14.61%
+  Sharpe Ratio:     0.43
+  Profit Factor:    3.14
+  Win Rate:         50.0%
+
+── TRADE SUMMARY ────────────────────────────────────────
+  Total Trades:     6
+  Base Trades:      6
+  Time-Based Adds:  0
+  Winning:          3
+  Losing:           3
+  Avg Win:          $731.86
+  Avg Loss:         $-233.08
+  Largest Win:      $1,520.43
+  Largest Loss:     $-333.90
+  Avg Duration:     117.8 days
+
+── LEVERAGE DISTRIBUTION ─────────────────────────────────
+  5x trades:        6
+  10x trades:       0
+  25x trades:       0
+  50x trades:       0
+
+── MILESTONE ADD STATS ──────────────────────────────────
+  Attempts:         24
+  Skipped (unprof): 13
+  Skipped (liq):    11
+
+── COSTS & RISK ─────────────────────────────────────────
+  Total Funding:    $475.56
+  Gross PnL:        $1,496.33
+  Net (after fund): $1,020.77
+  Liquidations:     0
+  Liquidation Loss: $0.00
+  Scale Outs:       0
+  Aggressive Exits: 0
+
+── TRADE LOG ────────────────────────────────────────────
+  [2023-06-18] ENTRY: $26,340 | 5x (test) | margin=$300 | size=0.0569 BTC | conds=1 (SMA20_cross) | SL=$21,599 | liq=$21,072
+  [2023-08-20] EXIT (trailing_stop): $25,731 | pnl=$-36 | funding=$32 | 5x | add=0
+  [2023-10-01] ENTRY: $27,993 | 5x (test) | margin=$297 | size=0.0530 BTC | conds=1 (SMA20_cross) | SL=$22,954 | liq=$22,394
+  [2024-05-05] EXIT (trailing_stop): $56,755 | pnl=$1,520 | funding=$168 | 5x | add=0
+  [2024-07-21] ENTRY: $68,165 | 5x (test) | margin=$364 | size=0.0267 BTC | conds=1 (SMA20_cross) | SL=$55,896 | liq=$54,532
+  [2024-08-11] EXIT (trailing_stop): $55,896 | pnl=$-329 | funding=$10 | 5x | add=0
+  [2024-09-22] ENTRY: $63,579 | 5x (test) | margin=$347 | size=0.0273 BTC | conds=1 (SMA20_cross) | SL=$52,135 | liq=$50,863
+  [2025-03-02] EXIT (trailing_stop): $81,336 | pnl=$482 | funding=$117 | 5x | add=0
+  [2025-04-27] ENTRY: $93,749 | 5x (test) | margin=$365 | size=0.0195 BTC | conds=1 (SMA20_cross) | SL=$76,874 | liq=$74,999
+  [2025-10-12] EXIT (trailing_stop): $103,748 | pnl=$193 | funding=$109 | 5x | add=0
+  [2025-11-16] ENTRY: $94,261 | 5x (test) | margin=$369 | size=0.0196 BTC | conds=1 (fear_30%+decline) | SL=$77,294 | liq=$75,409
+  [2026-02-01] EXIT (trailing_stop): $77,294 | pnl=$-334 | funding=$40 | 5x | add=0
+
+── TRADE DETAILS ────────────────────────────────────────
+  #1: 2023-06-18 → 2023-08-20 | $26,340 → $25,731 | 5x | PnL=$-36.16 | funding=$31.74 | trailing_stop | conds: SMA20_cross
+  #2: 2023-10-01 → 2024-05-05 | $27,993 → $56,755 | 5x | PnL=$1,520.43 | funding=$167.62 | trailing_stop | conds: SMA20_cross
+  #3: 2024-07-21 → 2024-08-11 | $68,165 → $55,896 | 5x | PnL=$-329.18 | funding=$10.38 | trailing_stop | conds: SMA20_cross
+  #4: 2024-09-22 → 2025-03-02 | $63,579 → $81,336 | 5x | PnL=$482.39 | funding=$116.61 | trailing_stop | conds: SMA20_cross
+  #5: 2025-04-27 → 2025-10-12 | $93,749 → $103,748 | 5x | PnL=$192.75 | funding=$109.22 | trailing_stop | conds: SMA20_cross
+  #6: 2025-11-16 → 2026-02-01 | $94,261 → $77,294 | 5x | PnL=$-333.90 | funding=$40.00 | trailing_stop | conds: fear_30%+decline
+
+======================================================================

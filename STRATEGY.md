@@ -117,22 +117,34 @@ Capture swing moves within the macro trend. Quick in, quick out.
 - **Leverage bias:** Trading WITH macro trend → up to 10x. Trading AGAINST → max 3x, tighter stop.
 - Regime determined by the signals table above (3+ primary must agree).
 
-### Entry Methods
+### Entry Method: Natural Trading Theory (Fibonacci — 自然交易理论)
 
-**Method A: MACD Reversal (V6 — backtested +34.26%)**
-- MACD 13/34 histogram, double divergence minimum on 4H
-- Trend filter: 4H 50 SMA direction
-- Stop-loss: ATR(14) based. Never exceed 3%.
-- Exit: Half at 1:1 R/R, trail rest
+**Step 1 — Space (Fibonacci Retracement):**
+- Draw Fib from swing low→high (uptrend) or high→low (downtrend)
+- Entry triggers at **0.618 or 0.382 gravity points**
+- Timeframe: 1H/2H for precision, 4H for confirmation
 
-**Method B: Natural Trading Theory (Fibonacci)**
-- Space: Fibonacci gravity points (0.382, 0.618)
-- Time: Fibonacci Trend Time alignment
-- Energy: K-line volume confirmation
-- Entry: All three align
-- Timeframe: 1H/2H for precision, 4H confirmation
-- Stop-loss: Never exceed 3%
-- Exit: Batch profit-taking (20-30% per 1% move, 3-5 times)
+**Step 2 — Time (Fibonacci Trend Time):**
+- Market rhythm: 0→0.382 (Long), 0.382→0.618 (Short), 0.618→1 (Long)
+- High-probability moves at **0.618 time division**
+- Only enter when space + time align
+
+**Step 3 — Energy (Volume — "Key K-line"):**
+- Must show strong candle at the space+time intersection
+- "Absolute Strength" (long body/shadow) or "Relative Strength" (volume spike)
+- **No Key K-line = no entry**
+
+**Position Sizing:**
+- Divide short-term capital into **20-50 parts** (~$2,270 per part)
+- Add at **1% price intervals**, max **2 additions** (strict)
+
+**Stop-Loss:**
+- **Max 3% price move** — set BEFORE entering
+- At 10x = 30% margin loss. At 5x = 15%.
+
+**Profit-Taking (Batch Exit):**
+- Close **20-30%** for every **1% move** in your favor (3-5 exits)
+- Or full exit at target level for simplicity
 
 ### Leverage (Short-Term)
 | Conviction | Leverage |
