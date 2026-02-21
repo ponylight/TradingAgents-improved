@@ -1,0 +1,74 @@
+======================================================================
+  BTC/USDT DUAL-TIMEFRAME BACKTEST — V11 (FINAL)
+======================================================================
+
+  Data Period:     2022-02-21 to 2026-02-20
+  Total Capital:   $10,000
+    Long-Term:     $6,000 (60%)
+    Short-Term:    $4,000 (40%)
+
+======================================================================
+  COMBINED PERFORMANCE
+======================================================================
+
+  Final Equity:    $10,185.52
+  Total Return:    +1.86%
+  Max Drawdown:    9.19%
+  Sharpe Ratio:    0.11
+
+======================================================================
+  SYSTEM 1: LONG-TERM TREND (Weekly Charts, 60%)
+======================================================================
+
+  No trades
+
+======================================================================
+  SYSTEM 2: SHORT-TERM TREND (4H Charts, 40%)
+======================================================================
+
+  Final Equity:    $4,185.52  (from $4,000)
+  Total Return:    +4.64%
+  Max Drawdown:    21.16%
+  Sharpe Ratio:    0.15
+  Win Rate:        45.5%
+  Profit Factor:   1.29
+
+  Total Trades:    11
+    Primary:       11
+    Rolling Adds:  0
+    Longs:         5  (PnL: $-149.15)
+    Shorts:        6  (PnL: $+435.41)
+  Avg Win:         $254.17
+  Avg Loss:        $-164.10
+  Largest Win:     $334.14
+  Largest Loss:    $-378.15
+  Avg Duration:    3.8 days (91 hours)
+
+  Leverage:        3x=7 | 10x=4
+  Liquidations:    0  (Loss: $0.00)
+  Shorts blocked:  0 (bull market filter)
+
+======================================================================
+  STRATEGY RULES SUMMARY
+======================================================================
+
+  SYSTEM 1 (Long-Term):
+    - Weekly MACD 13/34 double divergence
+    - Trend: long > weekly 50 SMA, short < weekly 50 SMA
+    - Bull filter: price > weekly 200 SMA = NO SHORTS
+    - Leverage: 5x/10x/25x/50x based on conviction + MVRV + 123 Rule
+    - Rolling: inverted pyramid (150%/200%/250%) on pullbacks
+    - Exit: trailing stop at 2x weekly ATR, no fixed TP
+    - Funding: 0.01% per 8h deducted
+
+  SYSTEM 2 (Short-Term):
+    - 4H MACD 13/34 double divergence (V6 base)
+    - MACRO FILTER: price > weekly 200 SMA = LONG ONLY, below = SHORT ONLY
+    - Leverage: 3x base, 10x with 123 Rule (cap: 10x)
+    - Stop: ATR-based, max 3% price movement
+    - Exit: half at 1:1 R/R, trail rest at 2.5x ATR
+    - Max 2 rolling additions per trade
+
+======================================================================
+  Report generated: 2026-02-21 13:11:45
+======================================================================

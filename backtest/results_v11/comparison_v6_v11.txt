@@ -1,0 +1,29 @@
+==========================================================================================
+  V11 (Dual-Timeframe) vs V6 (Short-Term Only) COMPARISON
+==========================================================================================
+
+  Metric                                V6 ($10K)       V11 Combined       V11 LT (60%)       V11 ST (40%)
+  ---------------------------- ------------------ ------------------ ------------------ ------------------
+
+  Starting Capital             $           10,000 $           10,000 $            6,000 $            4,000
+  Final Equity                 $       13,425.74 $       10,185.52 $        6,000.00 $        4,185.52
+  Total Return %                           34.26%              1.86%              0.00%              4.64%
+  Max Drawdown %                           14.59%              9.19%              0.00%             21.16%
+  Sharpe Ratio                               0.57               0.11
+  Win Rate %                               57.14%                                 0.00%             45.45%
+  Profit Factor                              3.16                                  0.00               1.29
+  Total Trades                                  7                                     0                 11
+
+  V11 Combined vs V6:  (-32.40 vv) return, (-5.40 ^^) drawdown
+
+==========================================================================================
+  KEY DIFFERENCES
+==========================================================================================
+
+  V6:  Single system, $10K, 4H charts, 3x/10x leverage
+  V11: Dual system — 60% weekly (5-50x) + 40% 4H (3-10x)
+       Macro filter: weekly 200 SMA direction controls short-term
+       Long-term: rolling positions, funding costs, no fixed TP
+       Short-term: macro-aligned (long-only in bull, short-only in bear)
+
+==========================================================================================

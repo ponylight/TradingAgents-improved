@@ -147,12 +147,16 @@ Capture swing moves within the broader trend. Quick entries, disciplined exits.
 ## Current Positions
 | Category | Pair | Side | Entry | Size | SL | TP1 | TP2 | TP3 | Status |
 |----------|------|------|-------|------|-----|-----|-----|-----|--------|
-| Long-term | BTC/USDT | Long | $68,164 | 0.037 BTC | $63,500 | $72,000 | $75,500 | $82,000 | Open |
+| — | — | — | — | — | — | — | — | — | No open positions |
+
+**Capital:** ~$170K USDT (demo). Long-term: $102K (60%). Short-term: $68K (40%).
+
+*Note: SL updated to $66,200 (actual Bybit position SL, confirmed Feb 21 analysis)*
 
 ## Key Levels
-- **Support:** $60,000 (must hold), $63,500 (current stop)
-- **Resistance:** $69,000 (23.6% Fib), $74,500 (38.2% Fib)
-- **Invalidation:** Weekly close below $58,000 → regime shifts to Decline
+- **Support:** $60,000 (must hold), $65,000 (consolidation floor), $66,200 (current stop)
+- **Resistance:** $68,956 (23.6% Fib), $69,751 (BB midline), $72,000 (TP1), $77,423 (BB upper)
+- **Invalidation:** Weekly close below $60,000 → regime shifts to Decline
 
 ---
 

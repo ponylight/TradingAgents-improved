@@ -1,0 +1,109 @@
+{
+  "last_updated": "2026-02-21T13:06:00+11:00",
+  "last_analysis_date": "2026-02-21",
+  "regime": "ACCUMULATION",
+  "mvrv_z_score": -0.86,
+  "mvrv_signal": "EXTREME_UNDERVALUE",
+  
+  "current_positions": {
+    "short_term": {
+      "symbol": "BTCUSDT",
+      "side": "Long",
+      "entry_price": 68164.3,
+      "size_btc": 0.037,
+      "stop_loss": 66200,
+      "take_profit_1": 72000,
+      "take_profit_2": 75500,
+      "take_profit_3": 82000,
+      "leverage": 1,
+      "unrealised_pnl": -8.57,
+      "entry_date": "2026-02-06",
+      "status": "Open",
+      "notes": "SL was already at 66200 on Bybit (tighter than STRATEGY.md recorded 63500)"
+    },
+    "long_term": null
+  },
+
+  "last_agent_scores": {
+    "technical": 6.5,
+    "sentiment": 8.0,
+    "macro": 8.0,
+    "onchain": 8.5,
+    "social": 8.0,
+    "bull_researcher": 8.5,
+    "bear_researcher": 7.5,
+    "head_trader_conviction": 5.0,
+    "risk_approval": "CONDITIONAL"
+  },
+
+  "key_levels": {
+    "support_1": 65000,
+    "support_2": 62899,
+    "support_3": 60000,
+    "resistance_1": 68956,
+    "resistance_2": 69751,
+    "resistance_3": 72000,
+    "fifty_sma": 82263,
+    "two_hundred_sma": 99406,
+    "ath": 126080
+  },
+
+  "macd_status": {
+    "macd_line": -4307,
+    "histogram": 485,
+    "histogram_positive_since": "2026-02-15",
+    "divergence": "BULLISH_DOUBLE_BOTTOM_CONFIRMED",
+    "key_k_line_date": "2026-02-15"
+  },
+
+  "market_context": {
+    "btc_price": 67961,
+    "rsi_daily": 36.2,
+    "atr_daily": 3418,
+    "fear_greed": 8,
+    "fear_greed_trend": "EXTREME_FEAR_SUSTAINED",
+    "funding_rate_per_8h": 0.01,
+    "funding_trend": "RECOVERING_FROM_NEGATIVE",
+    "dxy": 97.79,
+    "fed_funds_rate": 3.64,
+    "ten_year_yield": 4.086,
+    "m2_supply_billions": 22322,
+    "sp500": 6909
+  },
+
+  "macro_regime": {
+    "fed_stance": "DOVISH",
+    "rate_cuts_since_sep_2025_bps": 69,
+    "m2_trend": "EXPANDING",
+    "dxy_trend": "DECLINING",
+    "liquidity_regime": "INJECTION"
+  },
+
+  "trade_decisions": {
+    "2026-02-21": {
+      "action": "HOLD",
+      "sl_adjustment": "SL already at 66200 on Bybit (more protective than recommended 65500)",
+      "head_trader": "TIGHTEN SL to 65500 (but actual Bybit SL is already 66200 - no action needed)",
+      "risk_manager": "CONDITIONAL HOLD - maintain SL, no adds, verify cash reserve",
+      "reasoning": "MACD divergence valid, MVRV extreme undervalue, but price in bear market (below 50 + 200 SMA). Position sized small, risk controlled."
+    }
+  },
+
+  "next_review_triggers": [
+    "Price breaks above 70000 with volume",
+    "Price approaches 65500 (SL zone)",
+    "Monday Feb 23 market open",
+    "March 12 CPI/NFP data (macro risk)"
+  ],
+
+  "historical_context": {
+    "crash_event": "2026-01-22 to 2026-02-05: BTC 90K->60K (-33%)",
+    "crash_volume_btc": 33557,
+    "crash_was_capitulation": true,
+    "recovery_phase": "2 weeks consolidation 65K-71K",
+    "best_historical_analog": "Dec 2022 FTX crash (F&G 5-8, then 4x over 12 months)"
+  },
+
+  "notebooklm_notebook_id": "9b6bf693-4196-4266-ad42-6a3e21ffa33b",
+  "notebooklm_conversation_id": "c0fd2da3-adea-49c8-99b3-96f690f8aeed"
+}
