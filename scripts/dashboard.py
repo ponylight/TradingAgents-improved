@@ -379,8 +379,12 @@ def api_data():
     signal_logs  = [e for e in scanner_logs if "SIGNAL FIRED" in e.get("message", "") or "V20 SIGNAL" in e.get("message", "")]
 
     last_scan_candle = ws.get("last_scan_candle")
-    last_scan_str    = None
-    if last_scan_candle:
+    # Use actual run time if available, fall back to candle time
+    last_run_raw = ws.get("last_run")
+    last_scan_str = None
+    if last_run_raw:
+        last_scan_str = _to_sydney(last_run_raw)
+    elif last_scan_candle:
         try:
             dt = datetime.strptime(last_scan_candle, "%Y-%m-%dT%H").replace(tzinfo=timezone.utc)
             dt_syd = dt.astimezone(SYDNEY_TZ)
