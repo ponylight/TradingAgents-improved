@@ -54,11 +54,12 @@ def _next_4h_scan() -> str:
     """Calculate next 4H scan time in Sydney."""
     from zoneinfo import ZoneInfo
     now = datetime.now(timezone.utc)
-    for h in sorted(CANDLE_CLOSE_HOURS_UTC * 2):  # double to wrap next day
+    # Try today's remaining slots, then tomorrow's first slot
+    hours = sorted(CANDLE_CLOSE_HOURS_UTC) + [CANDLE_CLOSE_HOURS_UTC[0] + 24]
+    for h in hours:
         candidate = now.replace(hour=h % 24, minute=5, second=0, microsecond=0)
         if h >= 24:
             candidate += timedelta(days=1)
-            candidate = candidate.replace(hour=h % 24)
         if candidate > now:
             syd = candidate.astimezone(SYDNEY_TZ)
             return syd.strftime("%H:%M %Z")
