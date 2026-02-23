@@ -1,72 +1,72 @@
 {
   "version": "v20",
   "strategy": "Fibonacci + TD Sequential",
-  "total_return_pct": 153853.7,
-  "final_equity": 15395370.31,
-  "peak_equity": 17045467.71,
-  "peak_multiplier": 1704.55,
+  "total_return_pct": 269574551.55,
+  "final_equity": 26957465155.32,
+  "peak_equity": 33318912169.55,
+  "peak_multiplier": 3331891.22,
   "initial_capital": 10000.0,
-  "max_drawdown_pct": 60.25,
-  "sharpe_ratio": 1.49,
-  "win_rate_pct": 48.88,
-  "profit_factor": 4.14,
-  "total_trades": 178,
-  "long_trades": 147,
-  "short_trades": 31,
-  "long_pnl": 16195091.9,
-  "short_pnl": -111896.33,
-  "winning_trades": 87,
-  "losing_trades": 91,
-  "avg_win": 243758.47,
-  "avg_loss": -56305.4,
-  "largest_win": 3385284.68,
-  "largest_loss": -616021.2,
-  "avg_duration_hours": 60.9,
-  "avg_duration_days": 2.5,
-  "trades_at_3x": 84,
-  "trades_at_5x": 27,
-  "trades_at_10x": 67,
-  "liquidations": 0,
-  "liquidation_loss": 0.0,
-  "td9_signals": 107,
-  "td13_signals": 2,
-  "fib_signals": 130,
-  "macd_signals": 155,
+  "max_drawdown_pct": 91.63,
+  "sharpe_ratio": 1.56,
+  "win_rate_pct": 47.27,
+  "profit_factor": 16.35,
+  "total_trades": 165,
+  "long_trades": 165,
+  "short_trades": 0,
+  "long_pnl": 27398096429.29,
+  "short_pnl": 0,
+  "winning_trades": 78,
+  "losing_trades": 87,
+  "avg_win": 374135393.68,
+  "avg_loss": -20511083.66,
+  "largest_win": 15550039229.32,
+  "largest_loss": -361662245.66,
+  "avg_duration_hours": 70.2,
+  "avg_duration_days": 2.9,
+  "trades_at_3x": 81,
+  "trades_at_5x": 22,
+  "trades_at_10x": 62,
+  "liquidations": 8,
+  "liquidation_loss": 207272515.04,
+  "td9_signals": 97,
+  "td13_signals": 3,
+  "fib_signals": 140,
+  "macd_signals": 166,
   "confluence_breakdown": {
     "TD9": {
-      "count": 101,
-      "pnl": 16025900.987809412
+      "count": 91,
+      "pnl": 27225136898.14276
     },
     "MACD": {
-      "count": 143,
-      "pnl": 13690744.560003791
+      "count": 134,
+      "pnl": 24040796318.603226
     },
     "Fib": {
-      "count": 118,
-      "pnl": 1131035.8852215144
+      "count": 106,
+      "pnl": 3133478209.2044897
     },
     "volume": {
-      "count": 9,
-      "pnl": 302172.49755551724
+      "count": 10,
+      "pnl": 86154665.25685176
     },
     "TD13": {
-      "count": 2,
-      "pnl": 198673.32980679598
+      "count": 3,
+      "pnl": 165350766.12187424
+    },
+    "TD26": {
+      "count": 1,
+      "pnl": 20571733.965732463
     },
     "TD7": {
-      "count": 2,
-      "pnl": -96460.96530693126
+      "count": 1,
+      "pnl": -8871257.924847241
     },
     "TD8": {
-      "count": 2,
-      "pnl": -319911.3782779631
-    },
-    "TD12": {
       "count": 1,
-      "pnl": 773460.5832602896
+      "pnl": -275959610.24576926
     }
   },
   "data_start": "2017-08-17 04:00:00",
-  "data_end": "2026-02-21 04:00:00",
-  "total_candles": 18645
+  "data_end": "2026-02-22 20:00:00",
+  "total_candles": 18655
 }

@@ -1579,22 +1579,25 @@ async function fetchData() {
   try {
     const r = await fetch('/api/data');
     const d = await r.json();
-    render(d);
+    try { render(d); } catch (re) { console.error('Render error', re); }
   } catch (e) {
     console.error('Fetch error', e);
-    el('loading').style.display = 'none';
+    try { el('loading').style.display = 'none'; } catch (_) {}
   }
 }
 
 // Auto-refresh countdown
 let countdown = 60;
 setInterval(() => {
-  countdown--;
-  el('refresh-timer').textContent = countdown;
-  if (countdown <= 0) {
-    countdown = 60;
-    fetchData();
-  }
+  try {
+    countdown--;
+    const timer = el('refresh-timer');
+    if (timer) timer.textContent = countdown;
+    if (countdown <= 0) {
+      countdown = 60;
+      fetchData();
+    }
+  } catch (e) { console.error('Timer error', e); }
 }, 1000);
 
 // Initial load

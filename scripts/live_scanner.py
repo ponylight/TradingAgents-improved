@@ -364,7 +364,9 @@ def detect_signal(df: pd.DataFrame) -> Optional[SignalResult]:
     # ── Compute levels ────────────────────────────────────────────
     sl_atr = closes[i] - atr[i] * 1.5
     sl_fib  = fib["0.786"] if fib else sl_atr
-    sl      = max(sl_atr, sl_fib)   # tighter stop
+    # For longs, stop must be below entry — filter out invalid fib levels
+    sl_candidates = [s for s in [sl_atr, sl_fib] if s < closes[i]]
+    sl = max(sl_candidates) if sl_candidates else sl_atr  # tighter stop, but always below entry
 
     if fib:
         tp1 = fib["ext_1.272"]
@@ -711,8 +713,9 @@ def get_balance(exchange: ccxt.Exchange) -> float:
 def calc_position_size(balance: float, entry: float, stop_loss: float) -> float:
     """BTC quantity for 8% risk of balance."""
     risk_usdt = balance * RISK_PCT
-    risk_per_btc = entry - stop_loss
+    risk_per_btc = abs(entry - stop_loss)
     if risk_per_btc <= 0:
+        log.error(f"Zero risk distance: entry={entry}, sl={stop_loss}")
         return 0.0
     return risk_usdt / risk_per_btc
 
@@ -753,8 +756,8 @@ def place_orders(exchange: ccxt.Exchange, signal: SignalResult, qty_btc: float) 
 
     # 3. Stop-loss order (conditional / stop-market)
     try:
-        sl_order = exchange.create_order(sym, "stop_market", "sell", qty, signal.stop_loss, params={
-            "stopPrice":  signal.stop_loss,
+        sl_order = exchange.create_order(sym, "market", "sell", qty, None, {
+            "triggerPrice": signal.stop_loss,
             "reduceOnly": True,
             "positionIdx": 0,
             "triggerDirection": 2,  # below
