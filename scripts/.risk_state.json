@@ -1,9 +1,9 @@
 {
   "peak_equity": 169751.36619598,
   "initial_capital": 169751.0,
-  "day_start_equity": 169751.36619598,
-  "day_start_date": "2026-02-24",
-  "no_trade_until": "2026-02-25T05:05:09.647450+11:00",
+  "day_start_equity": 154424.81396152,
+  "day_start_date": "2026-02-25",
+  "no_trade_until": null,
   "milestones_hit": [],
-  "last_check": "2026-02-24T09:05:09"
+  "last_check": "2026-02-25T09:05:09"
 }
