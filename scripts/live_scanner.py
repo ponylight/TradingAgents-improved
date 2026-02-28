@@ -310,8 +310,8 @@ def detect_signal(df: pd.DataFrame) -> Optional[SignalResult]:
     fib_level = price_near_fib(closes[i], fib, tolerance=FIB_TOL) if fib else None
 
     # TD signals
-    has_td9_buy  = td_buy_setup[i] == 9
-    has_td13_buy = td_buy_countdown[i] == 13
+    has_td9_buy  = td_buy_setup[i] >= 9
+    has_td13_buy = td_buy_countdown[i] >= 13
 
     # MACD divergence
     macd_div     = check_bottom_divergence(i, hist, lows)
@@ -367,6 +367,15 @@ def detect_signal(df: pd.DataFrame) -> Optional[SignalResult]:
     # For longs, stop must be below entry — filter out invalid fib levels
     sl_candidates = [s for s in [sl_atr, sl_fib] if s < closes[i]]
     sl = max(sl_candidates) if sl_candidates else sl_atr  # tighter stop, but always below entry
+
+    # Safety: if SL is still not below entry (e.g. bad fib data), force ATR-only SL
+    if sl >= closes[i]:
+        log.warning(f"  SL {sl:.2f} >= entry {closes[i]:.2f} — forcing ATR-only SL")
+        sl = closes[i] - atr[i] * 1.5
+    # Final guard: if still invalid, use 2% below entry
+    if sl >= closes[i]:
+        log.warning(f"  ATR SL still invalid — using 2% below entry as fallback")
+        sl = closes[i] * 0.98
 
     if fib:
         tp1 = fib["ext_1.272"]
@@ -498,8 +507,8 @@ def get_market_analysis(df: pd.DataFrame) -> dict:
     confluence_count = 0
     missing = []
 
-    has_td9_buy      = td_buy_setup == 9
-    has_td13_buy     = td_buy_countdown == 13
+    has_td9_buy      = td_buy_setup >= 9
+    has_td13_buy     = td_buy_countdown >= 13
     has_macd_div     = macd_div >= 1
     has_fib_near     = nearest_fib is not None and fib_distance_pct is not None and fib_distance_pct <= 1.2
     has_volume_spike = volume_ratio >= 1.5
@@ -943,6 +952,10 @@ def main(dry_run: bool = False):
             return
         if qty_btc < 0.001:
             log.error(f"Calculated qty {qty_btc:.4f} BTC is below minimum — aborting")
+            # Still send alert so we know a signal fired but execution failed
+            alert_msg = format_signal_alert(signal, balance, qty_btc, {"error": "qty too small"}, dry_run=True)
+            alert_msg = "⚠️ SIGNAL FIRED BUT ORDER FAILED (qty=0)\n\n" + alert_msg
+            send_telegram(alert_msg)
             return
         order_results = place_orders(exchange, signal, qty_btc)
 
