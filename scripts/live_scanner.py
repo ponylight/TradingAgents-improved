@@ -385,6 +385,10 @@ def detect_signal(df: pd.DataFrame) -> Optional[SignalResult]:
         tp1  = closes[i] + risk * 1.5
         tp2  = closes[i] + risk * 2.5
 
+    # Trend regime: above SMA200 = BULL (let winners run), below = BEAR (take profits early)
+    regime = "BULL" if closes[i] > sma200[i] else "BEAR"
+    log.info(f"  Regime: {regime} (price {'above' if regime == 'BULL' else 'below'} SMA200)")
+
     return SignalResult(
         side           = "long",
         leverage       = leverage,
@@ -392,6 +396,7 @@ def detect_signal(df: pd.DataFrame) -> Optional[SignalResult]:
         stop_loss      = sl,
         take_profit_1  = tp1,
         take_profit_2  = tp2,
+        regime         = regime,
         confluence     = confluence,
         fib_level      = fib_level or "",
         fib            = fib,
@@ -777,18 +782,36 @@ def place_orders(exchange: ccxt.Exchange, signal: SignalResult, qty_btc: float) 
         log.error(f"Stop-loss order failed: {e}")
         results["sl_error"] = str(e)
 
-    # 4. TP1 limit order (50% of position)
-    tp1_qty = round(qty / 2, 3)
-    try:
-        tp1_order = exchange.create_limit_sell_order(sym, tp1_qty, signal.take_profit_1, params={
-            "reduceOnly": True,
-            "positionIdx": 0,
-        })
-        results["tp1"] = tp1_order
-        log.info(f"  ✅ TP1 limit sell {tp1_qty} BTC @ {signal.take_profit_1:.2f} | id={tp1_order.get('id')}")
-    except Exception as e:
-        log.error(f"TP1 order failed: {e}")
-        results["tp1_error"] = str(e)
+    # 4. Regime-aware profit taking
+    regime = getattr(signal, 'regime', 'BEAR')
+
+    if regime == "BULL":
+        # BULL: No TP1 — let the full position ride to TP2
+        log.info(f"  📈 BULL regime — no TP1, full position targeting TP2 @ {signal.take_profit_2:.2f}")
+        try:
+            tp2_order = exchange.create_limit_sell_order(sym, qty, signal.take_profit_2, params={
+                "reduceOnly": True,
+                "positionIdx": 0,
+            })
+            results["tp2"] = tp2_order
+            log.info(f"  ✅ TP2 limit sell {qty} BTC @ {signal.take_profit_2:.2f} | id={tp2_order.get('id')}")
+        except Exception as e:
+            log.error(f"TP2 order failed: {e}")
+            results["tp2_error"] = str(e)
+    else:
+        # BEAR: Take 50% at TP1, remaining 50% rides with trailing stop (managed externally)
+        log.info(f"  📉 BEAR regime — TP1 at 50%, trail the rest")
+        tp1_qty = round(qty / 2, 3)
+        try:
+            tp1_order = exchange.create_limit_sell_order(sym, tp1_qty, signal.take_profit_1, params={
+                "reduceOnly": True,
+                "positionIdx": 0,
+            })
+            results["tp1"] = tp1_order
+            log.info(f"  ✅ TP1 limit sell {tp1_qty} BTC @ {signal.take_profit_1:.2f} | id={tp1_order.get('id')}")
+        except Exception as e:
+            log.error(f"TP1 order failed: {e}")
+            results["tp1_error"] = str(e)
 
     return results
 
@@ -837,8 +860,9 @@ def format_signal_alert(signal: SignalResult, balance: float, qty: float,
         f"📊 *Trade Levels*",
         f"  Entry:    `${signal.entry_price:,.2f}`",
         f"  Stop:     `${signal.stop_loss:,.2f}`",
-        f"  TP1 (50%):`${signal.take_profit_1:,.2f}`",
-        f"  TP2 (rem):`${signal.take_profit_2:,.2f}`",
+        f"  Regime:   `{getattr(signal, 'regime', 'BEAR')}` {'📈' if getattr(signal, 'regime', 'BEAR') == 'BULL' else '📉'}",
+        f"  TP1 (50%):`${signal.take_profit_1:,.2f}`" + (" _(skipped — BULL)_" if getattr(signal, 'regime', 'BEAR') == 'BULL' else ""),
+        f"  TP2:      `${signal.take_profit_2:,.2f}`",
         f"  R/R:      `{rr_ratio:.2f}x`",
         f"",
         f"💡 *Confluence*",
@@ -905,8 +929,11 @@ def main(dry_run: bool = False):
     print(f"  Confluence:  {' + '.join(signal.confluence)}")
     print(f"  Entry:       ${signal.entry_price:,.2f}")
     print(f"  Stop Loss:   ${signal.stop_loss:,.2f}")
-    print(f"  TP1 (50%):   ${signal.take_profit_1:,.2f}")
-    print(f"  TP2 (rest):  ${signal.take_profit_2:,.2f}")
+    regime = getattr(signal, 'regime', 'BEAR')
+    print(f"  Regime:      {regime} {'📈 (full position to TP2)' if regime == 'BULL' else '📉 (TP1 at 50% + trail)'}")
+    if regime == "BEAR":
+        print(f"  TP1 (50%):   ${signal.take_profit_1:,.2f}")
+    print(f"  TP2 {'(100%)' if regime == 'BULL' else '(trail)'}:  ${signal.take_profit_2:,.2f}")
     print(f"  Fib Level:   {signal.fib_level or 'n/a'}")
     print(f"  ATR:         {signal.atr:.2f}")
     print(f"  Candle time: {signal.candle_time}")
