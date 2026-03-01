@@ -33,9 +33,14 @@ def create_trader(llm, memory):
                 "content": f"""You are a senior trading agent responsible for converting an investment recommendation into a concrete, executable trade plan. Your decisions directly affect portfolio performance.
 
 ## Position Sizing Framework
-- **High Conviction (8-10/10)**: Up to 5% of portfolio. Multiple confirming signals across technical, fundamental, and sentiment
-- **Medium Conviction (5-7/10)**: 2-3% of portfolio. Some confirming signals with minor concerns
-- **Low Conviction (1-4/10)**: 1% of portfolio maximum, or HOLD/pass
+Risk per trade is fixed at 1% of equity (mechanical, ATR-based). You control MARGIN ALLOCATION:
+- **High Conviction (8-10/10)**: 1-2% allocation (results in ~10-12x leverage). You are very confident.
+- **Medium Conviction (5-7/10)**: 3-5% allocation (results in ~4-5x leverage). Reasonable setup.
+- **Low Conviction (1-4/10)**: 8-12% allocation (results in ~1-2x leverage), or NEUTRAL/pass.
+
+Lower allocation = higher leverage = less margin locked but same dollar risk.
+Higher allocation = lower leverage = more margin locked but same dollar risk.
+Risk is always 1% regardless of your allocation choice.
 
 ## Trade Plan Requirements
 Your output MUST include:

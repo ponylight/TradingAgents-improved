@@ -30,9 +30,9 @@ from tradingagents.agents.utils.agent_trading_modes import get_position_transiti
 # === CONFIG ===
 SYMBOL = "BTC/USDT:USDT"
 SPOT_SYMBOL = "BTC/USDT"
-DEFAULT_RISK_PCT = 0.03       # 3% default if agent doesn't specify
-MAX_RISK_PCT = 0.05           # Never exceed 5% per trade
-LEVERAGE = 5
+DEFAULT_ALLOC_PCT = 0.03      # 3% default margin allocation if agent doesn't specify
+MAX_ALLOC_PCT = 0.12          # Never exceed 12% margin allocation
+RISK_PER_TRADE = 0.01         # 1% of equity at risk per trade (professional standard)
 CIRCUIT_BREAKER_PCT = 0.09
 PEAK_EQUITY = 154_425
 TP1_R_MULTIPLE = 1.5          # TP1 at 1.5R
@@ -91,9 +91,9 @@ def get_positions(exchange):
     return [p for p in positions if abs(float(p["contracts"] or 0)) > 0]
 
 
-def get_atr(exchange, period=14):
-    """Fetch current ATR from 4H candles."""
-    candles = exchange.fetch_ohlcv(SYMBOL, "4h", limit=period + 1)
+def get_atr(exchange, period=14, timeframe="1d"):
+    """Fetch current ATR. Default: daily candles for proper volatility measurement."""
+    candles = exchange.fetch_ohlcv(SYMBOL, timeframe, limit=period + 1)
     trs = []
     for i in range(1, len(candles)):
         h, l, prev_c = candles[i][2], candles[i][3], candles[i-1][4]
@@ -127,6 +127,7 @@ def parse_trade_params(full_decision: str) -> dict:
             "TAKE_PROFIT_1": ("take_profit_1", lambda v: float(v.replace(",", "").replace("$", ""))),
             "TAKE_PROFIT_2": ("take_profit_2", lambda v: float(v.replace(",", "").replace("$", ""))),
             "POSITION_SIZE": ("risk_pct", lambda v: float(v.replace("%", "")) / 100),
+            "MARGIN_ALLOCATION": ("risk_pct", lambda v: float(v.replace("%", "")) / 100),
             "RISK_REWARD": ("risk_reward", lambda v: float(v)),
         }
         for key, (param_name, converter) in field_map.items():
@@ -224,24 +225,36 @@ def close_position(exchange, position, fraction=1.0):
     return order
 
 
-def open_position(exchange, direction, equity, risk_pct, stop_loss=None):
-    """Open position with proper sizing. Sets SL on exchange if provided."""
-    try:
-        exchange.set_leverage(LEVERAGE, SYMBOL)
-    except Exception as e:
-        log.warning(f"Leverage: {e}")
-
+def open_position(exchange, direction, equity, alloc_pct, stop_loss=None):
+    """Open position sized by 1% risk target and daily ATR. Leverage auto-derived."""
     ticker = exchange.fetch_ticker(SYMBOL)
     price = ticker["last"]
-    notional = equity * risk_pct * LEVERAGE
+
+    # Mechanical sizing: risk exactly RISK_PER_TRADE of equity
+    atr = get_atr(exchange, period=14, timeframe="1d")
+    sl_distance = 2 * atr  # 2×daily ATR stop
+    risk_dollars = equity * RISK_PER_TRADE
+    notional = (risk_dollars / sl_distance) * price  # exact notional for 1% risk
     amount = float(exchange.amount_to_precision(SYMBOL, notional / price))
 
     if amount <= 0:
         log.error(f"❌ Amount=0. Equity=${equity:.0f}, Price=${price:.0f}")
         return None
 
+    # Derive leverage from agent's allocation
+    alloc_pct = min(alloc_pct, MAX_ALLOC_PCT)
+    margin = equity * alloc_pct
+    leverage = max(1, round(notional / margin))
+    leverage = min(leverage, 20)  # Cap at 20x
+
+    try:
+        exchange.set_leverage(leverage, SYMBOL)
+    except Exception as e:
+        log.warning(f"Leverage: {e}")
+
     side = "buy" if direction == "BUY" else "sell"
-    log.info(f"📥 {direction} {amount} BTC @ ~${price:,.0f} | ${notional:,.0f} notional | {LEVERAGE}x | {risk_pct*100:.1f}% risk")
+    log.info(f"📥 {direction} {amount:.3f} BTC @ ~${price:,.0f} | ${notional:,.0f} notional | {leverage}x lev | {alloc_pct*100:.1f}% alloc | risk ${risk_dollars:,.0f} (1%)")
+    log.info(f"   ATR(14d)=${atr:,.0f} | SL dist=${sl_distance:,.0f} ({sl_distance/price*100:.1f}%)")
 
     order = exchange.create_order(SYMBOL, "market", side, amount)
     fill_price = float(order.get("average") or price)
@@ -623,23 +636,23 @@ def main():
 
     # Open new position if we don't have one
     if not has_position and action in ("OPEN_LONG", "OPEN_SHORT", "REVERSE_TO_LONG", "REVERSE_TO_SHORT"):
-            risk_pct = trade_params.get("risk_pct", DEFAULT_RISK_PCT)
+            alloc_pct = trade_params.get("risk_pct", DEFAULT_ALLOC_PCT)  # agent picks allocation
             stop_loss = trade_params.get("stop_loss")
             tp1 = trade_params.get("take_profit_1")
 
             # If no SL from agent, calculate from ATR
             if not stop_loss:
-                atr = get_atr(exchange)
+                atr = get_atr(exchange, period=14, timeframe="1d")
                 ticker = exchange.fetch_ticker(SYMBOL)
                 price = ticker["last"]
                 if new_direction == "BUY":
                     stop_loss = price - (2 * atr)
                 else:
                     stop_loss = price + (2 * atr)
-                log.info(f"🔧 Auto SL from 2×ATR: ${stop_loss:,.0f} (ATR=${atr:,.0f})")
+                log.info(f"🔧 Auto SL from 2×daily ATR: ${stop_loss:,.0f} (ATR=${atr:,.0f})")
 
             # If no TP from agent, calculate at 1.5R
-            result = open_position(exchange, new_direction, equity, risk_pct, stop_loss)
+            result = open_position(exchange, new_direction, equity, alloc_pct, stop_loss)
 
             if result:
                 fill_price = result["fill_price"]
@@ -681,9 +694,9 @@ def main():
                 record["stop_loss"] = stop_loss
                 record["tp1"] = tp1
                 record["amount"] = amount
-                record["risk_pct"] = risk_pct
+                record["alloc_pct"] = alloc_pct
 
-                log.info(f"📋 Trade plan: Entry ${fill_price:,.0f} | SL ${stop_loss:,.0f} | TP1 ${tp1:,.0f} | Risk {risk_pct*100:.1f}% | Trail {ATR_TRAIL_MULTIPLE}×ATR")
+                log.info(f"📋 Trade plan: Entry ${fill_price:,.0f} | SL ${stop_loss:,.0f} | TP1 ${tp1:,.0f} | Alloc {alloc_pct*100:.1f}% | Risk 1% | Trail {ATR_TRAIL_MULTIPLE}×ATR")
             else:
                 record["action"] = "failed"
 
