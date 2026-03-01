@@ -182,7 +182,8 @@ def get_crypto_indicators(
     
     df = wrap(data.copy())
     
-    if indicator in _CUSTOM_INDICATORS:
+    if False:  # No custom indicators
+        pass
     else:
         _ = df[indicator]  # Trigger stockstats calculation
     
