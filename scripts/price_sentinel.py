@@ -24,7 +24,6 @@ EXECUTOR = PROJECT_ROOT / "scripts" / "live_executor.py"
 VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python3"
 
 SYMBOL = "BTC/USDT:USDT"
-ALERT_THRESHOLD = 0.03    # 3% — log alert
 TRIGGER_THRESHOLD = 0.05  # 5% — wake agents
 COOLDOWN_MINUTES = 120    # Don't re-trigger within 2 hours
 
@@ -110,10 +109,6 @@ def main():
         if result.returncode != 0:
             log.error(f"Pipeline stderr: {result.stderr[-500:]}")
         return
-
-    elif abs_change >= ALERT_THRESHOLD:
-        direction = "📈" if change_pct > 0 else "📉"
-        log.info(f"⚠️ {direction} Notable move: {change_pct*100:+.2f}% | ${candle['close']:,.0f} → ${current:,.0f} | Watching...")
 
     else:
         log.debug(f"😴 Quiet: {change_pct*100:+.2f}% | ${current:,.0f}")
