@@ -123,7 +123,7 @@ def get_crypto_indicators(
     Equivalent to get_stock_stats_indicators_window but for crypto.
     """
     from stockstats import wrap
-    from .y_finance import _calculate_td_sequential, _calculate_fibonacci_channel
+    
     
     config = get_config()
     cache_dir = config.get("data_cache_dir", "data")
@@ -144,8 +144,6 @@ def get_crypto_indicators(
         "atr": "ATR: Average true range volatility measure.",
         "vwma": "VWMA: Volume-weighted moving average.",
         "mfi": "MFI: Money Flow Index using price and volume.",
-        "td_sequential": "TD Sequential (DeMark): Counter-trend exhaustion indicator.",
-        "fib_channel": "Fibonacci Channel: Dynamic support/resistance levels.",
     }
     
     if indicator not in best_ind_params:
@@ -181,15 +179,10 @@ def get_crypto_indicators(
             raise DataFetchError(f"Error fetching crypto data for indicators: {e}") from e
     
     # Calculate indicator using stockstats
-    _CUSTOM_INDICATORS = {"td_sequential", "fib_channel"}
     
     df = wrap(data.copy())
     
     if indicator in _CUSTOM_INDICATORS:
-        if indicator == "td_sequential":
-            df[indicator] = _calculate_td_sequential(df)
-        elif indicator == "fib_channel":
-            df[indicator] = _calculate_fibonacci_channel(df)
     else:
         _ = df[indicator]  # Trigger stockstats calculation
     

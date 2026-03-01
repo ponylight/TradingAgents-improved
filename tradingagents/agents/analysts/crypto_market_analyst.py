@@ -34,9 +34,7 @@ Your role is to produce a detailed technical analysis report for leveraged tradi
 Moving Averages: close_50_sma, close_200_sma, close_10_ema
 MACD: macd, macds, macdh
 Momentum: rsi
-Counter-Trend: td_sequential (DeMark — +9 = sell exhaustion, -9 = buy exhaustion)
 Volatility: boll, boll_ub, boll_lb, atr
-Support/Resistance: fib_channel (Fibonacci Channel — 23.6%, 38.2%, 50%, 61.8% levels)
 Volume: vwma, mfi
 
 ## Crypto-Specific Data Available
@@ -48,7 +46,6 @@ Volume: vwma, mfi
 1. **Trend Structure**: Identify primary trend using 50/200 SMA alignment. Golden/death cross status.
 2. **Momentum**: RSI divergence, MACD crossovers. TD Sequential counts near 9 = exhaustion warning.
 3. **Volatility Regime**: Bollinger squeeze = expect expansion. ATR for stop-loss sizing.
-4. **Fibonacci Levels**: Key S/R from fib_channel. Price at 61.8% retracement = strong signal.
 5. **Derivatives Data**: Funding rate + OI context. Extreme funding = mean reversion signal.
 6. **Order Flow**: Book imbalance for short-term bias.
 

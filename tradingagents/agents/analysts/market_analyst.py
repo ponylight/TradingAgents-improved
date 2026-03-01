@@ -35,7 +35,6 @@ Momentum:
 - rsi: RSI — overbought (>70) / oversold (<30) conditions and divergence signals
 
 Counter-Trend:
-- td_sequential: TD Sequential (DeMark) — counts consecutive bars vs 4-bar-ago close; +9 = sell exhaustion, -9 = buy exhaustion
 
 Volatility:
 - boll: Bollinger Middle (20 SMA) — dynamic price benchmark
@@ -44,7 +43,6 @@ Volatility:
 - atr: ATR — volatility measure for stop-loss sizing and position management
 
 Support/Resistance:
-- fib_channel: Fibonacci Channel — dynamic Fib retracement levels (23.6%, 38.2%, 50%, 61.8%) from rolling 50-bar high/low
 
 Volume:
 - vwma: VWMA — volume-weighted trend confirmation

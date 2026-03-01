@@ -39,14 +39,14 @@ def get_crypto_price_data(
 @tool
 def get_crypto_technical_indicators(
     symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
-    indicator: Annotated[str, "indicator name: rsi, macd, macds, macdh, boll, boll_ub, boll_lb, atr, close_50_sma, close_200_sma, close_10_ema, vwma, mfi, td_sequential, fib_channel"],
+    indicator: Annotated[str, "indicator name: rsi, macd, macds, macdh, boll, boll_ub, boll_lb, atr, close_50_sma, close_200_sma, close_10_ema, vwma, mfi"],
     curr_date: Annotated[str, "current date YYYY-mm-dd"],
     look_back_days: Annotated[int, "how many days to look back"] = 30,
 ) -> str:
     """
     Calculate technical indicators for crypto assets.
     Supports: rsi, macd, macds, macdh, boll, boll_ub, boll_lb, atr,
-    close_50_sma, close_200_sma, close_10_ema, vwma, mfi, td_sequential, fib_channel.
+    close_50_sma, close_200_sma, close_10_ema, vwma, mfi.
     """
     return get_crypto_indicators(symbol, indicator, curr_date, look_back_days)
 
