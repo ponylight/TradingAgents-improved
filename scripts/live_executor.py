@@ -25,6 +25,7 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from tradingagents.graph.crypto_trading_graph import CryptoTradingAgentsGraph, CRYPTO_DEFAULT_CONFIG
+from tradingagents.agents.utils.agent_trading_modes import get_position_transition
 
 # === CONFIG ===
 SYMBOL = "BTC/USDT:USDT"
@@ -553,42 +554,75 @@ def main():
         "params": trade_params,
     }
 
-    if decision == "HOLD":
-        log.info("⏸️  HOLD — no action")
+    # Map signal to position transition
+    current_pos = "NEUTRAL"
+    if has_position and positions:
+        current_pos = positions[0]["side"].upper()  # "LONG" or "SHORT"
+    
+    # Normalize decision to trading mode
+    signal = decision.upper()
+    if signal == "BUY":
+        signal = "LONG"
+    elif signal == "SELL":
+        signal = "SHORT"
+    elif signal == "HOLD":
+        signal = "NEUTRAL" if not has_position else current_pos
 
-    elif decision in ("BUY", "SELL"):
-        # Close opposing position
-        if has_position:
+    transition = get_position_transition(current_pos, signal)
+    action = transition["action"]
+    log.info(f"📋 Position transition: {current_pos} + {signal} → {action} ({transition['description']})")
+    record["transition"] = action
+
+    if action in ("HOLD", "STAY_NEUTRAL"):
+        log.info(f"⏸️  {action} — no action")
+
+    elif action in ("CLOSE_LONG", "CLOSE_SHORT"):
+        # Close without reversing
+        for p in positions:
+            entry_price = float(p["entryPrice"])
+            close_position(exchange, p)
+            exit_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+            if p["side"] == "long":
+                returns_pct = ((exit_price - entry_price) / entry_price) * 100
+            else:
+                returns_pct = ((entry_price - exit_price) / entry_price) * 100
+            log.info(f"📊 Closed P&L: {returns_pct:+.2f}%")
+            executor_state["pending_reflection"] = {
+                "returns_pct": returns_pct, "direction": p["side"],
+                "entry": entry_price, "exit": exit_price,
+            }
+            record["closed"] = p["side"]
+            record["close_pnl_pct"] = returns_pct
+        has_position = False
+        executor_state.pop("active_trade", None)
+
+    elif action in ("OPEN_LONG", "OPEN_SHORT", "REVERSE_TO_LONG", "REVERSE_TO_SHORT"):
+        # Close existing position first if reversing
+        if action.startswith("REVERSE") and has_position:
             for p in positions:
-                opposing = (decision == "BUY" and p["side"] == "short") or \
-                          (decision == "SELL" and p["side"] == "long")
-                if opposing:
-                    log.info(f"🔄 Closing opposing {p['side']}")
-                    close_order = close_position(exchange, p)
-                    entry_price = float(p["entryPrice"])
-                    exit_price = float(exchange.fetch_ticker(SYMBOL)["last"])
-                    if p["side"] == "long":
-                        returns_pct = ((exit_price - entry_price) / entry_price) * 100
-                    else:
-                        returns_pct = ((entry_price - exit_price) / entry_price) * 100
-                    log.info(f"📊 Closed P&L: {returns_pct:+.2f}%")
-                    # Queue reflection for next run
-                    executor_state["pending_reflection"] = {
-                        "returns_pct": returns_pct,
-                        "direction": p["side"],
-                        "entry": entry_price,
-                        "exit": exit_price,
-                    }
-                    record["closed"] = p["side"]
-                    record["close_pnl_pct"] = returns_pct
-                    has_position = False
-                    executor_state.pop("active_trade", None)
+                entry_price = float(p["entryPrice"])
+                close_position(exchange, p)
+                exit_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+                if p["side"] == "long":
+                    returns_pct = ((exit_price - entry_price) / entry_price) * 100
                 else:
-                    log.info(f"✅ Already {p['side']} — confirming hold")
-                    record["action"] = "confirm"
+                    returns_pct = ((entry_price - exit_price) / entry_price) * 100
+                log.info(f"📊 Closed for reversal P&L: {returns_pct:+.2f}%")
+                executor_state["pending_reflection"] = {
+                    "returns_pct": returns_pct, "direction": p["side"],
+                    "entry": entry_price, "exit": exit_price,
+                }
+                record["closed"] = p["side"]
+                record["close_pnl_pct"] = returns_pct
+            has_position = False
+            executor_state.pop("active_trade", None)
 
-        # Open new position
-        if not has_position:
+        # Determine direction
+        new_direction = "BUY" if "LONG" in action else "SELL"
+        has_position = False  # ensure we open
+
+    # Open new position if we don't have one
+    if not has_position and action in ("OPEN_LONG", "OPEN_SHORT", "REVERSE_TO_LONG", "REVERSE_TO_SHORT"):
             risk_pct = trade_params.get("risk_pct", DEFAULT_RISK_PCT)
             stop_loss = trade_params.get("stop_loss")
             tp1 = trade_params.get("take_profit_1")
@@ -598,14 +632,14 @@ def main():
                 atr = get_atr(exchange)
                 ticker = exchange.fetch_ticker(SYMBOL)
                 price = ticker["last"]
-                if decision == "BUY":
+                if new_direction == "BUY":
                     stop_loss = price - (2 * atr)
                 else:
                     stop_loss = price + (2 * atr)
                 log.info(f"🔧 Auto SL from 2×ATR: ${stop_loss:,.0f} (ATR=${atr:,.0f})")
 
             # If no TP from agent, calculate at 1.5R
-            result = open_position(exchange, decision, equity, risk_pct, stop_loss)
+            result = open_position(exchange, new_direction, equity, risk_pct, stop_loss)
 
             if result:
                 fill_price = result["fill_price"]
@@ -613,24 +647,24 @@ def main():
 
                 risk_dist = abs(fill_price - stop_loss)
                 if not tp1:
-                    if decision == "BUY":
+                    if new_direction == "BUY":
                         tp1 = fill_price + (TP1_R_MULTIPLE * risk_dist)
                     else:
                         tp1 = fill_price - (TP1_R_MULTIPLE * risk_dist)
                     log.info(f"🔧 Auto TP1 at {TP1_R_MULTIPLE}R: ${tp1:,.0f}")
 
                 # Set TP1 on exchange (close 50%)
-                set_take_profit(exchange, decision, amount, tp1)
+                set_take_profit(exchange, new_direction, amount, tp1)
 
                 # Initialize trailing stop tracking
                 atr = get_atr(exchange)
-                if decision == "BUY":
+                if new_direction == "BUY":
                     initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
                 else:
                     initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
 
                 executor_state["active_trade"] = {
-                    "direction": decision,
+                    "direction": new_direction,
                     "entry": fill_price,
                     "amount": amount,
                     "stop_loss": stop_loss,
@@ -642,7 +676,7 @@ def main():
                     "atr_at_entry": atr,
                 }
 
-                record["action"] = f"opened_{decision.lower()}"
+                record["action"] = f"opened_{new_direction.lower()}"
                 record["price"] = fill_price
                 record["stop_loss"] = stop_loss
                 record["tp1"] = tp1

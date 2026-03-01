@@ -1,43 +1,50 @@
 # TradingAgents/graph/signal_processing.py
 
-from langchain_openai import ChatOpenAI
-
 
 class SignalProcessor:
     """Processes trading signals to extract actionable decisions."""
 
-    def __init__(self, quick_thinking_llm: ChatOpenAI):
-        """Initialize with an LLM for processing."""
+    def __init__(self, quick_thinking_llm):
         self.quick_thinking_llm = quick_thinking_llm
 
     def process_signal(self, full_signal: str) -> str:
-        """
-        Process a full trading signal to extract the core decision.
+        """Extract LONG/SHORT/NEUTRAL or BUY/SELL/HOLD from signal text."""
+        content = full_signal.upper()
 
-        Args:
-            full_signal: Complete trading signal text
+        # Try deterministic extraction first (avoid LLM call)
+        # Trading mode: LONG/SHORT/NEUTRAL
+        for action in ["LONG", "SHORT", "NEUTRAL"]:
+            if f"FINAL TRANSACTION PROPOSAL: **{action}**" in content:
+                return action
 
-        Returns:
-            Extracted decision (BUY, SELL, or HOLD)
-        """
+        # Investment mode: BUY/SELL/HOLD
+        for action in ["BUY", "SELL", "HOLD"]:
+            if f"FINAL TRANSACTION PROPOSAL: **{action}**" in content:
+                return action
+
+        # Fallback: check last 200 chars
+        tail = content[-200:]
+        for action in ["LONG", "SHORT", "NEUTRAL", "BUY", "SELL", "HOLD"]:
+            if action in tail:
+                return action
+
+        # LLM fallback
         messages = [
             (
                 "system",
-                "You are an efficient assistant designed to analyze paragraphs or financial reports provided by a group of analysts. Your task is to extract the investment decision: SELL, BUY, or HOLD. Provide only the extracted decision (SELL, BUY, or HOLD) as your output, without adding any additional text or information.",
+                "Extract the investment decision from the text. "
+                "Output ONLY one word: LONG, SHORT, NEUTRAL, BUY, SELL, or HOLD.",
             ),
             ("human", full_signal),
         ]
 
         raw = self.quick_thinking_llm.invoke(messages).content.strip().upper()
 
-        valid_signals = {"BUY", "SELL", "HOLD"}
-        if raw in valid_signals:
+        valid = {"LONG", "SHORT", "NEUTRAL", "BUY", "SELL", "HOLD"}
+        if raw in valid:
             return raw
-
-        # Fallback: search for a valid signal keyword in the response
-        for signal in valid_signals:
+        for signal in valid:
             if signal in raw:
                 return signal
 
-        # Default to HOLD if no valid signal could be extracted
-        return "HOLD"
+        return "NEUTRAL"
