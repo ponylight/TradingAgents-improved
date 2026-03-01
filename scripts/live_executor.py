@@ -181,7 +181,7 @@ def parse_trade_params(full_decision: str) -> dict:
 
         # Cap risk
         if "risk_pct" in params:
-            params["risk_pct"] = min(params["risk_pct"], MAX_RISK_PCT)
+            params["risk_pct"] = min(params["risk_pct"], MAX_ALLOC_PCT)
 
         if params:
             return params
@@ -200,7 +200,7 @@ def parse_trade_params(full_decision: str) -> dict:
         if m:
             pct = float(m.group(1)) / 100
             if 0.005 <= pct <= 0.10:
-                params["risk_pct"] = min(pct, MAX_RISK_PCT)
+                params["risk_pct"] = min(pct, MAX_ALLOC_PCT)
                 break
 
     sl_patterns = [
