@@ -32,7 +32,12 @@ def _get_exchange(exchange_id: str = "bybit", api_key: str = None, secret: str =
 
 
 def _fetch_ohlcv_all(exchange, symbol: str, timeframe: str, since_ms: int, end_ms: int, limit: int = 1000):
-    """Fetch all OHLCV data between since and end, handling pagination."""
+    """Fetch all OHLCV data between since and end, with file caching."""
+    # Try cache first
+    cached = get_cached(symbol, timeframe, since_ms, limit)
+    if cached is not None:
+        return cached
+
     all_candles = []
     current_since = since_ms
     
@@ -41,10 +46,13 @@ def _fetch_ohlcv_all(exchange, symbol: str, timeframe: str, since_ms: int, end_m
         if not candles:
             break
         all_candles.extend(candles)
-        # Move to after the last candle
         current_since = candles[-1][0] + 1
         if len(candles) < limit:
             break
+    
+    # Save to cache
+    if all_candles:
+        save_cache(symbol, timeframe, since_ms, limit, all_candles)
     
     return all_candles
 

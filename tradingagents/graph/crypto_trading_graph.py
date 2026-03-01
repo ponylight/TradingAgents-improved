@@ -14,6 +14,7 @@ from langgraph.prebuilt import ToolNode
 from tradingagents.llm_clients import create_llm_client
 from tradingagents.agents import *
 from tradingagents.agents.managers.fund_manager import create_fund_manager
+from tradingagents.utils.telemetry import wrap_with_telemetry
 from tradingagents.agents.analysts.crypto_market_analyst import create_crypto_market_analyst
 from tradingagents.agents.analysts.crypto_sentiment_analyst import create_crypto_sentiment_analyst
 from tradingagents.agents.analysts.macro_analyst import create_macro_analyst
@@ -123,8 +124,8 @@ class CryptoTradingAgentsGraph:
             **llm_kwargs,
         )
 
-        self.deep_thinking_llm = deep_client.get_llm()
-        self.quick_thinking_llm = quick_client.get_llm()
+        self.deep_thinking_llm = wrap_with_telemetry(deep_client.get_llm(), "deep/opus")
+        self.quick_thinking_llm = wrap_with_telemetry(quick_client.get_llm(), "quick/sonnet")
 
         # Initialize memories
         self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
