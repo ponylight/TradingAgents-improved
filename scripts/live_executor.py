@@ -35,6 +35,9 @@ MAX_ALLOC_PCT = 0.12          # Never exceed 12% margin allocation
 RISK_PER_TRADE = 0.01         # 1% of equity at risk per trade (professional standard)
 CIRCUIT_BREAKER_PCT = 0.09
 PEAK_EQUITY = 154_425
+DAILY_LOSS_LIMIT = 0.02       # 2% daily loss limit — lock out after this
+COLD_STREAK_THRESHOLD = 3     # After 3 consecutive losses, halve risk
+COLD_STREAK_RISK_MULT = 0.5   # Multiply risk by this during cold streak
 TP1_R_MULTIPLE = 1.5          # TP1 at 1.5R
 TP1_CLOSE_PCT = 0.5           # Close 50% at TP1
 ATR_TRAIL_MULTIPLE = 2.0      # Trail remaining with 2×ATR
@@ -100,6 +103,42 @@ def get_atr(exchange, period=14, timeframe="1d"):
         tr = max(h - l, abs(h - prev_c), abs(l - prev_c))
         trs.append(tr)
     return sum(trs[-period:]) / period
+
+
+def check_daily_loss_limit(executor_state, equity):
+    """Check if daily losses exceed limit. Returns True if locked out."""
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    trades_today = [t for t in executor_state.get("trades", [])
+                    if t.get("timestamp", "").startswith(today) and "close_pnl_pct" in t]
+    
+    daily_loss = sum(t["close_pnl_pct"] for t in trades_today if t["close_pnl_pct"] < 0)
+    daily_loss_abs = abs(daily_loss) / 100  # Convert from % to fraction
+    
+    if daily_loss_abs >= DAILY_LOSS_LIMIT:
+        log.error(f"🔒 DAILY LOSS LIMIT: {daily_loss:.2f}% today (limit: {DAILY_LOSS_LIMIT*100:.0f}%). Locked out until next session.")
+        return True
+    
+    if trades_today:
+        log.info(f"📊 Daily P&L: {daily_loss:+.2f}% | Limit: {DAILY_LOSS_LIMIT*100:.0f}%")
+    return False
+
+
+def get_cold_streak(executor_state):
+    """Count consecutive losses. Returns streak count and risk multiplier."""
+    trades = executor_state.get("trades", [])
+    streak = 0
+    for t in reversed(trades):
+        if "close_pnl_pct" not in t:
+            continue
+        if t["close_pnl_pct"] < 0:
+            streak += 1
+        else:
+            break
+    
+    if streak >= COLD_STREAK_THRESHOLD:
+        log.warning(f"🥶 COLD STREAK: {streak} consecutive losses — risk halved to {RISK_PER_TRADE * COLD_STREAK_RISK_MULT * 100:.1f}%")
+        return streak, COLD_STREAK_RISK_MULT
+    return streak, 1.0
 
 
 def check_circuit_breaker(equity):
@@ -225,7 +264,7 @@ def close_position(exchange, position, fraction=1.0):
     return order
 
 
-def open_position(exchange, direction, equity, alloc_pct, stop_loss=None):
+def open_position(exchange, direction, equity, alloc_pct, stop_loss=None, risk_multiplier=1.0):
     """Open position sized by 1% risk target and daily ATR. Leverage auto-derived."""
     ticker = exchange.fetch_ticker(SYMBOL)
     price = ticker["last"]
@@ -233,7 +272,8 @@ def open_position(exchange, direction, equity, alloc_pct, stop_loss=None):
     # Mechanical sizing: risk exactly RISK_PER_TRADE of equity
     atr = get_atr(exchange, period=14, timeframe="1d")
     sl_distance = 2 * atr  # 2×daily ATR stop
-    risk_dollars = equity * RISK_PER_TRADE
+    effective_risk = RISK_PER_TRADE * risk_multiplier
+    risk_dollars = equity * effective_risk
     notional = (risk_dollars / sl_distance) * price  # exact notional for 1% risk
     amount = float(exchange.amount_to_precision(SYMBOL, notional / price))
 
@@ -253,7 +293,7 @@ def open_position(exchange, direction, equity, alloc_pct, stop_loss=None):
         log.warning(f"Leverage: {e}")
 
     side = "buy" if direction == "BUY" else "sell"
-    log.info(f"📥 {direction} {amount:.3f} BTC @ ~${price:,.0f} | ${notional:,.0f} notional | {leverage}x lev | {alloc_pct*100:.1f}% alloc | risk ${risk_dollars:,.0f} (1%)")
+    log.info(f"📥 {direction} {amount:.3f} BTC @ ~${price:,.0f} | ${notional:,.0f} notional | {leverage}x lev | {alloc_pct*100:.1f}% alloc | risk ${risk_dollars:,.0f} ({effective_risk*100:.1f}%)")
     log.info(f"   ATR(14d)=${atr:,.0f} | SL dist=${sl_distance:,.0f} ({sl_distance/price*100:.1f}%)")
 
     order = exchange.create_order(SYMBOL, "market", side, amount)
@@ -501,9 +541,16 @@ def main():
     if check_circuit_breaker(equity):
         return
 
+    executor_state = load_state()
+
+    if check_daily_loss_limit(executor_state, equity):
+        return
+
+    # Check cold streak — adjusts risk if on losing run
+    cold_streak, risk_multiplier = get_cold_streak(executor_state)
+
     positions = get_positions(exchange)
     has_position = len(positions) > 0
-    executor_state = load_state()
 
     if has_position:
         for p in positions:
@@ -652,7 +699,7 @@ def main():
                 log.info(f"🔧 Auto SL from 2×daily ATR: ${stop_loss:,.0f} (ATR=${atr:,.0f})")
 
             # If no TP from agent, calculate at 1.5R
-            result = open_position(exchange, new_direction, equity, alloc_pct, stop_loss)
+            result = open_position(exchange, new_direction, equity, alloc_pct, stop_loss, risk_multiplier=risk_multiplier)
 
             if result:
                 fill_price = result["fill_price"]
