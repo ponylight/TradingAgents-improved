@@ -160,6 +160,31 @@ class FinancialSituationMemory:
         self.timestamps = []
         self.bm25 = None
 
+    def save(self, path: str):
+        """Persist memory to disk as JSON."""
+        import json
+        data = {
+            "name": self.name,
+            "documents": self.documents,
+            "recommendations": self.recommendations,
+            "timestamps": self.timestamps,
+        }
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+
+    def load(self, path: str):
+        """Load memory from disk. Returns True if loaded, False if file missing."""
+        import json, os
+        if not os.path.exists(path):
+            return False
+        with open(path) as f:
+            data = json.load(f)
+        self.documents = data.get("documents", [])
+        self.recommendations = data.get("recommendations", [])
+        self.timestamps = data.get("timestamps", [])
+        self._rebuild_index()
+        return True
+
 
 if __name__ == "__main__":
     # Example usage

@@ -40,8 +40,10 @@ ATR_TRAIL_MULTIPLE = 2.0      # Trail remaining with 2×ATR
 TIME_EXIT_BARS = 24           # Close if flat after 24 4H bars
 
 LOG_DIR = PROJECT_ROOT / "logs"
+MEMORY_DIR = PROJECT_ROOT / "memory"
 STATE_FILE = LOG_DIR / "executor_state.json"
 LOG_DIR.mkdir(exist_ok=True)
+MEMORY_DIR.mkdir(exist_ok=True)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -276,6 +278,9 @@ def manage_trailing_stop(exchange, positions, state):
                 if abs(pnl_pct) < 0.01:  # Less than 1% move
                     log.info(f"⏰ TIME EXIT: {bars_held:.0f} bars held, only {pnl_pct*100:.1f}% move. Closing.")
                     close_position(exchange, p)
+                    returns_pct = pnl_pct * 100
+                    state["pending_reflection"] = {"returns_pct": returns_pct, "direction": side, "entry": entry, "exit": current}
+                    log.info(f"📊 Time exit P&L: {returns_pct:+.2f}%")
                     state.pop("active_trade", None)
                     return state
 
@@ -289,6 +294,9 @@ def manage_trailing_stop(exchange, positions, state):
             if current <= trade_info.get("trailing_stop", 0):
                 log.info(f"🔔 TRAILING STOP HIT @ ${current:,.0f} (trail was ${trade_info['trailing_stop']:,.0f})")
                 close_position(exchange, p)
+                returns_pct = ((current - entry) / entry) * 100
+                state["pending_reflection"] = {"returns_pct": returns_pct, "direction": "long", "entry": entry, "exit": current}
+                log.info(f"📊 Trail close P&L: {returns_pct:+.2f}%")
                 state.pop("active_trade", None)
         else:  # short
             new_trail = current + trail_dist
@@ -299,6 +307,9 @@ def manage_trailing_stop(exchange, positions, state):
             if current >= trade_info.get("trailing_stop", float("inf")):
                 log.info(f"🔔 TRAILING STOP HIT @ ${current:,.0f} (trail was ${trade_info['trailing_stop']:,.0f})")
                 close_position(exchange, p)
+                returns_pct = ((entry - current) / entry) * 100
+                state["pending_reflection"] = {"returns_pct": returns_pct, "direction": "short", "entry": entry, "exit": current}
+                log.info(f"📊 Trail close P&L: {returns_pct:+.2f}%")
                 state.pop("active_trade", None)
 
     return state
@@ -306,9 +317,8 @@ def manage_trailing_stop(exchange, positions, state):
 
 # === AGENTS ===
 
-def run_agents(trade_date):
-    log.info(f"🧠 Running agents for {SPOT_SYMBOL} on {trade_date}...")
-
+def create_agents_graph():
+    """Create and return the TradingAgents graph with persistent memory."""
     config = CRYPTO_DEFAULT_CONFIG.copy()
     config["llm_provider"] = "anthropic"
     config["deep_think_llm"] = "claude-opus-4-6"
@@ -320,6 +330,70 @@ def run_agents(trade_date):
         debug=False,
     )
 
+    # Load persistent memories
+    for mem_name, mem_obj in [
+        ("bull", ta.bull_memory),
+        ("bear", ta.bear_memory),
+        ("trader", ta.trader_memory),
+        ("invest_judge", ta.invest_judge_memory),
+        ("risk_manager", ta.risk_manager_memory),
+    ]:
+        mem_path = str(MEMORY_DIR / f"{mem_name}_memory.json")
+        if mem_obj.load(mem_path):
+            log.info(f"🧠 Loaded {mem_name} memory ({len(mem_obj.documents)} entries)")
+
+    return ta
+
+
+def save_memories(ta):
+    """Persist all agent memories to disk."""
+    for mem_name, mem_obj in [
+        ("bull", ta.bull_memory),
+        ("bear", ta.bear_memory),
+        ("trader", ta.trader_memory),
+        ("invest_judge", ta.invest_judge_memory),
+        ("risk_manager", ta.risk_manager_memory),
+    ]:
+        mem_path = str(MEMORY_DIR / f"{mem_name}_memory.json")
+        mem_obj.save(mem_path)
+    log.info("💾 Memories saved to disk")
+
+
+def run_reflection(ta, returns_pct):
+    """Run reflection loop — agents learn from trade outcomes."""
+    if ta.curr_state is None:
+        log.warning("⚠️ No agent state for reflection — loading last state from disk")
+        # Try to load the last state from logs
+        import glob
+        state_files = sorted(glob.glob(str(PROJECT_ROOT / "eval_results" / "BTC_USDT" / "CryptoTradingAgents_logs" / "full_states_log_*.json")))
+        if state_files:
+            with open(state_files[-1]) as f:
+                states = json.load(f)
+            last_date = sorted(states.keys())[-1]
+            last_state = states[last_date]
+            # Reconstruct minimal state for reflection
+            ta.curr_state = {
+                "market_report": last_state.get("market_report", ""),
+                "sentiment_report": last_state.get("sentiment_report", ""),
+                "news_report": last_state.get("news_report", ""),
+                "fundamentals_report": last_state.get("fundamentals_report", ""),
+                "investment_debate_state": last_state.get("investment_debate_state", {}),
+                "trader_investment_plan": last_state.get("trader_investment_decision", ""),
+                "risk_debate_state": last_state.get("risk_debate_state", {}),
+            }
+        else:
+            log.warning("⚠️ No state files found — skipping reflection")
+            return
+
+    log.info(f"🔄 Reflecting on trade outcome: {returns_pct:+.2f}%")
+    ta.reflect_and_remember(f"{returns_pct:+.2f}% return on BTC/USDT position")
+    save_memories(ta)
+    log.info("✅ Reflection complete — agents learned from this trade")
+
+
+def run_agents(ta, trade_date):
+    log.info(f"🧠 Running agents for {SPOT_SYMBOL} on {trade_date}...")
+
     agent_state, decision = ta.propagate(SPOT_SYMBOL, trade_date)
 
     full_decision = agent_state.get("final_trade_decision", "")
@@ -327,6 +401,9 @@ def run_agents(trade_date):
 
     log.info(f"🎯 Decision: {decision}")
     log.info(f"📋 Parsed params: {trade_params}")
+
+    # Save memories after each run (even without reflection, the propagate updates state)
+    save_memories(ta)
 
     reports = {
         "market": agent_state.get("market_report", "")[:500],
@@ -383,9 +460,17 @@ def main():
     else:
         log.info("📊 No open positions")
 
+    # Create agents graph with persistent memory
+    ta = create_agents_graph()
+
+    # If a trade just closed, reflect on the outcome
+    if executor_state.get("pending_reflection"):
+        pr = executor_state.pop("pending_reflection")
+        run_reflection(ta, pr["returns_pct"])
+
     # Run agents for new signal
     trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    decision, trade_params, reports = run_agents(trade_date)
+    decision, trade_params, reports = run_agents(ta, trade_date)
 
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -405,8 +490,23 @@ def main():
                           (decision == "SELL" and p["side"] == "long")
                 if opposing:
                     log.info(f"🔄 Closing opposing {p['side']}")
-                    close_position(exchange, p)
+                    close_order = close_position(exchange, p)
+                    entry_price = float(p["entryPrice"])
+                    exit_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+                    if p["side"] == "long":
+                        returns_pct = ((exit_price - entry_price) / entry_price) * 100
+                    else:
+                        returns_pct = ((entry_price - exit_price) / entry_price) * 100
+                    log.info(f"📊 Closed P&L: {returns_pct:+.2f}%")
+                    # Queue reflection for next run
+                    executor_state["pending_reflection"] = {
+                        "returns_pct": returns_pct,
+                        "direction": p["side"],
+                        "entry": entry_price,
+                        "exit": exit_price,
+                    }
                     record["closed"] = p["side"]
+                    record["close_pnl_pct"] = returns_pct
                     has_position = False
                     executor_state.pop("active_trade", None)
                 else:
