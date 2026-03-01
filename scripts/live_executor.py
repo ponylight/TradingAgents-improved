@@ -112,11 +112,42 @@ def check_circuit_breaker(equity):
 # === SIGNAL PARSING ===
 
 def parse_trade_params(full_decision: str) -> dict:
-    """Extract structured trade params from the risk manager's prose output."""
+    """Extract structured trade params. Tries ---TRADE_PLAN--- block first, falls back to regex."""
     params = {}
+
+    # Try structured block first (from trader agent)
+    block_match = re.search(r'---TRADE_PLAN---(.*?)---END_TRADE_PLAN---', full_decision, re.DOTALL)
+    if block_match:
+        block = block_match.group(1)
+        field_map = {
+            "CONFIDENCE": ("confidence", lambda v: int(v)),
+            "RISK_SCORE": ("risk_score", lambda v: float(v)),
+            "STOP_LOSS": ("stop_loss", lambda v: float(v.replace(",", "").replace("$", ""))),
+            "TAKE_PROFIT_1": ("take_profit_1", lambda v: float(v.replace(",", "").replace("$", ""))),
+            "TAKE_PROFIT_2": ("take_profit_2", lambda v: float(v.replace(",", "").replace("$", ""))),
+            "POSITION_SIZE": ("risk_pct", lambda v: float(v.replace("%", "")) / 100),
+            "RISK_REWARD": ("risk_reward", lambda v: float(v)),
+        }
+        for key, (param_name, converter) in field_map.items():
+            m = re.search(rf'{key}:\s*(.+)', block)
+            if m:
+                val = m.group(1).strip()
+                if val.lower() not in ("none", "n/a", ""):
+                    try:
+                        params[param_name] = converter(val)
+                    except (ValueError, TypeError):
+                        pass
+
+        # Cap risk
+        if "risk_pct" in params:
+            params["risk_pct"] = min(params["risk_pct"], MAX_RISK_PCT)
+
+        if params:
+            return params
+
+    # Fallback: regex parsing from prose
     text = full_decision.lower()
 
-    # Position size: look for "X%" pattern near "position", "size", "portfolio"
     size_patterns = [
         r'position\s*size[:\s]*(\d+(?:\.\d+)?)\s*%',
         r'(\d+(?:\.\d+)?)\s*%\s*(?:of\s*)?(?:portfolio|equity|capital)',
@@ -127,11 +158,10 @@ def parse_trade_params(full_decision: str) -> dict:
         m = re.search(pattern, text)
         if m:
             pct = float(m.group(1)) / 100
-            if 0.005 <= pct <= 0.10:  # Sanity: 0.5% to 10%
+            if 0.005 <= pct <= 0.10:
                 params["risk_pct"] = min(pct, MAX_RISK_PCT)
                 break
 
-    # Stop loss
     sl_patterns = [
         r'stop[- ]?loss[:\s]*\$?([\d,]+(?:\.\d+)?)',
         r'sl[:\s]*\$?([\d,]+(?:\.\d+)?)',
@@ -143,7 +173,6 @@ def parse_trade_params(full_decision: str) -> dict:
             params["stop_loss"] = float(m.group(1).replace(",", ""))
             break
 
-    # Take profit (first target)
     tp_patterns = [
         r'(?:take[- ]?profit|tp)\s*(?:1|a)?[:\s]*\$?([\d,]+(?:\.\d+)?)',
         r'(?:target|tp1?)[:\s]*\$?([\d,]+(?:\.\d+)?)',
@@ -154,7 +183,6 @@ def parse_trade_params(full_decision: str) -> dict:
             params["take_profit_1"] = float(m.group(1).replace(",", ""))
             break
 
-    # Take profit 2
     tp2_patterns = [
         r'(?:take[- ]?profit|tp)\s*(?:2|b)[:\s]*\$?([\d,]+(?:\.\d+)?)',
         r'(?:target|tp)\s*2[:\s]*\$?([\d,]+(?:\.\d+)?)',
@@ -165,7 +193,6 @@ def parse_trade_params(full_decision: str) -> dict:
             params["take_profit_2"] = float(m.group(1).replace(",", ""))
             break
 
-    # Confidence
     conf_patterns = [
         r'confidence[:\s]*(\d+)\s*/?\s*10',
         r'conviction[:\s]*(\d+)\s*/?\s*10',
