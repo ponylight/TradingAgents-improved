@@ -1,21 +1,22 @@
 #!/usr/bin/env python3
 """
-TradingAgents Live Executor — Runs multi-agent pipeline and executes on Bybit demo.
+TradingAgents Live Executor — Multi-agent pipeline → Bybit demo execution.
 
-Flow:
-1. Run TradingAgents propagate() → BUY/SELL/HOLD
-2. Execute on Bybit with position sizing
-3. Manage existing positions (close on opposing signal)
+Profit-Taking Strategy (2-Target Rule + ATR Trail):
+  1. TP1 at 1.5R — close 50% (pays for the trade)
+  2. Remaining 50% trails with 2×ATR stop
+  3. Time exit: close if no movement after 24 4H bars (4 days)
 
-Config: RISK_PCT=8%, LEVERAGE=5x, circuit breaker -9% from peak
+Position sizing parsed from agent output, with fallback to RISK_PCT.
 """
 
 import ccxt
 import os
 import sys
 import json
+import re
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
 
@@ -28,10 +29,15 @@ from tradingagents.graph.crypto_trading_graph import CryptoTradingAgentsGraph, C
 # === CONFIG ===
 SYMBOL = "BTC/USDT:USDT"
 SPOT_SYMBOL = "BTC/USDT"
-RISK_PCT = 0.08
+DEFAULT_RISK_PCT = 0.03       # 3% default if agent doesn't specify
+MAX_RISK_PCT = 0.05           # Never exceed 5% per trade
 LEVERAGE = 5
 CIRCUIT_BREAKER_PCT = 0.09
 PEAK_EQUITY = 154_425
+TP1_R_MULTIPLE = 1.5          # TP1 at 1.5R
+TP1_CLOSE_PCT = 0.5           # Close 50% at TP1
+ATR_TRAIL_MULTIPLE = 2.0      # Trail remaining with 2×ATR
+TIME_EXIT_BARS = 24           # Close if flat after 24 4H bars
 
 LOG_DIR = PROJECT_ROOT / "logs"
 STATE_FILE = LOG_DIR / "executor_state.json"
@@ -47,6 +53,8 @@ logging.basicConfig(
 )
 log = logging.getLogger("executor")
 
+
+# === EXCHANGE ===
 
 def get_exchange():
     is_demo = os.getenv("BYBIT_DEMO", "").lower() == "true"
@@ -71,13 +79,24 @@ def get_exchange():
 
 
 def get_equity(exchange):
-    balance = exchange.fetch_balance({"type": "contract"})
+    balance = exchange.fetch_balance({"type": "swap"})
     return float(balance["total"].get("USDT", 0))
 
 
 def get_positions(exchange):
     positions = exchange.fetch_positions([SYMBOL])
     return [p for p in positions if abs(float(p["contracts"] or 0)) > 0]
+
+
+def get_atr(exchange, period=14):
+    """Fetch current ATR from 4H candles."""
+    candles = exchange.fetch_ohlcv(SYMBOL, "4h", limit=period + 1)
+    trs = []
+    for i in range(1, len(candles)):
+        h, l, prev_c = candles[i][2], candles[i][3], candles[i-1][4]
+        tr = max(h - l, abs(h - prev_c), abs(l - prev_c))
+        trs.append(tr)
+    return sum(trs[-period:]) / period
 
 
 def check_circuit_breaker(equity):
@@ -88,16 +107,95 @@ def check_circuit_breaker(equity):
     return False
 
 
-def close_position(exchange, position):
+# === SIGNAL PARSING ===
+
+def parse_trade_params(full_decision: str) -> dict:
+    """Extract structured trade params from the risk manager's prose output."""
+    params = {}
+    text = full_decision.lower()
+
+    # Position size: look for "X%" pattern near "position", "size", "portfolio"
+    size_patterns = [
+        r'position\s*size[:\s]*(\d+(?:\.\d+)?)\s*%',
+        r'(\d+(?:\.\d+)?)\s*%\s*(?:of\s*)?(?:portfolio|equity|capital)',
+        r'allocat\w*\s*(\d+(?:\.\d+)?)\s*%',
+        r'risk\w*\s*(\d+(?:\.\d+)?)\s*%\s*(?:of|per)',
+    ]
+    for pattern in size_patterns:
+        m = re.search(pattern, text)
+        if m:
+            pct = float(m.group(1)) / 100
+            if 0.005 <= pct <= 0.10:  # Sanity: 0.5% to 10%
+                params["risk_pct"] = min(pct, MAX_RISK_PCT)
+                break
+
+    # Stop loss
+    sl_patterns = [
+        r'stop[- ]?loss[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        r'sl[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        r'stop\s*(?:at|@)\s*\$?([\d,]+(?:\.\d+)?)',
+    ]
+    for pattern in sl_patterns:
+        m = re.search(pattern, text)
+        if m:
+            params["stop_loss"] = float(m.group(1).replace(",", ""))
+            break
+
+    # Take profit (first target)
+    tp_patterns = [
+        r'(?:take[- ]?profit|tp)\s*(?:1|a)?[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        r'(?:target|tp1?)[:\s]*\$?([\d,]+(?:\.\d+)?)',
+    ]
+    for pattern in tp_patterns:
+        m = re.search(pattern, text)
+        if m:
+            params["take_profit_1"] = float(m.group(1).replace(",", ""))
+            break
+
+    # Take profit 2
+    tp2_patterns = [
+        r'(?:take[- ]?profit|tp)\s*(?:2|b)[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        r'(?:target|tp)\s*2[:\s]*\$?([\d,]+(?:\.\d+)?)',
+    ]
+    for pattern in tp2_patterns:
+        m = re.search(pattern, text)
+        if m:
+            params["take_profit_2"] = float(m.group(1).replace(",", ""))
+            break
+
+    # Confidence
+    conf_patterns = [
+        r'confidence[:\s]*(\d+)\s*/?\s*10',
+        r'conviction[:\s]*(\d+)\s*/?\s*10',
+        r'(\d+)\s*/\s*10\s*confidence',
+    ]
+    for pattern in conf_patterns:
+        m = re.search(pattern, text)
+        if m:
+            params["confidence"] = int(m.group(1))
+            break
+
+    return params
+
+
+# === POSITION MANAGEMENT ===
+
+def close_position(exchange, position, fraction=1.0):
+    """Close all or part of a position."""
     side = "sell" if position["side"] == "long" else "buy"
-    amount = abs(float(position["contracts"]))
-    log.info(f"📤 Closing {position['side']} {amount} contracts")
+    total = abs(float(position["contracts"]))
+    amount = float(exchange.amount_to_precision(SYMBOL, total * fraction))
+    if amount <= 0:
+        return None
+    label = f"{fraction*100:.0f}%" if fraction < 1 else "full"
+    log.info(f"📤 Closing {label} of {position['side']} ({amount}/{total} contracts)")
     order = exchange.create_order(SYMBOL, "market", side, amount, params={"reduceOnly": True})
     log.info(f"✅ Closed: {order['id']}")
     return order
 
 
-def open_position(exchange, direction, equity):
+def open_position(exchange, direction, equity, risk_pct, stop_loss=None):
+    """Open position with proper sizing. Sets SL on exchange if provided."""
     try:
         exchange.set_leverage(LEVERAGE, SYMBOL)
     except Exception as e:
@@ -105,7 +203,7 @@ def open_position(exchange, direction, equity):
 
     ticker = exchange.fetch_ticker(SYMBOL)
     price = ticker["last"]
-    notional = equity * RISK_PCT * LEVERAGE
+    notional = equity * risk_pct * LEVERAGE
     amount = float(exchange.amount_to_precision(SYMBOL, notional / price))
 
     if amount <= 0:
@@ -113,12 +211,100 @@ def open_position(exchange, direction, equity):
         return None
 
     side = "buy" if direction == "BUY" else "sell"
-    log.info(f"📥 {direction} {amount} BTC @ ~${price:,.0f} | ${notional:,.0f} notional | {LEVERAGE}x")
+    log.info(f"📥 {direction} {amount} BTC @ ~${price:,.0f} | ${notional:,.0f} notional | {LEVERAGE}x | {risk_pct*100:.1f}% risk")
 
     order = exchange.create_order(SYMBOL, "market", side, amount)
-    log.info(f"✅ Filled: {order['id']} @ ${order.get('average', 'N/A')}")
-    return order
+    fill_price = float(order.get("average") or price)
+    log.info(f"✅ Filled: {order['id']} @ ${fill_price:,.2f}")
 
+    # Set stop loss on exchange
+    if stop_loss and stop_loss > 0:
+        try:
+            sl_side = "sell" if direction == "BUY" else "buy"
+            sl_params = {"triggerPrice": str(stop_loss), "reduceOnly": True}
+            if direction == "BUY":
+                sl_params["triggerDirection"] = 2  # trigger when price falls below
+            else:
+                sl_params["triggerDirection"] = 1  # trigger when price rises above
+            exchange.create_order(SYMBOL, "market", sl_side, amount, params=sl_params)
+            log.info(f"🛡️ Stop loss set @ ${stop_loss:,.2f}")
+        except Exception as e:
+            log.warning(f"⚠️ Failed to set SL on exchange: {e}")
+
+    return {"order": order, "fill_price": fill_price, "amount": amount}
+
+
+def set_take_profit(exchange, direction, amount, tp_price):
+    """Set TP order for partial close."""
+    try:
+        tp_side = "sell" if direction == "BUY" else "buy"
+        tp_amount = float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))
+        tp_params = {"triggerPrice": str(tp_price), "reduceOnly": True}
+        if direction == "BUY":
+            tp_params["triggerDirection"] = 1  # trigger when price rises above
+        else:
+            tp_params["triggerDirection"] = 2  # trigger when price falls below
+        exchange.create_order(SYMBOL, "market", tp_side, tp_amount, params=tp_params)
+        log.info(f"🎯 TP1 set @ ${tp_price:,.2f} for {tp_amount} BTC ({TP1_CLOSE_PCT*100:.0f}%)")
+    except Exception as e:
+        log.warning(f"⚠️ Failed to set TP on exchange: {e}")
+
+
+def manage_trailing_stop(exchange, positions, state):
+    """Check and update trailing stop for existing positions."""
+    for p in positions:
+        entry = float(p["entryPrice"])
+        current = float(p["markPrice"] or p["entryPrice"])
+        side = p["side"]
+        contracts = abs(float(p["contracts"]))
+
+        trade_info = state.get("active_trade", {})
+        if not trade_info:
+            continue
+
+        atr = get_atr(exchange)
+        trail_dist = ATR_TRAIL_MULTIPLE * atr
+        opened_at = trade_info.get("opened_at", "")
+
+        # Time-based exit: close if stale
+        if opened_at:
+            opened_dt = datetime.fromisoformat(opened_at)
+            hours_held = (datetime.now(timezone.utc) - opened_dt).total_seconds() / 3600
+            bars_held = hours_held / 4
+            if bars_held >= TIME_EXIT_BARS:
+                pnl_pct = ((current - entry) / entry) if side == "long" else ((entry - current) / entry)
+                if abs(pnl_pct) < 0.01:  # Less than 1% move
+                    log.info(f"⏰ TIME EXIT: {bars_held:.0f} bars held, only {pnl_pct*100:.1f}% move. Closing.")
+                    close_position(exchange, p)
+                    state.pop("active_trade", None)
+                    return state
+
+        # Update trailing stop
+        if side == "long":
+            new_trail = current - trail_dist
+            old_trail = trade_info.get("trailing_stop", entry - trail_dist)
+            if new_trail > old_trail:
+                trade_info["trailing_stop"] = new_trail
+                log.info(f"📈 Trail updated: ${old_trail:,.0f} → ${new_trail:,.0f} (price ${current:,.0f}, ATR ${atr:,.0f})")
+            if current <= trade_info.get("trailing_stop", 0):
+                log.info(f"🔔 TRAILING STOP HIT @ ${current:,.0f} (trail was ${trade_info['trailing_stop']:,.0f})")
+                close_position(exchange, p)
+                state.pop("active_trade", None)
+        else:  # short
+            new_trail = current + trail_dist
+            old_trail = trade_info.get("trailing_stop", entry + trail_dist)
+            if new_trail < old_trail:
+                trade_info["trailing_stop"] = new_trail
+                log.info(f"📉 Trail updated: ${old_trail:,.0f} → ${new_trail:,.0f} (price ${current:,.0f}, ATR ${atr:,.0f})")
+            if current >= trade_info.get("trailing_stop", float("inf")):
+                log.info(f"🔔 TRAILING STOP HIT @ ${current:,.0f} (trail was ${trade_info['trailing_stop']:,.0f})")
+                close_position(exchange, p)
+                state.pop("active_trade", None)
+
+    return state
+
+
+# === AGENTS ===
 
 def run_agents(trade_date):
     log.info(f"🧠 Running agents for {SPOT_SYMBOL} on {trade_date}...")
@@ -134,24 +320,32 @@ def run_agents(trade_date):
         debug=False,
     )
 
-    state, decision = ta.propagate(SPOT_SYMBOL, trade_date)
+    agent_state, decision = ta.propagate(SPOT_SYMBOL, trade_date)
+
+    full_decision = agent_state.get("final_trade_decision", "")
+    trade_params = parse_trade_params(full_decision)
+
     log.info(f"🎯 Decision: {decision}")
+    log.info(f"📋 Parsed params: {trade_params}")
 
     reports = {
-        "market": state.get("market_report", "")[:500],
-        "sentiment": state.get("sentiment_report", "")[:500],
-        "news": state.get("news_report", "")[:500],
-        "final": state.get("final_trade_decision", "")[:1000],
+        "market": agent_state.get("market_report", "")[:500],
+        "sentiment": agent_state.get("sentiment_report", "")[:500],
+        "news": agent_state.get("news_report", "")[:500],
+        "final": full_decision[:2000],
         "decision": decision,
+        "parsed_params": trade_params,
     }
-    return decision, reports
+    return decision, trade_params, reports
 
+
+# === STATE ===
 
 def load_state():
     if STATE_FILE.exists():
         with open(STATE_FILE) as f:
             return json.load(f)
-    return {"last_run": None, "last_decision": None, "trades": []}
+    return {"last_run": None, "last_decision": None, "trades": [], "active_trade": None}
 
 
 def save_state(state):
@@ -159,9 +353,11 @@ def save_state(state):
         json.dump(state, f, indent=2, default=str)
 
 
+# === MAIN ===
+
 def main():
     log.info("=" * 60)
-    log.info("🚀 TradingAgents Live Executor")
+    log.info("🚀 TradingAgents Live Executor v2")
     log.info("=" * 60)
 
     exchange = get_exchange()
@@ -173,28 +369,36 @@ def main():
 
     positions = get_positions(exchange)
     has_position = len(positions) > 0
+    executor_state = load_state()
 
     if has_position:
         for p in positions:
             pnl = float(p.get("unrealizedPnl", 0))
             log.info(f"📊 {p['side']} {p['contracts']} @ ${float(p['entryPrice']):,.0f} | PnL: ${pnl:,.2f}")
+
+        # Manage trailing stop on existing position
+        executor_state = manage_trailing_stop(exchange, positions, executor_state)
+        positions = get_positions(exchange)  # Refresh after potential close
+        has_position = len(positions) > 0
     else:
         log.info("📊 No open positions")
 
+    # Run agents for new signal
     trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    decision, reports = run_agents(trade_date)
+    decision, trade_params, reports = run_agents(trade_date)
 
-    state = load_state()
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "decision": decision,
         "equity": equity,
+        "params": trade_params,
     }
 
     if decision == "HOLD":
         log.info("⏸️  HOLD — no action")
 
     elif decision in ("BUY", "SELL"):
+        # Close opposing position
         if has_position:
             for p in positions:
                 opposing = (decision == "BUY" and p["side"] == "short") or \
@@ -204,22 +408,82 @@ def main():
                     close_position(exchange, p)
                     record["closed"] = p["side"]
                     has_position = False
+                    executor_state.pop("active_trade", None)
                 else:
                     log.info(f"✅ Already {p['side']} — confirming hold")
                     record["action"] = "confirm"
 
+        # Open new position
         if not has_position:
-            order = open_position(exchange, decision, equity)
-            if order:
+            risk_pct = trade_params.get("risk_pct", DEFAULT_RISK_PCT)
+            stop_loss = trade_params.get("stop_loss")
+            tp1 = trade_params.get("take_profit_1")
+
+            # If no SL from agent, calculate from ATR
+            if not stop_loss:
+                atr = get_atr(exchange)
+                ticker = exchange.fetch_ticker(SYMBOL)
+                price = ticker["last"]
+                if decision == "BUY":
+                    stop_loss = price - (2 * atr)
+                else:
+                    stop_loss = price + (2 * atr)
+                log.info(f"🔧 Auto SL from 2×ATR: ${stop_loss:,.0f} (ATR=${atr:,.0f})")
+
+            # If no TP from agent, calculate at 1.5R
+            result = open_position(exchange, decision, equity, risk_pct, stop_loss)
+
+            if result:
+                fill_price = result["fill_price"]
+                amount = result["amount"]
+
+                risk_dist = abs(fill_price - stop_loss)
+                if not tp1:
+                    if decision == "BUY":
+                        tp1 = fill_price + (TP1_R_MULTIPLE * risk_dist)
+                    else:
+                        tp1 = fill_price - (TP1_R_MULTIPLE * risk_dist)
+                    log.info(f"🔧 Auto TP1 at {TP1_R_MULTIPLE}R: ${tp1:,.0f}")
+
+                # Set TP1 on exchange (close 50%)
+                set_take_profit(exchange, decision, amount, tp1)
+
+                # Initialize trailing stop tracking
+                atr = get_atr(exchange)
+                if decision == "BUY":
+                    initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
+                else:
+                    initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
+
+                executor_state["active_trade"] = {
+                    "direction": decision,
+                    "entry": fill_price,
+                    "amount": amount,
+                    "stop_loss": stop_loss,
+                    "tp1": tp1,
+                    "tp2": trade_params.get("take_profit_2"),
+                    "trailing_stop": initial_trail,
+                    "opened_at": datetime.now(timezone.utc).isoformat(),
+                    "confidence": trade_params.get("confidence"),
+                    "atr_at_entry": atr,
+                }
+
                 record["action"] = f"opened_{decision.lower()}"
-                record["price"] = order.get("average", order.get("price"))
+                record["price"] = fill_price
+                record["stop_loss"] = stop_loss
+                record["tp1"] = tp1
+                record["amount"] = amount
+                record["risk_pct"] = risk_pct
+
+                log.info(f"📋 Trade plan: Entry ${fill_price:,.0f} | SL ${stop_loss:,.0f} | TP1 ${tp1:,.0f} | Risk {risk_pct*100:.1f}% | Trail {ATR_TRAIL_MULTIPLE}×ATR")
             else:
                 record["action"] = "failed"
 
-    state["last_run"] = record["timestamp"]
-    state["last_decision"] = decision
-    state["trades"].append(record)
-    save_state(state)
+    executor_state["last_run"] = record["timestamp"]
+    executor_state["last_decision"] = decision
+    executor_state["trades"] = executor_state.get("trades", [])
+    executor_state["trades"].append(record)
+    save_state(executor_state)
 
     with open(LOG_DIR / f"agent_reports_{trade_date}.json", "w") as f:
         json.dump(reports, f, indent=2)
