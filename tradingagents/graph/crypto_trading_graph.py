@@ -13,6 +13,7 @@ from langgraph.prebuilt import ToolNode
 
 from tradingagents.llm_clients import create_llm_client
 from tradingagents.agents import *
+from tradingagents.agents.managers.fund_manager import create_fund_manager
 from tradingagents.utils.telemetry import wrap_with_telemetry
 from tradingagents.agents.analysts.crypto_market_analyst import create_crypto_market_analyst
 from tradingagents.agents.analysts.crypto_sentiment_analyst import create_crypto_sentiment_analyst
@@ -244,6 +245,7 @@ class CryptoTradingAgentsGraph:
         risk_manager_node = create_risk_manager(
             self.deep_thinking_llm, self.risk_manager_memory
         )
+        fund_manager_node = create_fund_manager(self.deep_thinking_llm)
 
         # Build workflow
         workflow = StateGraph(AgentState)
@@ -265,6 +267,7 @@ class CryptoTradingAgentsGraph:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Conservative Analyst", conservative_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
+        workflow.add_node("Fund Manager", fund_manager_node)
 
         # Wire edges
         first_analyst = selected_analysts[0]
@@ -344,7 +347,8 @@ class CryptoTradingAgentsGraph:
             },
         )
 
-        workflow.add_edge("Risk Judge", END)
+        workflow.add_edge("Risk Judge", "Fund Manager")
+        workflow.add_edge("Fund Manager", END)
 
         return workflow.compile()
 
