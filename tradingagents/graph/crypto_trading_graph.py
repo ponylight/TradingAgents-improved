@@ -58,7 +58,7 @@ from .signal_processing import SignalProcessor
 CRYPTO_DEFAULT_CONFIG = {
     **DEFAULT_CONFIG,
     "llm_provider": "anthropic",
-    "deep_think_llm": "claude-sonnet-4-20250514",
+    "deep_think_llm": "claude-opus-4-6",
     "quick_think_llm": "claude-sonnet-4-20250514",
     "max_debate_rounds": 1,
     "max_risk_discuss_rounds": 1,
@@ -226,10 +226,10 @@ class CryptoTradingAgentsGraph:
 
         # Create researcher and manager nodes
         bull_researcher_node = create_bull_researcher(
-            self.quick_thinking_llm, self.bull_memory
+            self.deep_thinking_llm, self.bull_memory
         )
         bear_researcher_node = create_bear_researcher(
-            self.quick_thinking_llm, self.bear_memory
+            self.deep_thinking_llm, self.bear_memory
         )
         research_manager_node = create_research_manager(
             self.deep_thinking_llm, self.invest_judge_memory

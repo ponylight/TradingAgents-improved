@@ -311,7 +311,7 @@ def run_agents(trade_date):
 
     config = CRYPTO_DEFAULT_CONFIG.copy()
     config["llm_provider"] = "anthropic"
-    config["deep_think_llm"] = "claude-sonnet-4-20250514"
+    config["deep_think_llm"] = "claude-opus-4-6"
     config["quick_think_llm"] = "claude-sonnet-4-20250514"
 
     ta = CryptoTradingAgentsGraph(
