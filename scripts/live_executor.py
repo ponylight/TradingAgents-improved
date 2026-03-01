@@ -418,10 +418,26 @@ def run_reflection(ta, returns_pct):
     log.info("✅ Reflection complete — agents learned from this trade")
 
 
-def run_agents(ta, trade_date):
+def run_agents(ta, trade_date, portfolio_context=None):
     log.info(f"🧠 Running agents for {SPOT_SYMBOL} on {trade_date}...")
 
+    # Inject portfolio context into the graph's initial state
+    if portfolio_context:
+        ta.portfolio_context = portfolio_context
+
     agent_state, decision = ta.propagate(SPOT_SYMBOL, trade_date)
+
+    # Check if fund manager overrode the decision
+    fund_parsed = agent_state.get("fund_manager_parsed", {})
+    if fund_parsed:
+        action = fund_parsed.get("action", "").upper()
+        if action == "OPEN_LONG":
+            decision = "BUY"
+        elif action == "OPEN_SHORT":
+            decision = "SELL"
+        elif action in ("CLOSE", "HOLD"):
+            decision = "HOLD"
+        log.info(f"🏛️ Fund Manager overrode to: {decision} (action={action})")
 
     full_decision = agent_state.get("final_trade_decision", "")
     trade_params = parse_trade_params(full_decision)
@@ -495,9 +511,40 @@ def main():
         pr = executor_state.pop("pending_reflection")
         run_reflection(ta, pr["returns_pct"])
 
+    # Build portfolio context for Fund Manager
+    portfolio_ctx = {
+        "position": "none",
+        "pnl_pct": 0,
+        "age_bars": 0,
+        "equity": equity,
+        "consecutive_same_direction": 0,
+        "last_decision": executor_state.get("last_decision", "HOLD"),
+    }
+    if has_position and positions:
+        p = positions[0]
+        portfolio_ctx["position"] = p["side"]
+        portfolio_ctx["pnl_pct"] = (float(p.get("unrealizedPnl", 0)) / equity) * 100
+        active = executor_state.get("active_trade", {})
+        if active and active.get("opened_at"):
+            opened_dt = datetime.fromisoformat(active["opened_at"])
+            hours = (datetime.now(timezone.utc) - opened_dt).total_seconds() / 3600
+            portfolio_ctx["age_bars"] = int(hours / 4)
+    
+    # Count consecutive same-direction signals
+    recent_decisions = [t.get("decision") for t in executor_state.get("trades", [])[-5:]]
+    if recent_decisions:
+        last = recent_decisions[-1]
+        count = 0
+        for d in reversed(recent_decisions):
+            if d == last:
+                count += 1
+            else:
+                break
+        portfolio_ctx["consecutive_same_direction"] = count
+
     # Run agents for new signal
     trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    decision, trade_params, reports = run_agents(ta, trade_date)
+    decision, trade_params, reports = run_agents(ta, trade_date, portfolio_ctx)
 
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
