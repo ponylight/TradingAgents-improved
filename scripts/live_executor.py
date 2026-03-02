@@ -472,6 +472,32 @@ def run_reflection(ta, returns_pct):
     save_memories(ta)
     log.info("✅ Reflection complete — agents learned from this trade")
 
+    # Run review & optimization after reflection
+    try:
+        from tradingagents.review import TradeReviewer, PerformanceScorer, ParameterOptimizer
+        reviewer = TradeReviewer(ta.quick_thinking_llm, str(PROJECT_ROOT))
+        scorer = PerformanceScorer(str(PROJECT_ROOT))
+        optimizer = ParameterOptimizer(str(PROJECT_ROOT))
+
+        trade_date = datetime.now(SYDNEY_TZ).strftime("%Y-%m-%d")
+        agent_state = reviewer.load_state_for_date(trade_date)
+        if agent_state:
+            trade = {"pnl_pct": returns_pct, "side": "long" if returns_pct > 0 else "short", "status": "closed", "open_time": trade_date}
+            review = reviewer.review_trade(trade, agent_state)
+            scorer.record_trade(review)
+            report = scorer.get_report()
+            recommendations = optimizer.run_full_optimization([review], report)
+            changes = recommendations.get("summary", {}).get("total_parameter_changes", 0)
+            if changes > 0:
+                log.info(f"🔧 {changes} optimization recommendations — review logs/optimization_recommendations.json")
+            for agent in report.get("underperformers", []):
+                log.warning(f"⚠️ Underperformer: {agent}")
+            log.info("✅ Review & optimization complete")
+        else:
+            log.warning("⚠️ No agent state for review — skipping optimization")
+    except Exception as e:
+        log.error(f"Review/optimization failed (non-fatal): {e}")
+
 
 def run_agents(ta, trade_date, portfolio_context=None):
     log.info(f"🧠 Running agents for {SPOT_SYMBOL} on {trade_date}...")
