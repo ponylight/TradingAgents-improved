@@ -48,9 +48,17 @@ BTC_EVENT_ANCHORS = {
 }
 
 
+_gl_exchange = None
+
+def _get_gl_exchange():
+    global _gl_exchange
+    if _gl_exchange is None:
+        _gl_exchange = ccxt.bybit({"options": {"defaultType": "swap"}, "enableRateLimit": True})
+    return _gl_exchange
+
 def _fetch_5m(symbol: str, limit: int = 200) -> Optional[pd.DataFrame]:
     try:
-        ex = ccxt.bybit({"options": {"defaultType": "swap"}, "enableRateLimit": True})
+        ex = _get_gl_exchange()
         raw = ex.fetch_ohlcv(f"{symbol}:USDT", timeframe="5m", limit=limit)
         if not raw or len(raw) < 50:
             return None

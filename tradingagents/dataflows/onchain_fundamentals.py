@@ -153,7 +153,7 @@ def get_difficulty_adjustment() -> Dict[str, Any]:
         return {
             "progress_pct": round(data.get("progressPercent", 0), 1),
             "change_pct": round(data.get("difficultyChange", 0), 2),
-            "estimated_change_pct": round(data.get("estimatedRetargetDate", 0), 2) if isinstance(data.get("estimatedRetargetDate"), (int, float)) else 0,
+            "estimated_change_pct": round(data.get("estimatedChange", data.get("difficultyChange", 0)), 2),
             "remaining_blocks": data.get("remainingBlocks", 0),
             "remaining_time_sec": data.get("remainingTime", 0),
             "previous_retarget_pct": round(data.get("previousRetarget", 0), 2),

@@ -31,7 +31,7 @@ SUBREDDITS = ["bitcoin", "cryptocurrency", "CryptoMarkets", "BitcoinMarkets"]
 # Keyword sentiment scoring (fast, no ML dependency)
 BULLISH_WORDS = {
     "bull", "bullish", "moon", "mooning", "pump", "rally", "buy", "buying",
-    "long", "accumulate", "hodl", "hold", "undervalued", "breakout", "support",
+    "long", "accumulate", "hodl", "undervalued", "breakout", "support",
     "golden cross", "higher low", "recovery", "ath", "all time high",
     "institutional", "adoption", "etf", "halving", "scarcity", "demand",
     "green", "bounce", "reversal", "bottom", "oversold", "cheap", "dip",

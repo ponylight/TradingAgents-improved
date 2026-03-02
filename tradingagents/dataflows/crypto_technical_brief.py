@@ -71,11 +71,20 @@ def _obv(close, vol): return (np.sign(close.diff()).fillna(0)*vol).cumsum()
 
 # ── OHLCV fetch ──
 
+# Module-level exchange instance (reuse across calls)
+_exchange = None
+
+def _get_exchange():
+    global _exchange
+    if _exchange is None:
+        import ccxt
+        _exchange = ccxt.bybit({"options": {"defaultType": "swap"}, "enableRateLimit": True})
+    return _exchange
+
 def _fetch_ohlcv(symbol, tf_key):
-    import ccxt
     ccxt_tf, limit = TIMEFRAMES[tf_key]
     try:
-        ex = ccxt.bybit({"options": {"defaultType": "swap"}, "enableRateLimit": True})
+        ex = _get_exchange()
         raw = ex.fetch_ohlcv(f"{symbol}:USDT", timeframe=ccxt_tf, limit=limit)
         if not raw or len(raw) < 30: return None
         df = pd.DataFrame(raw, columns=["timestamp","open","high","low","close","volume"])
