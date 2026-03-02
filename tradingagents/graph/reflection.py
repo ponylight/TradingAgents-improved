@@ -119,3 +119,13 @@ Adhere strictly to these instructions, and ensure your output is detailed, accur
             "RISK JUDGE", judge_decision, situation, returns_losses
         )
         risk_manager_memory.add_situations([(situation, result)])
+
+    def reflect_fund_manager(self, current_state, returns_losses, fund_manager_memory):
+        """Reflect on portfolio manager's decision and update memory."""
+        situation = self._extract_current_situation(current_state)
+        fund_decision = current_state.get("fund_manager_decision", current_state.get("final_trade_decision", ""))
+
+        result = self._reflect_on_component(
+            "PORTFOLIO MANAGER", fund_decision, situation, returns_losses
+        )
+        fund_manager_memory.add_situations([(situation, result)])

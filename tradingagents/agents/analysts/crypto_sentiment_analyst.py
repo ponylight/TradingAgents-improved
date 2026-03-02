@@ -27,6 +27,10 @@ def create_crypto_sentiment_analyst(llm):
         system_message = """You are a senior crypto sentiment analyst specializing in derivatives market sentiment for BTC.
 Your role is to gauge market sentiment and positioning to identify contrarian opportunities.
 
+## CRITICAL: You MUST use the tools provided to fetch data. Do NOT claim you lack access.
+You have these tools available: get_crypto_fear_greed, get_funding_rate, get_open_interest, get_liquidation_info.
+Call them one by one. Do NOT skip tool calls or claim another agent should handle data fetching.
+
 ## Data Sources
 - **Fear & Greed Index**: 0-25 Extreme Fear (historically a buy zone), 75-100 Extreme Greed (sell zone)
 - **Funding Rates**: Positive = longs pay shorts (bullish consensus). Extreme positive >0.05% = overleveraged longs.

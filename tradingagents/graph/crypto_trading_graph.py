@@ -13,6 +13,7 @@ from langgraph.prebuilt import ToolNode
 
 from tradingagents.llm_clients import create_llm_client
 from tradingagents.agents import *
+from tradingagents.agents.managers.fund_manager import create_fund_manager
 from tradingagents.utils.telemetry import wrap_with_telemetry
 from tradingagents.agents.analysts.crypto_market_analyst import create_crypto_market_analyst
 from tradingagents.agents.analysts.crypto_sentiment_analyst import create_crypto_sentiment_analyst
@@ -132,6 +133,7 @@ class CryptoTradingAgentsGraph:
         self.trader_memory = FinancialSituationMemory("trader_memory", self.config)
         self.invest_judge_memory = FinancialSituationMemory("invest_judge_memory", self.config)
         self.risk_manager_memory = FinancialSituationMemory("risk_manager_memory", self.config)
+        self.fund_manager_memory = FinancialSituationMemory("fund_manager_memory", self.config)
 
         # Create crypto-specific tool nodes
         self.tool_nodes = self._create_crypto_tool_nodes()
@@ -244,6 +246,9 @@ class CryptoTradingAgentsGraph:
         risk_manager_node = create_risk_manager(
             self.deep_thinking_llm, self.risk_manager_memory
         )
+        fund_manager_node = create_fund_manager(
+            self.deep_thinking_llm, self.fund_manager_memory
+        )
 
         # Build workflow
         workflow = StateGraph(AgentState)
@@ -265,6 +270,7 @@ class CryptoTradingAgentsGraph:
         workflow.add_node("Neutral Analyst", neutral_analyst)
         workflow.add_node("Conservative Analyst", conservative_analyst)
         workflow.add_node("Risk Judge", risk_manager_node)
+        workflow.add_node("Portfolio Manager", fund_manager_node)
 
         # Wire edges
         first_analyst = selected_analysts[0]
@@ -344,7 +350,8 @@ class CryptoTradingAgentsGraph:
             },
         )
 
-        workflow.add_edge("Risk Judge", END)
+        workflow.add_edge("Risk Judge", "Portfolio Manager")
+        workflow.add_edge("Portfolio Manager", END)
 
         return workflow.compile()
 
@@ -353,6 +360,9 @@ class CryptoTradingAgentsGraph:
         self.ticker = symbol
 
         init_agent_state = self.propagator.create_initial_state(symbol, trade_date)
+        # Inject portfolio context if available
+        if hasattr(self, "portfolio_context") and self.portfolio_context:
+            init_agent_state["portfolio_context"] = self.portfolio_context
         args = self.propagator.get_graph_args()
 
         if self.debug:
@@ -416,6 +426,7 @@ class CryptoTradingAgentsGraph:
         self.reflector.reflect_trader(self.curr_state, returns_losses, self.trader_memory)
         self.reflector.reflect_invest_judge(self.curr_state, returns_losses, self.invest_judge_memory)
         self.reflector.reflect_risk_manager(self.curr_state, returns_losses, self.risk_manager_memory)
+        self.reflector.reflect_fund_manager(self.curr_state, returns_losses, self.fund_manager_memory)
 
     def process_signal(self, full_signal):
         """Process signal to extract decision."""

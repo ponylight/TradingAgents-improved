@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from .config import get_config
 from .utils import is_cache_stale
 from .exceptions import DataFetchError
+from .candle_cache import get_cached, save_cache
 
 
 def _get_exchange(exchange_id: str = "bybit", api_key: str = None, secret: str = None, testnet: bool = False):

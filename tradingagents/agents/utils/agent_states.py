@@ -74,3 +74,8 @@ class AgentState(MessagesState):
         RiskDebateState, "Current state of the debate on evaluating risk"
     ]
     final_trade_decision: Annotated[str, "Final decision made by the Risk Analysts"]
+
+    # Portfolio Manager (Fund Manager) state
+    portfolio_context: Annotated[dict, "Current portfolio state: position, pnl, age, equity"]
+    fund_manager_decision: Annotated[str, "Fund Manager's final decision text"]
+    fund_manager_parsed: Annotated[dict, "Parsed Fund Manager action and params"]

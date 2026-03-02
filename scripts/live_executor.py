@@ -657,6 +657,26 @@ def main():
         executor_state.pop("active_trade", None)
 
     elif action in ("OPEN_LONG", "OPEN_SHORT", "REVERSE_TO_LONG", "REVERSE_TO_SHORT"):
+        # Flip-flop protection: require higher confidence to reverse within 12 hours
+        if action in ("REVERSE_TO_LONG", "REVERSE_TO_SHORT"):
+            active = executor_state.get("active_trade", {})
+            opened_at = active.get("opened_at")
+            if opened_at:
+                from datetime import datetime, timezone
+                try:
+                    opened_dt = datetime.fromisoformat(opened_at)
+                    hours_held = (datetime.now(timezone.utc) - opened_dt).total_seconds() / 3600
+                    confidence = trade_params.get("confidence", 5)
+                    if hours_held < 12 and confidence < 8:
+                        log.warning(f"⚠️ FLIP-FLOP BLOCKED: Position held only {hours_held:.1f}h, confidence {confidence}/10 < 8 required for reversal within 12h")
+                        log.info(f"⏸️  HOLD — reversal blocked by flip-flop protection")
+                        record["transition"] = "HOLD"
+                        record["flip_flop_blocked"] = True
+                        save_state(executor_state)
+                        save_report(record)
+                        return
+                except (ValueError, TypeError):
+                    pass
         # Close existing position first if reversing
         if action.startswith("REVERSE") and has_position:
             for p in positions:
@@ -705,6 +725,23 @@ def main():
                 fill_price = result["fill_price"]
                 amount = result["amount"]
 
+
+                # Sanity check: TP/SL values must be within 50% of current price
+                # Catches parsing errors like $78 instead of $78,000
+                for param_name, param_val in [('take_profit_1', tp1), ('stop_loss', stop_loss)]:
+                    if param_val and abs(param_val - fill_price) / fill_price > 0.50:
+                        log.warning(f'⚠️ {param_name} ${param_val:,.0f} is >50% from price ${fill_price:,.0f} — ignoring (will auto-calculate)')
+                        if param_name == 'take_profit_1':
+                            tp1 = None
+                        elif param_name == 'stop_loss':
+                            stop_loss = None
+                            atr = get_atr(exchange, period=14, timeframe='1d')
+                            if new_direction == 'BUY':
+                                stop_loss = fill_price - (2 * atr)
+                            else:
+                                stop_loss = fill_price + (2 * atr)
+                            log.info(f'🔧 Recalculated SL from 2×ATR: ${stop_loss:,.0f}')
+
                 risk_dist = abs(fill_price - stop_loss)
                 if not tp1:
                     if new_direction == "BUY":
@@ -749,6 +786,15 @@ def main():
 
     executor_state["last_run"] = record["timestamp"]
     executor_state["last_decision"] = decision
+    # Save PM thesis for next run's context
+    if reports.get("final"):
+        import re as _re
+        thesis_match = _re.search(r'THESIS:\s*(.+)', reports["final"])
+        if thesis_match:
+            executor_state["last_decision_reasoning"] = thesis_match.group(1).strip()
+        else:
+            executor_state["last_decision_reasoning"] = reports["final"][:500]
+    executor_state["last_decision_time"] = record["timestamp"]
     executor_state["trades"] = executor_state.get("trades", [])
     executor_state["trades"].append(record)
     save_state(executor_state)

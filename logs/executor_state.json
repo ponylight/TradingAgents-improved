@@ -1,6 +1,6 @@
 {
-  "last_run": "2026-03-01T01:07:00.732229+00:00",
-  "last_decision": "BUY",
+  "last_run": "2026-03-02T00:14:56.789949+00:00",
+  "last_decision": "SHORT",
   "trades": [
     {
       "timestamp": "2026-03-01T00:53:31.507539+00:00",
@@ -26,18 +26,55 @@
       "tp1": 74000.0,
       "amount": 0.289,
       "risk_pct": 0.025
+    },
+    {
+      "timestamp": "2026-03-01T20:38:19.037540+00:00",
+      "decision": "LONG",
+      "equity": 154343.37367028,
+      "params": {
+        "risk_pct": 0.005600000000000001,
+        "take_profit_1": 78.0,
+        "take_profit_2": 95.0
+      },
+      "transition": "HOLD"
+    },
+    {
+      "timestamp": "2026-03-02T00:14:56.789949+00:00",
+      "decision": "SHORT",
+      "equity": 154343.1244094,
+      "params": {
+        "stop_loss": 69200.0,
+        "take_profit_1": 62400.0,
+        "take_profit_2": 58000.0,
+        "confidence": 7
+      },
+      "transition": "REVERSE_TO_SHORT",
+      "closed": "long",
+      "close_pnl_pct": -0.9760132837494634,
+      "action": "opened_sell",
+      "price": 65957.6,
+      "stop_loss": 69200.0,
+      "tp1": 62400.0,
+      "amount": 0.286,
+      "alloc_pct": 0.03
     }
   ],
-  "active_trade": {
-    "direction": "BUY",
+  "pending_reflection": {
+    "returns_pct": -0.9760132837494634,
+    "direction": "long",
     "entry": 66607.7,
-    "amount": 0.289,
-    "stop_loss": 57500.0,
-    "tp1": 74000.0,
-    "tp2": 85000.0,
-    "trailing_stop": 64180.12857142857,
-    "opened_at": "2026-03-01T01:07:02.071208+00:00",
-    "confidence": 6,
-    "atr_at_entry": 1213.7857142857138
+    "exit": 65957.6
+  },
+  "active_trade": {
+    "direction": "SELL",
+    "entry": 65957.6,
+    "amount": 0.286,
+    "stop_loss": 69200.0,
+    "tp1": 62400.0,
+    "tp2": 58000.0,
+    "trailing_stop": 71353.9857142857,
+    "opened_at": "2026-03-02T00:14:58.601347+00:00",
+    "confidence": 7,
+    "atr_at_entry": 2698.192857142854
   }
 }

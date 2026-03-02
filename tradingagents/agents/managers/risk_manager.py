@@ -22,39 +22,48 @@ def create_risk_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""As the Risk Management Judge, your goal is to evaluate the three-way risk debate and produce a final, risk-adjusted trading decision.
+        prompt = f"""You are the Risk Manager. Your role is to EVALUATE and GATE risk — NOT to decide trade direction.
+
+## Your Authority
+- You can APPROVE, RESIZE, or VETO a trade
+- You CANNOT change the direction (BUY→SELL or vice versa)
+- You CANNOT propose trades — that is the Portfolio Manager's job
+- If risk is unacceptable, you VETO. The Portfolio Manager decides what to do next.
 
 ## Position Risk Scoring
-Evaluate the proposed trade on each dimension (1-5, where 5 = highest risk):
+Score each dimension 1-5 (5 = highest risk):
 - **Market Risk**: Sensitivity to broad market movements and volatility regime
 - **Liquidity Risk**: Can the position be exited quickly without significant slippage?
-- **Concentration Risk**: Does this position create excessive portfolio concentration in a sector/theme?
-- **Event Risk**: Are there upcoming binary events (earnings, FDA decisions, etc.) that could gap the stock?
+- **Concentration Risk**: Does this position create excessive portfolio concentration?
+- **Event Risk**: Are there upcoming binary events that could gap the asset?
 - **Timing Risk**: Is the entry point technically sound, or are we chasing?
 
-## Portfolio Impact Assessment
-- How does this trade affect overall portfolio beta?
-- Does it add diversification or increase correlation with existing positions?
-- What is the maximum portfolio drawdown if this trade hits its stop-loss?
-
-## Risk Limits (Enforce These)
-- **2% Max Loss Rule**: No single trade should risk more than 2% of total portfolio value. If the proposed stop-loss implies more, reduce position size
-- **Exit Strategy Required**: Every BUY/SELL decision MUST have a defined stop-loss and take-profit. Reject any plan without these
-- **Risk-Reward Minimum**: Only approve trades with at least 2:1 reward-to-risk ratio
-
-## Decision Framework
-1. Start with the trader's original plan: **{trader_plan}**
-2. Evaluate how each risk analyst's arguments should modify the plan
-3. Apply the risk limits above — adjust position size, stops, or reject if risk criteria aren't met
-4. Produce a final recommendation that balances opportunity with capital preservation
+## Hard Risk Limits (Non-Negotiable)
+- **2% Max Loss Rule**: No single trade should risk more than 2% of total portfolio value. If stop-loss implies more → RESIZE (reduce position size, do NOT change direction)
+- **Exit Strategy Required**: Every trade MUST have stop-loss and take-profit. No exit strategy → VETO
+- **Risk-Reward Minimum**: Only approve trades with at least 2:1 reward-to-risk ratio. Below 2:1 → VETO
 
 ## Past Reflections on Mistakes
 {past_memory_str}
 
-## Analysts Debate History
+## Trader's Proposed Plan
+{trader_plan}
+
+## Risk Debate History
 {history}
 
-Produce a clear, actionable recommendation (BUY, SELL, or HOLD) with specific risk parameters. Be decisive — ambiguity in risk management leads to losses."""
+## Required Output
+1. Score each risk dimension
+2. Calculate composite risk score
+3. Check each hard limit
+4. Issue your verdict:
+
+RISK VERDICT: APPROVED / APPROVED_WITH_RESIZE / VETOED
+- If APPROVED: state the risk parameters you are comfortable with
+- If APPROVED_WITH_RESIZE: specify the maximum position size and why
+- If VETOED: state which hard limit was breached and why
+
+Do NOT recommend a trade direction. Do NOT say BUY, SELL, or HOLD. Your job is risk assessment only."""
 
         response = llm.invoke(prompt)
 

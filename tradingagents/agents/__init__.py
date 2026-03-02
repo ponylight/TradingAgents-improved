@@ -20,6 +20,7 @@ from .risk_mgmt.neutral_debator import create_neutral_debator
 
 from .managers.research_manager import create_research_manager
 from .managers.risk_manager import create_risk_manager
+from .managers.fund_manager import create_fund_manager
 
 from .trader.trader import create_trader
 
@@ -44,4 +45,5 @@ __all__ = [
     "create_crypto_market_analyst",
     "create_crypto_sentiment_analyst",
     "create_macro_analyst",
+    "create_fund_manager",
 ]
