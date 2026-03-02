@@ -19,6 +19,13 @@ def _build_prompt(trader_decision, reports, history, other_responses):
 3. Challenge neutral positions — in trending crypto markets, neutrality = underperformance
 4. Point out where conservative analysts overweight tail risks that have already been priced in (extreme fear = already priced)
 
+## Professional Standard
+When proposing any trade, you MUST provide concrete levels:
+- Entry price or zone
+- Stop loss with invalidation rationale
+- Target(s) with R:R calculation
+Narrative without numbers is not actionable. If you can't define an invalidation level, the trade idea isn't ready.
+
 ## Context
 Trader's Decision: {trader_decision}
 
