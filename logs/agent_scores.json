@@ -1,0 +1,182 @@
+{
+  "agents": {
+    "technical_analyst": {
+      "correct_calls": 0,
+      "incorrect_calls": 1,
+      "neutral_calls": 0,
+      "total_calls": 1,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.9760132837494634,
+      "high_influence_count": 1,
+      "primary_failure_count": 0,
+      "primary_success_count": 0,
+      "streak": -1,
+      "last_10": [
+        0
+      ],
+      "status": "new"
+    },
+    "sentiment_analyst": {
+      "correct_calls": 0,
+      "incorrect_calls": 1,
+      "neutral_calls": 0,
+      "total_calls": 1,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.9760132837494634,
+      "high_influence_count": 0,
+      "primary_failure_count": 0,
+      "primary_success_count": 0,
+      "streak": -1,
+      "last_10": [
+        0
+      ],
+      "status": "new"
+    },
+    "news_analyst": {
+      "correct_calls": 0,
+      "incorrect_calls": 1,
+      "neutral_calls": 0,
+      "total_calls": 1,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.9760132837494634,
+      "high_influence_count": 1,
+      "primary_failure_count": 0,
+      "primary_success_count": 0,
+      "streak": -1,
+      "last_10": [
+        0
+      ],
+      "status": "new"
+    },
+    "fundamentals_analyst": {
+      "correct_calls": 0,
+      "incorrect_calls": 1,
+      "neutral_calls": 0,
+      "total_calls": 1,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.9760132837494634,
+      "high_influence_count": 0,
+      "primary_failure_count": 0,
+      "primary_success_count": 0,
+      "streak": -1,
+      "last_10": [
+        0
+      ],
+      "status": "new"
+    },
+    "research_manager": {
+      "correct_calls": 0,
+      "incorrect_calls": 1,
+      "neutral_calls": 0,
+      "total_calls": 1,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.9760132837494634,
+      "high_influence_count": 1,
+      "primary_failure_count": 1,
+      "primary_success_count": 0,
+      "streak": -1,
+      "last_10": [
+        0
+      ],
+      "status": "new"
+    },
+    "trader": {
+      "correct_calls": 0,
+      "incorrect_calls": 1,
+      "neutral_calls": 0,
+      "total_calls": 1,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.9760132837494634,
+      "high_influence_count": 1,
+      "primary_failure_count": 0,
+      "primary_success_count": 0,
+      "streak": -1,
+      "last_10": [
+        0
+      ],
+      "status": "new"
+    },
+    "risk_judge": {
+      "correct_calls": 1,
+      "incorrect_calls": 0,
+      "neutral_calls": 0,
+      "total_calls": 1,
+      "accuracy_pct": 100.0,
+      "rolling_accuracy": 100.0,
+      "pnl_when_correct": 0.9760132837494634,
+      "pnl_when_incorrect": 0.0,
+      "high_influence_count": 0,
+      "primary_failure_count": 0,
+      "primary_success_count": 1,
+      "streak": 1,
+      "last_10": [
+        1
+      ],
+      "status": "new"
+    },
+    "fund_manager": {
+      "correct_calls": 0,
+      "incorrect_calls": 1,
+      "neutral_calls": 0,
+      "total_calls": 1,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.9760132837494634,
+      "high_influence_count": 0,
+      "primary_failure_count": 0,
+      "primary_success_count": 0,
+      "streak": -1,
+      "last_10": [
+        0
+      ],
+      "status": "new"
+    },
+    "bull_researcher": {
+      "correct_calls": 0,
+      "incorrect_calls": 0,
+      "neutral_calls": 0,
+      "total_calls": 0,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.0,
+      "high_influence_count": 0,
+      "primary_failure_count": 0,
+      "primary_success_count": 0,
+      "streak": 0,
+      "last_10": [],
+      "status": "new"
+    },
+    "bear_researcher": {
+      "correct_calls": 0,
+      "incorrect_calls": 0,
+      "neutral_calls": 0,
+      "total_calls": 0,
+      "accuracy_pct": 0.0,
+      "rolling_accuracy": 0.0,
+      "pnl_when_correct": 0.0,
+      "pnl_when_incorrect": 0.0,
+      "high_influence_count": 0,
+      "primary_failure_count": 0,
+      "primary_success_count": 0,
+      "streak": 0,
+      "last_10": [],
+      "status": "new"
+    }
+  },
+  "trades_scored": 1,
+  "last_updated": "2026-03-02T15:54:24.297549"
+}

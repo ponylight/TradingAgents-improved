@@ -40,6 +40,8 @@ def create_fund_manager(llm, memory=None):
             except Exception:
                 pass
 
+        trading_ctx = build_trading_context(state)
+
         prompt = f"""You are the Fund Manager — the final authority on whether a trade executes.
 
 ## Your Role (STRICT)

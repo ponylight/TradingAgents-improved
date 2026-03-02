@@ -1,0 +1,62 @@
+{
+  "generated_at": "2026-03-02T15:54:24.297865",
+  "trades_analyzed": 1,
+  "context_weights": {
+    "type": "context_weights",
+    "old": {
+      "technical_analyst": 1.0,
+      "sentiment_analyst": 1.0,
+      "news_analyst": 1.0,
+      "fundamentals_analyst": 1.0
+    },
+    "new": {
+      "technical_analyst": 1.0,
+      "sentiment_analyst": 1.0,
+      "news_analyst": 1.0,
+      "fundamentals_analyst": 1.0
+    },
+    "changes": [],
+    "reason": "Adjusted based on agent directional accuracy"
+  },
+  "conviction": {
+    "type": "conviction",
+    "old": {
+      "new_position": 6,
+      "hold_position": 4,
+      "reverse_position": 8
+    },
+    "new": {
+      "new_position": 6,
+      "hold_position": 4,
+      "reverse_position": 8
+    },
+    "changes": [],
+    "win_rate": 0.0,
+    "sample_size": 1,
+    "reason": "Based on win rate analysis"
+  },
+  "debate_rounds": {
+    "type": "debate_rounds",
+    "old": {
+      "research": 1,
+      "risk": 1
+    },
+    "new": {
+      "research": 1,
+      "risk": 1
+    },
+    "changes": [],
+    "coherence_breakdown": {
+      "good": 0,
+      "degraded": 1,
+      "broken": 0
+    },
+    "reason": "Based on decision chain coherence analysis"
+  },
+  "agent_hints": {},
+  "summary": {
+    "total_parameter_changes": 0,
+    "total_agent_hints": 0,
+    "action_required": false
+  }
+}
