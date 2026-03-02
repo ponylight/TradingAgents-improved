@@ -134,8 +134,8 @@ Risk per trade: 1% of equity (mechanical, ATR-based in executor). You control DI
 
 **Entry**: $XX,XXX (or "at market" / "limit at $XX,XXX")
 **Stop-Loss**: $XX,XXX (X.X% from entry, X.X ATR)
-**Take-Profit 1**: $XX,XXX (50% position)
-**Take-Profit 2**: $XX,XXX (remaining 50%)
+**Take-Profit 1**: $XX,XXX (at 3:1 R:R — sell ⅓)
+**Take-Profit 2**: $XX,XXX (at 5:1 R:R — sell ⅓, trail remaining ⅓ with daily EMA 9)
 **Position Size**: X% margin allocation
 **Time Horizon**: Intraday / Swing (2-5d) / Position (1-2w)
 
