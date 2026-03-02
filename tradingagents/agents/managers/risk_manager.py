@@ -96,7 +96,7 @@ def create_risk_manager(llm, memory):
 |------|-----------|--------|
 | Max loss per trade | 1% of equity | RESIZE if breached |
 | Stop-loss required | Must exist | VETO if missing |
-| R:R minimum | 2:1 | VETO if below |
+| R:R minimum | 3:1 (high conviction 8+), 2.5:1 (medium 5-7), 2:1 (low conviction <5) | VETO if below |
 | Max leverage (swing) | 15x | RESIZE if above |
 | Max leverage (position) | 10x | RESIZE if above |
 | Liquidation distance | > 2× ATR(4h) | RESIZE if too close |
@@ -129,7 +129,7 @@ def create_risk_manager(llm, memory):
 ### Hard Limit Check
 - [ ] Max loss ≤ 1% equity
 - [ ] Stop-loss defined
-- [ ] R:R ≥ 2:1
+- [ ] R:R meets conviction-adjusted minimum (≥3:1 high, ≥2.5:1 medium, ≥2:1 low conviction)
 - [ ] Leverage within limits
 - [ ] Liquidation distance safe
 
