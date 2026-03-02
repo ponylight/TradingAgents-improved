@@ -83,6 +83,13 @@ def _to_sydney(ts_str):
 from flask import Flask, jsonify
 app = Flask(__name__)
 
+# Register audit trail & attribution routes
+try:
+    from audit_trail import register_audit_routes
+    register_audit_routes(app)
+except ImportError:
+    pass  # audit_trail not available
+
 # ── Market analysis cache (5-minute TTL) ──────────────────────────────────────
 _analysis_cache: dict = {"data": None, "fetched_at": 0.0}
 

@@ -1,0 +1,49 @@
+{
+  "agents": {
+    "market": {
+      "correct": 0,
+      "incorrect": 1,
+      "neutral": 0,
+      "total_pnl_aligned": -0.9760132837494634,
+      "accuracy_pct": 0.0,
+      "total_calls": 1
+    },
+    "sentiment": {
+      "correct": 1,
+      "incorrect": 0,
+      "neutral": 0,
+      "total_pnl_aligned": 0.9760132837494634,
+      "accuracy_pct": 100.0,
+      "total_calls": 1
+    },
+    "news": {
+      "correct": 1,
+      "incorrect": 0,
+      "neutral": 0,
+      "total_pnl_aligned": 0.9760132837494634,
+      "accuracy_pct": 100.0,
+      "total_calls": 1
+    },
+    "risk_judge": {
+      "correct": 0,
+      "incorrect": 0,
+      "neutral": 0,
+      "total_pnl_aligned": 0.0,
+      "accuracy_pct": 0,
+      "total_calls": 0
+    },
+    "portfolio_manager": {
+      "correct": 0,
+      "incorrect": 0,
+      "neutral": 0,
+      "total_pnl_aligned": 0.0,
+      "accuracy_pct": 0,
+      "total_calls": 0
+    }
+  },
+  "trades_analyzed": 1,
+  "total_pnl_pct": -0.9760132837494634,
+  "winning_trades": 0,
+  "losing_trades": 1,
+  "last_updated": "2026-03-02T01:09:30.643757+00:00"
+}
