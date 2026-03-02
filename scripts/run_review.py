@@ -30,19 +30,10 @@ PROJECT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
 def get_llm():
-    """Get the review LLM (quick-thinking model)."""
-    from dotenv import load_dotenv
-    load_dotenv(os.path.join(PROJECT_DIR, ".env"))
-    
-    backend_url = os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:18789/v1")
-    
-    from langchain_openai import ChatOpenAI
-    return ChatOpenAI(
-        model="claude-sonnet-4-20250514",
-        base_url=backend_url,
-        api_key=os.getenv("OPENAI_API_KEY", "not-needed"),
-        temperature=0.1,
-    )
+    """Get the review LLM via OpenClaw gateway (same as trading agents)."""
+    from tradingagents.llm_clients.factory import create_llm_client
+    client = create_llm_client(provider="anthropic", model="claude-sonnet-4-20250514")
+    return client.get_llm()
 
 
 def run_full_review():
