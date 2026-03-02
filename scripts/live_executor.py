@@ -408,7 +408,7 @@ def create_agents_graph():
     config["quick_think_llm"] = "claude-sonnet-4-20250514"
 
     ta = CryptoTradingAgentsGraph(
-        selected_analysts=["market", "sentiment", "macro", "news"],
+        selected_analysts=["market", "sentiment", "fundamentals", "news"],
         config=config,
         debug=False,
     )
