@@ -445,7 +445,7 @@ def save_memories(ta):
 def run_reflection(ta, returns_pct):
     """Run reflection loop — agents learn from trade outcomes."""
     if ta.curr_state is None:
-        log.warning("⚠️ No agent state for reflection — loading last state from disk")
+        log.debug("No agent state in memory for reflection — loading last state from disk")
         # Try to load the last state from logs
         import glob
         state_files = sorted(glob.glob(str(PROJECT_ROOT / "eval_results" / "BTC_USDT" / "CryptoTradingAgents_logs" / "full_states_log_*.json")))
