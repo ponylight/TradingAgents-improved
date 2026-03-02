@@ -44,6 +44,7 @@ from tradingagents.agents.utils.macro_tools import (
     get_economic_calendar,
 )
 from tradingagents.agents.analysts.crypto_fundamentals_analyst import get_onchain_fundamentals
+from tradingagents.dataflows.crypto_technical_brief import build_crypto_technical_brief
 
 # News tools (reuse existing for crypto news)
 from tradingagents.agents.utils.news_data_tools import (
@@ -169,20 +170,22 @@ class CryptoTradingAgentsGraph:
         self.graph = self._setup_crypto_graph(selected_analysts)
 
     def _create_crypto_tool_nodes(self) -> Dict[str, ToolNode]:
-        """Create crypto-specific tool nodes."""
+        """Create crypto-specific tool nodes with clean ownership.
+        
+        Technical Analyst: TechnicalBrief (pre-computed, minimal tools)
+        Sentiment Analyst: positioning + social (funding, OI, Fear & Greed)
+        Fundamentals Analyst: on-chain data
+        News Analyst: news + macro (DXY, yields, CPI, economic calendar)
+        """
         return {
             "market": ToolNode([
                 get_crypto_price_data,
-                get_crypto_technical_indicators,
-                get_funding_rate,
-                get_open_interest,
                 get_orderbook_depth,
             ]),
             "sentiment": ToolNode([
                 get_crypto_fear_greed,
                 get_funding_rate,
                 get_open_interest,
-                get_liquidation_info,
             ]),
             "fundamentals": ToolNode([
                 get_onchain_fundamentals,
@@ -190,6 +193,11 @@ class CryptoTradingAgentsGraph:
             "news": ToolNode([
                 get_news,
                 get_global_news,
+                get_dollar_index,
+                get_yields,
+                get_sp500,
+                get_economic_data,
+                get_economic_calendar,
             ]),
         }
 

@@ -1,8 +1,27 @@
+"""
+Crypto News & Macro Analyst
+
+Owns: News events, macroeconomic indicators, geopolitical catalysts.
+Per the paper: "analyze news articles, government announcements, and other
+macroeconomic indicators to assess the market's macroeconomic state."
+
+Data sources:
+- News: get_news, get_global_news (Alpha Vantage / yfinance)
+- Macro: DXY, yields, S&P500, economic data, economic calendar (FRED)
+"""
+
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-import time
-import json
 from tradingagents.agents.utils.agent_utils import get_news, get_global_news
-from tradingagents.dataflows.config import get_config
+from tradingagents.agents.utils.macro_tools import (
+    get_dollar_index,
+    get_yields,
+    get_sp500,
+    get_economic_data,
+    get_economic_calendar,
+)
+
+import logging
+log = logging.getLogger("news_analyst")
 
 
 def create_news_analyst(llm):
@@ -13,49 +32,62 @@ def create_news_analyst(llm):
         tools = [
             get_news,
             get_global_news,
+            get_dollar_index,
+            get_yields,
+            get_sp500,
+            get_economic_data,
+            get_economic_calendar,
         ]
 
-        system_message = """You are a senior news analyst specializing in extracting actionable trading signals from global news flow. Your task is to analyze recent news and macroeconomic trends and produce a report that directly informs trading decisions.
+        system_message = """You are a senior crypto news and macro analyst. You analyze news events AND macroeconomic indicators that impact Bitcoin's price.
 
-## News Categorization Framework
-Classify each major news item into one of these categories:
-- **Earnings/Guidance**: Company results, revenue/EPS surprises, forward guidance changes
-- **M&A/Corporate Actions**: Mergers, acquisitions, spinoffs, buybacks, insider transactions
-- **Regulatory/Legal**: Government actions, lawsuits, antitrust, policy changes
-- **Macro/Geopolitical**: Interest rates, inflation data, trade policy, geopolitical events, commodity shocks
-- **Sector/Industry**: Industry-wide trends, competitive dynamics, supply chain disruptions
+## Your Two Domains
 
-## Impact Assessment
-For each significant news item, assess:
-1. **Timeframe**: Immediate (hours/days), short-term (weeks), or structural (months+)?
-2. **Magnitude**: Minor (1-2% move), moderate (3-5%), or major (5%+ potential impact)?
-3. **Direction**: Positive, negative, or ambiguous for the target stock?
-4. **Confidence**: How certain is the directional impact?
+### 1. News & Events
+- Geopolitical events (wars, sanctions, elections)
+- Regulatory actions (SEC, CFTC, global crypto regulation)
+- Institutional moves (ETF flows, corporate treasury buys, exchange news)
+- Market events (liquidation cascades, exchange hacks, stablecoin depegs)
 
-## Macro-to-Micro Analysis
-1. Start with the big picture — what is the macro environment doing (rates, inflation, growth, risk appetite)?
-2. How does the macro backdrop affect the target company's sector?
-3. What company-specific news amplifies or dampens the macro trend?
+### 2. Macroeconomic Indicators
+- **DXY (Dollar Index)**: Strong dollar = bearish for BTC. Weakening = bullish.
+- **Treasury Yields**: Rising yields = tighter conditions = risk-off. Falling = risk-on.
+- **S&P 500**: BTC correlation with equities. S&P selling = BTC likely follows.
+- **Economic Data (FRED)**: CPI, unemployment, M2 money supply. Inflation up = mixed (hedge narrative vs rate hike fear).
+- **Economic Calendar**: Upcoming FOMC, CPI releases, jobs reports. These cause volatility spikes.
 
-## Instructions
-- Use get_news(query, start_date, end_date) for company-specific and targeted news searches
-- Use get_global_news(curr_date, look_back_days, limit) for broader macroeconomic news
-- Do NOT state trends are "mixed" without specifics — provide directional assessment with magnitude and confidence
-- Identify the single most important news catalyst and explain why it matters most
-- Append a Markdown summary table at the end organizing findings by category, impact, and direction"""
+## Tools Available
+- get_news(query, start_date, end_date) — targeted news search
+- get_global_news(curr_date, look_back_days, limit) — broad macro news
+- get_dollar_index(curr_date) — DXY current level and trend
+- get_yields(curr_date) — US Treasury yield curve
+- get_sp500(curr_date) — S&P 500 for risk appetite
+- get_economic_data(indicator, start_date, end_date) — FRED data (CPI, M2, UNRATE)
+- get_economic_calendar(curr_date) — upcoming economic events
+
+## Analysis Framework
+1. **Macro Environment**: Risk-on or risk-off? Liquidity expanding or contracting?
+2. **Event Impact**: For each major event, assess timeframe (hours/days/weeks), magnitude (1-5%), direction
+3. **Catalyst Identification**: What is the SINGLE most important catalyst right now?
+4. **Upcoming Risk Events**: What's on the calendar that could move markets?
+
+## Output Format
+1. Macro Environment: (risk-on/risk-off with key data)
+2. Top Events: (ranked by impact on BTC)
+3. Primary Catalyst: (the one thing that matters most right now)
+4. Upcoming Events: (next 48h calendar items)
+5. Overall News/Macro Verdict: BULLISH / NEUTRAL / BEARISH
+
+Do NOT output FINAL TRANSACTION PROPOSAL. You report events and macro, not trade decisions."""
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
-                    " If you are unable to fully answer, that's OK; another assistant with different tools"
-                    " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-                    " You have access to the following tools: {tool_names}.\n{system_message}"
-                    "For your reference, the current date is {current_date}. We are looking at the company {ticker}",
+                    "You are a crypto news and macro analyst. Use the provided tools to fetch news and economic data."
+                    " Tools available: {tool_names}."
+                    " Current date: {current_date}. Asset: {ticker}."
+                    "\n\n{system_message}",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
@@ -70,7 +102,6 @@ For each significant news item, assess:
         result = chain.invoke(state["messages"])
 
         report = ""
-
         if len(result.tool_calls) == 0:
             report = result.content
 

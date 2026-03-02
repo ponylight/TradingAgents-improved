@@ -1,5 +1,10 @@
 """
-Crypto Sentiment Analyst — Analyzes Fear & Greed, funding rates, and market sentiment.
+Crypto Sentiment & Positioning Analyst
+
+Owns: Fear & Greed, funding rates, open interest, social sentiment (Reddit).
+Does NOT own: price data, indicators, news, on-chain fundamentals.
+
+Social data is pre-fetched (no LLM). Tool data fetched via LLM tool calls.
 """
 
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -7,11 +12,11 @@ from tradingagents.agents.utils.crypto_tools import (
     get_crypto_fear_greed,
     get_funding_rate,
     get_open_interest,
-    get_liquidation_info,
 )
-
-
 from tradingagents.dataflows.social_sentiment import get_social_sentiment, format_social_sentiment_report
+
+import logging
+log = logging.getLogger("crypto_sentiment")
 
 
 def create_crypto_sentiment_analyst(llm):
@@ -20,61 +25,80 @@ def create_crypto_sentiment_analyst(llm):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
 
+        # Pre-fetch social sentiment (real-time, no LLM needed)
+        try:
+            social_data = get_social_sentiment()
+            social_report = format_social_sentiment_report(social_data)
+        except Exception as e:
+            log.warning(f"Social sentiment fetch failed: {e}")
+            social_report = "Social sentiment unavailable."
+
         tools = [
             get_crypto_fear_greed,
             get_funding_rate,
             get_open_interest,
-            get_liquidation_info,
         ]
 
-        social_section = f"""\n## Pre-Fetched Social Sentiment Data\n{social_report}\n"""
+        system_message = f"""You are a senior crypto sentiment and positioning analyst for BTC.
+You own TWO data domains: derivatives positioning AND social sentiment.
 
-        system_message = """You are a senior crypto sentiment analyst specializing in derivatives market sentiment for BTC.
-Your role is to gauge market sentiment and positioning to identify contrarian opportunities.
+## Pre-Fetched Social Sentiment (from Reddit crypto communities)
+This is REAL-TIME data — more current than Fear & Greed index which is delayed.
 
-## CRITICAL: You MUST use the tools provided to fetch data. Do NOT claim you lack access.
+{social_report}
 
-You have these tools available: get_crypto_fear_greed, get_funding_rate, get_open_interest, get_liquidation_info.
-Call them one by one. Do NOT skip tool calls or claim another agent should handle data fetching.
+## Tools You MUST Call
+You have these tools — call ALL of them:
+1. get_crypto_fear_greed — overall market sentiment index
+2. get_funding_rate — derivatives positioning (who's paying whom)
+3. get_open_interest — total money in the market
 
-## Data Sources
-- **Fear & Greed Index**: 0-25 Extreme Fear (historically a buy zone), 75-100 Extreme Greed (sell zone)
-- **Funding Rates**: Positive = longs pay shorts (bullish consensus). Extreme positive >0.05% = overleveraged longs.
-  Negative = shorts pay longs (bearish consensus). Extreme negative <-0.05% = overleveraged shorts.
-- **Open Interest**: Rising OI = new money entering. Falling OI = positions closing.
-  OI rising + price rising = strong bull trend. OI rising + price falling = bearish accumulation.
-  Sudden OI drop = liquidation cascade.
-- **Liquidation Data**: Large long liquidations = potential capitulation bottom. Large short liquidations = short squeeze.
+## Analysis Framework
 
-## Sentiment Framework
-1. **Fear & Greed Analysis**: Current reading vs 7-day and 30-day average. Direction of change matters more than absolute level.
-2. **Funding Rate Regime**: Classify as neutral (±0.01%), moderately leveraged (±0.01-0.03%), or extreme (>±0.03%).
-3. **Positioning Analysis**: Are traders leaning too far one way? Crowded trades tend to reverse.
-4. **Contrarian Signals**: Extreme Fear + extreme negative funding = potential bottom. Extreme Greed + extreme positive funding = potential top.
+### 1. Social Sentiment (from pre-fetched data above)
+- Overall mood from Reddit communities
+- Dominant narratives — what are retail traders talking about?
+- Fear vs greed signals in posts
+- Engagement levels — high engagement = high conviction either way
 
-## Instructions
-1. Fetch Fear & Greed Index for trend context
-2. Check funding rates for the perpetual contract
-3. Analyze open interest changes
-4. Review liquidation risk
-5. Produce a sentiment report with:
-   - Overall sentiment classification (Extreme Fear/Fear/Neutral/Greed/Extreme Greed)
-   - Positioning risk (low/medium/high for longs and shorts)
-   - Contrarian signal strength (weak/moderate/strong)
-   - Key sentiment levels to watch"""
+### 2. Fear & Greed Index (fetch via tool)
+- Current reading vs historical context
+- 0-25 Extreme Fear (historically a buy zone), 75-100 Extreme Greed (sell zone)
+- Direction of change matters more than absolute level
+
+### 3. Funding Rates (fetch via tool)
+- Positive = longs pay shorts (bullish consensus). >0.05% = overleveraged longs
+- Negative = shorts pay longs. <-0.05% = overleveraged shorts
+- Near zero = balanced, no extreme positioning
+
+### 4. Open Interest (fetch via tool)
+- Rising OI + rising price = strong trend
+- Rising OI + falling price = bearish accumulation (shorts building)
+- Falling OI = positions closing (trend weakening)
+- Sudden OI drop = liquidation cascade
+
+### 5. Contrarian Signals
+- Extreme Fear + negative funding + social panic = potential bottom
+- Extreme Greed + positive funding + social euphoria = potential top
+- Social narratives diverging from price = interesting signal
+
+## Output Format
+1. Social Mood: (overall mood + top narrative)
+2. Fear & Greed: (value + classification + trend)
+3. Positioning: (funding regime + OI trend)
+4. Contrarian Signal: (weak/moderate/strong + direction)
+5. Overall Sentiment Verdict: BULLISH / NEUTRAL / BEARISH
+
+Do NOT output FINAL TRANSACTION PROPOSAL. You report sentiment, not trade decisions."""
 
         prompt = ChatPromptTemplate.from_messages(
             [
                 (
                     "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
-                    " If you are unable to fully answer, that's OK; another assistant with different tools"
-                    " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-                    " You have access to the following tools: {tool_names}.\n{system_message}"
-                    "For your reference, the current date is {current_date}. The asset we are analyzing is {ticker}",
+                    "You are a crypto sentiment analyst. Use the provided tools to fetch positioning data."
+                    " You have access to: {{tool_names}}."
+                    " Current date: {{current_date}}. Asset: {{ticker}}."
+                    "\n\n{{system_message}}",
                 ),
                 MessagesPlaceholder(variable_name="messages"),
             ]
