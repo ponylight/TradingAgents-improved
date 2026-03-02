@@ -109,9 +109,20 @@ def get_atr(exchange, period=14, timeframe="1d"):
 
 def check_daily_loss_limit(executor_state, equity):
     """Check if daily losses exceed limit. Returns True if locked out."""
-    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    trades_today = [t for t in executor_state.get("trades", [])
-                    if t.get("timestamp", "").startswith(today) and "close_pnl_pct" in t]
+    from zoneinfo import ZoneInfo
+    today = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
+    trades_today = []
+    for t in executor_state.get("trades", []):
+        if "close_pnl_pct" not in t:
+            continue
+        ts = t.get("timestamp", "")
+        try:
+            trade_dt = datetime.fromisoformat(ts).astimezone(ZoneInfo("Australia/Sydney"))
+            if trade_dt.strftime("%Y-%m-%d") == today:
+                trades_today.append(t)
+        except (ValueError, TypeError):
+            if ts.startswith(today):
+                trades_today.append(t)
     
     daily_loss = sum(t["close_pnl_pct"] for t in trades_today if t["close_pnl_pct"] < 0)
     daily_loss_abs = abs(daily_loss) / 100  # Convert from % to fraction
@@ -340,6 +351,32 @@ def set_take_profit(exchange, direction, amount, tp_price):
         log.warning(f"⚠️ Failed to set TP on exchange: {e}")
 
 
+def sync_stop_loss_to_exchange(exchange, direction, amount, new_sl):
+    """Update the stop-loss order on Bybit to match our trailing stop."""
+    try:
+        # Cancel existing conditional orders first
+        open_orders = exchange.fetch_open_orders(SYMBOL)
+        for order in open_orders:
+            if order.get("reduceOnly") or order.get("info", {}).get("reduceOnly") == "true":
+                try:
+                    exchange.cancel_order(order["id"], SYMBOL)
+                    log.info(f"🗑️ Cancelled old SL order {order['id']}")
+                except Exception:
+                    pass
+
+        # Place new SL at trailing stop level
+        sl_side = "sell" if direction in ("BUY", "long") else "buy"
+        sl_params = {"triggerPrice": str(round(new_sl, 2)), "reduceOnly": True}
+        if direction in ("BUY", "long"):
+            sl_params["triggerDirection"] = 2
+        else:
+            sl_params["triggerDirection"] = 1
+        exchange.create_order(SYMBOL, "market", sl_side, amount, params=sl_params)
+        log.info(f"🛡️ Exchange SL synced to ${new_sl:,.2f}")
+    except Exception as e:
+        log.warning(f"⚠️ Failed to sync SL to exchange: {e}")
+
+
 def manage_trailing_stop(exchange, positions, state):
     """Check and update trailing stop for existing positions."""
     for p in positions:
@@ -379,6 +416,7 @@ def manage_trailing_stop(exchange, positions, state):
             if new_trail > old_trail:
                 trade_info["trailing_stop"] = new_trail
                 log.info(f"📈 Trail updated: ${old_trail:,.0f} → ${new_trail:,.0f} (price ${current:,.0f}, ATR ${atr:,.0f})")
+                sync_stop_loss_to_exchange(exchange, "long", contracts, new_trail)
             if current <= trade_info.get("trailing_stop", 0):
                 log.info(f"🔔 TRAILING STOP HIT @ ${current:,.0f} (trail was ${trade_info['trailing_stop']:,.0f})")
                 close_position(exchange, p)
@@ -392,6 +430,7 @@ def manage_trailing_stop(exchange, positions, state):
             if new_trail < old_trail:
                 trade_info["trailing_stop"] = new_trail
                 log.info(f"📉 Trail updated: ${old_trail:,.0f} → ${new_trail:,.0f} (price ${current:,.0f}, ATR ${atr:,.0f})")
+                sync_stop_loss_to_exchange(exchange, "short", contracts, new_trail)
             if current >= trade_info.get("trailing_stop", float("inf")):
                 log.info(f"🔔 TRAILING STOP HIT @ ${current:,.0f} (trail was ${trade_info['trailing_stop']:,.0f})")
                 close_position(exchange, p)
@@ -880,6 +919,16 @@ def main():
         run_reflection(ta, pr["returns_pct"])
 
     # Build portfolio context for Fund Manager
+    # Build positions summary for fund manager awareness
+    positions_lines = []
+    pos_state = executor_state.get("positions", {})
+    for src in ("committee", "green_lane"):
+        p = pos_state.get(src)
+        if p:
+            positions_lines.append(f"- {src}: {p.get('side', '?')} | entry ${p.get('entry_price', p.get('entry', 0)):,.0f} | size {p.get('size_pct', '?')}%")
+    if not positions_lines:
+        positions_lines.append("- No active positions")
+
     portfolio_ctx = {
         "position": "none",
         "pnl_pct": 0,
@@ -887,6 +936,7 @@ def main():
         "equity": equity,
         "consecutive_same_direction": 0,
         "last_decision": executor_state.get("last_decision", "HOLD"),
+        "positions_summary": "Active positions:\n" + "\n".join(positions_lines),
     }
     if has_position and positions:
         p = positions[0]

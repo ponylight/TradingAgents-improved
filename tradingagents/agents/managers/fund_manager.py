@@ -57,12 +57,17 @@ You DO:
 - Ensure the overall process was followed
 
 ## Current Portfolio
-- Position: {current_position}
-- Unrealized P&L: {position_pnl_pct:+.2f}%
-- Hours held: {hours_held:.1f}
+- Committee Position: {current_position} | P&L: {position_pnl_pct:+.2f}% | Held: {hours_held:.1f}h
 - Equity: ${equity:,.0f}
 - Last decision: {last_decision}
 - Open orders: {open_orders}
+{portfolio_context.get("positions_summary", "")}
+
+## Multi-Position Awareness
+You manage the FULL portfolio across all position sources (committee trades + green lane scalps).
+If positions conflict directionally (e.g. committee short + green lane long), you MUST flag this
+and either: (a) reject the new trade, or (b) close the conflicting position first.
+Net exposure should always be intentional, never accidental.
 
 ## Decision Rules
 
