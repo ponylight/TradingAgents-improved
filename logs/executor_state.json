@@ -1,65 +1,16 @@
 {
-  "last_run": "2026-03-02T05:15:07.363222+00:00",
+  "last_run": "2026-03-02T05:52:53.840960+00:00",
   "last_decision": "HOLD",
   "trades": [
     {
-      "timestamp": "2026-03-01T00:53:31.507539+00:00",
-      "decision": "SELL",
-      "equity": 154424.81396152,
-      "action": "opened_sell",
-      "price": null
-    },
-    {
-      "timestamp": "2026-03-01T01:07:00.732229+00:00",
-      "decision": "BUY",
-      "equity": 154357.01241694,
-      "params": {
-        "risk_pct": 0.025,
-        "stop_loss": 57500.0,
-        "take_profit_1": 74000.0,
-        "take_profit_2": 85000.0,
-        "confidence": 6
-      },
-      "action": "opened_buy",
-      "price": 66607.7,
-      "stop_loss": 57500.0,
-      "tp1": 74000.0,
-      "amount": 0.289,
-      "risk_pct": 0.025
-    },
-    {
-      "timestamp": "2026-03-01T20:38:19.037540+00:00",
-      "decision": "LONG",
-      "equity": 154343.37367028,
-      "params": {
-        "risk_pct": 0.005600000000000001,
-        "take_profit_1": 78.0,
-        "take_profit_2": 95.0
-      },
-      "transition": "HOLD"
-    },
-    {
-      "timestamp": "2026-03-02T00:14:56.789949+00:00",
-      "decision": "SHORT",
-      "equity": 154343.1244094,
-      "params": {
-        "stop_loss": 69200.0,
-        "take_profit_1": 62400.0,
-        "take_profit_2": 58000.0,
-        "confidence": 7
-      },
-      "transition": "REVERSE_TO_SHORT",
-      "closed": "long",
-      "close_pnl_pct": -0.9760132837494634,
-      "action": "opened_sell",
-      "price": 65957.6,
-      "stop_loss": 69200.0,
-      "tp1": 62400.0,
-      "amount": 0.286,
-      "alloc_pct": 0.03
-    },
-    {
       "timestamp": "2026-03-02T05:15:07.363222+00:00",
+      "decision": "HOLD",
+      "equity": 153885.33231474,
+      "params": {},
+      "transition": "STAY_NEUTRAL"
+    },
+    {
+      "timestamp": "2026-03-02T05:52:53.840960+00:00",
       "decision": "HOLD",
       "equity": 153885.33231474,
       "params": {},
@@ -67,6 +18,8 @@
     }
   ],
   "active_trade": null,
-  "last_decision_reasoning": "Decision chain is coherent: analysts identified strong bearish trend with active BB squeeze, researchers confirmed distribution, Trader correctly chose NEUTRAL to avoid pre-squeeze coin flip after two consecutive losses from this exact mistake, Risk Judge approved with composite 1.5. No position means no risk. The discipline to stay flat when the setup isn't ready is exactly what the reflection system taught us. Approved.\n\nFINAL TRANSACTION PROPOSAL: **NEUTRAL**\n\n```\n---FUND_DECISION---\nACTION: ",
-  "last_decision_time": "2026-03-02T05:15:07.363222+00:00"
+  "last_decision_reasoning": "Decision chain is coherent: analysts identified conflicting signals, researcher confirmed sub-threshold conviction, trader correctly defaulted to NEUTRAL, and Risk Judge approved the stand-aside with no hard limit violations. Event risk at 5/5 with Iran retaliation pending validates cash. Conditional triggers are noted but require fresh risk review when fired. No process failures detected.\n\nFINAL TRANSACTION PROPOSAL: **NEUTRAL**\n\n```\n---FUND_DECISION---\nACTION: HOLD\nCONFIDENCE: 4\nSTOP_LOSS: N/A",
+  "last_decision_time": "2026-03-02T05:52:53.840960+00:00",
+  "starting_equity": 153885.33,
+  "closed_trades": []
 }
