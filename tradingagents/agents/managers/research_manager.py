@@ -19,42 +19,50 @@ def create_research_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""As the Research Manager and debate judge, your role is to evaluate the bull/bear debate and produce a decisive investment recommendation for the trader.
+        prompt = f"""You are the Research Manager and debate judge for a Bitcoin trading desk. Evaluate the bull/bear debate and produce a decisive investment recommendation.
 
-## Evidence Weighting Framework
-1. **Data-Backed Arguments (High Weight)**: Claims supported by specific numbers, ratios, or data points from analyst reports
-2. **Logical Reasoning (Medium Weight)**: Sound analytical frameworks applied to available information
-3. **Speculative Arguments (Low Weight)**: Claims based on assumptions without supporting evidence
-4. **Contradicted Claims (Zero Weight)**: Arguments that were effectively rebutted by the opposing side with stronger evidence
+## Evidence Weighting
+1. **Data-Backed (High Weight)**: Arguments with specific numbers from reports — hash rates, RSI values, funding rates, price levels, volume data
+2. **Logical Reasoning (Medium Weight)**: Sound frameworks applied to available data
+3. **Speculative (Low Weight)**: Claims without supporting evidence from reports
+4. **Contradicted (Zero Weight)**: Arguments effectively rebutted with stronger evidence
 
 ## Conviction Scoring (1-10)
-Rate your conviction in the final recommendation:
-- **9-10**: Overwhelming evidence in one direction, debate was one-sided
+- **9-10**: Overwhelming evidence, debate was one-sided. High-conviction trade.
 - **7-8**: Strong evidence favoring one side, minor valid counterpoints
-- **5-6**: Balanced but one side has a slight edge
-- **3-4**: Highly uncertain, proceed with caution
-- **1-2**: Insufficient information to make a confident call
+- **5-6**: Balanced, slight edge. Trade with reduced size.
+- **3-4**: Highly uncertain. Default to HOLD unless current position warrants exit.
+- **1-2**: Insufficient data. HOLD.
 
-## Anti-HOLD Default Rule
-HOLD is NOT a neutral fallback. You must choose HOLD only when:
-- The risk-reward is genuinely unattractive in BOTH directions
-- There is a specific upcoming catalyst that makes waiting the optimal strategy
-- Both bull and bear cases are equally strong AND equally well-evidenced
-If in doubt between BUY and HOLD, lean toward a smaller BUY. Indecision costs money through missed opportunities.
+## Minimum Conviction to Trade
+- Opening a NEW position: conviction >= 6
+- HOLDING existing position: conviction >= 4 (lower bar to stay in)
+- REVERSING a position: conviction >= 8 (high bar to flip)
+If conviction is below threshold: recommend HOLD regardless of debate outcome.
 
-## Your Deliverables
-1. **Key Arguments Summary**: 2-3 strongest points from each side
-2. **Decisive Recommendation**: BUY, SELL, or HOLD with conviction score
-3. **Rationale**: Why the winning arguments are more compelling
-4. **Investment Plan for Trader**: Concrete strategic actions to implement
+## Anti-HOLD Default
+HOLD is not a neutral fallback. Choose HOLD only when:
+- Risk-reward is unattractive in BOTH directions
+- A specific catalyst makes waiting optimal
+- Both sides are equally strong AND equally evidenced
+- Conviction is below the minimum threshold
 
-## Past Reflections on Mistakes
-"{past_memory_str}"
+## Deliverables
+1. **Strongest Bull Points**: 2-3 key arguments with data citations
+2. **Strongest Bear Points**: 2-3 key arguments with data citations
+3. **Winner**: Which side presented the stronger data-backed case?
+4. **Conviction Score**: 1-10 with justification
+5. **Recommendation**: BUY (long), SELL (short), or HOLD
+6. **Investment Plan for Trader**: Concrete direction with rationale
 
 ## Debate History
 {history}
 
-Present your analysis conversationally. Be decisive — the trader needs a clear direction, not a balanced summary."""
+## Past Reflections
+{past_memory_str}
+
+Be decisive. The trader needs a clear direction backed by the stronger argument, not a balanced summary."""
+
         response = llm.invoke(prompt)
 
         new_investment_debate_state = {
