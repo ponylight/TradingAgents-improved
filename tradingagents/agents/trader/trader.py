@@ -146,7 +146,7 @@ Risk per trade: 1% of equity (mechanical, ATR-based in executor). You control DI
 **Invalidation**: What kills this thesis — specific price or condition.
 
 ## Decision Quality Gates
-- R:R < 2:1 → HOLD (bad entry)
+- R:R < 2.5:1 → HOLD (bad entry). Do not propose entries with R:R below 2.5:1. Prefer setups offering 3:1 or better. A 22% win rate is profitable at 3:1 R:R.
 - Conviction < 5 → HOLD (insufficient edge)
 - Strong case + poor entry → HOLD with limit order at better level
 - Moderate case + great entry → proceed with smaller size

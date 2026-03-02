@@ -67,12 +67,22 @@ class MomentumState(BaseModel):
     )
 
 
+class AVWAPLevel(BaseModel):
+    anchor: str = Field(description="Anchor point label, e.g. 'swing_high', 'swing_low', 'volume_spike'")
+    price: float = Field(description="AVWAP price from anchor to current bar")
+    anchor_bar_ago: int = Field(description="How many bars ago the anchor occurred")
+
+
 class VWAPState(BaseModel):
     position: Literal["above", "below", "at"] = Field(
         description="Current close relative to VWAP"
     )
     zscore_distance: float = Field(
         description="Distance from VWAP expressed as z-score units"
+    )
+    anchored_vwaps: List[AVWAPLevel] = Field(
+        description="Anchored VWAP levels from key swing points",
+        default_factory=list,
     )
 
 
@@ -139,6 +149,22 @@ class TimeframeBrief(BaseModel):
         default_factory=lambda: VolumeState(vol_ma_ratio=1.0, vol_trend="flat", obv_slope=0.0)
     )
     market_structure: MarketStructure
+    ema_convergence: bool = Field(
+        description="True when EMA 9/21/50 are within 1-2% of each other",
+        default=False,
+    )
+    ema_convergence_pct: float = Field(
+        description="Max spread between EMA 9/21/50 as percentage of price",
+        default=0.0,
+    )
+    liquidity_sweep: Optional[str] = Field(
+        description="'bullish_sweep' or 'bearish_sweep' if detected, else None",
+        default=None,
+    )
+    ema_alignment: Optional[str] = Field(
+        description="'bullish' if EMA9>21>50, 'bearish' if EMA9<21<50, else None",
+        default=None,
+    )
 
 
 # ── Top-level Technical Brief ────────────────────────────────────────────
@@ -157,4 +183,8 @@ class TechnicalBrief(BaseModel):
     )
     raw_prices: dict = Field(
         description="Snapshot: last_close, prev_close, daily_change_pct"
+    )
+    mtf_ema_alignment: str = Field(
+        description="Multi-timeframe EMA alignment summary",
+        default="",
     )

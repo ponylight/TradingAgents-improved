@@ -16,7 +16,7 @@ import numpy as np
 import pandas as pd
 
 from .ta_schema import (
-    Direction, KeyLevel, MarketStructure, MomentumState,
+    AVWAPLevel, Direction, KeyLevel, MarketStructure, MomentumState,
     SignalSummary, Strength, TechnicalBrief, TimeframeBrief,
     TrendState, VolatilityState, VolumeState, VWAPState,
 )
@@ -88,7 +88,7 @@ def _fetch_ohlcv(symbol, tf_key):
 def compute_indicators(symbol, tf_key):
     df = _fetch_ohlcv(symbol, tf_key)
     if df is None: return None
-    df["ema_8"]=_ema(df["close"],8); df["ema_21"]=_ema(df["close"],21)
+    df["ema_8"]=_ema(df["close"],8); df["ema_9"]=_ema(df["close"],9); df["ema_21"]=_ema(df["close"],21); df["ema_50"]=_ema(df["close"],50)
     df["sma_50"]=_sma(df["close"],50); df["sma_200"]=_sma(df["close"],200)
     df["adx_14"]=_adx(df["high"],df["low"],df["close"],14)
     df["rsi_14"]=_rsi(df["close"],14)
@@ -102,6 +102,116 @@ def compute_indicators(symbol, tf_key):
     return df
 
 # ── Detectors ──
+
+
+# ── Anchored VWAP ──
+
+def _find_swing_points(df, lookback=40):
+    """Find recent swing high and swing low indices."""
+    r = df.tail(lookback)
+    if len(r) < 10:
+        return None, None
+    h, l = r["high"].values, r["low"].values
+    idx = r.index.values
+    sh_idx, sl_idx = None, None
+    for i in range(len(r)-3, 2, -1):
+        if sh_idx is None and h[i] > h[i-1] and h[i] > h[i-2] and h[i] > h[i+1] and h[i] > h[i+2]:
+            sh_idx = idx[i]
+        if sl_idx is None and l[i] < l[i-1] and l[i] < l[i-2] and l[i] < l[i+1] and l[i] < l[i+2]:
+            sl_idx = idx[i]
+        if sh_idx is not None and sl_idx is not None:
+            break
+    return sh_idx, sl_idx
+
+def _find_volume_spike(df, lookback=40, threshold=2.0):
+    """Find most recent bar with volume > threshold * SMA20."""
+    r = df.tail(lookback)
+    if "vol_sma_20" not in r.columns:
+        return None
+    for i in range(len(r)-1, -1, -1):
+        v = r["volume"].iloc[i]
+        vs = r["vol_sma_20"].iloc[i]
+        if not pd.isna(vs) and vs > 0 and v > threshold * vs:
+            return r.index[i]
+    return None
+
+def _calc_avwap(df, anchor_idx):
+    """Calculate AVWAP from anchor_idx to end of df."""
+    if anchor_idx is None or anchor_idx not in df.index:
+        return None
+    subset = df.loc[anchor_idx:]
+    if len(subset) < 2:
+        return None
+    tp = (subset["high"] + subset["low"] + subset["close"]) / 3
+    cv = (tp * subset["volume"]).cumsum()
+    vv = subset["volume"].cumsum()
+    avwap = cv / vv.replace(0, np.nan)
+    return float(avwap.iloc[-1]) if not pd.isna(avwap.iloc[-1]) else None
+
+def compute_avwap_levels(df):
+    """Compute AVWAP from swing high, swing low, and volume spike anchors."""
+    levels = []
+    last_idx = df.index[-1]
+    sh_idx, sl_idx = _find_swing_points(df)
+    vol_idx = _find_volume_spike(df)
+    
+    for label, idx in [("swing_high", sh_idx), ("swing_low", sl_idx), ("volume_spike", vol_idx)]:
+        price = _calc_avwap(df, idx)
+        if price is not None:
+            bars_ago = int(last_idx - idx)
+            levels.append(AVWAPLevel(anchor=label, price=round(price, 2), anchor_bar_ago=bars_ago))
+    return levels
+
+# ── EMA Convergence Zone ──
+
+def detect_ema_convergence(df):
+    """Check if EMA 9/21/50 are within 2% of each other."""
+    e9 = float(df["ema_9"].iloc[-1]) if not pd.isna(df["ema_9"].iloc[-1]) else None
+    e21 = float(df["ema_21"].iloc[-1]) if not pd.isna(df["ema_21"].iloc[-1]) else None
+    e50 = float(df["ema_50"].iloc[-1]) if not pd.isna(df["ema_50"].iloc[-1]) else None
+    if e9 is None or e21 is None or e50 is None:
+        return False, 0.0
+    mid = (e9 + e21 + e50) / 3
+    if mid == 0:
+        return False, 0.0
+    spread_pct = (max(e9, e21, e50) - min(e9, e21, e50)) / mid * 100
+    return spread_pct <= 2.0, round(spread_pct, 2)
+
+# ── Liquidity Sweep Detection ──
+
+def detect_liquidity_sweep(df, lookback=30):
+    """Detect if last candle wicked below swing low (bullish) or above swing high (bearish) then closed back."""
+    if len(df) < lookback:
+        return None
+    sh_idx, sl_idx = _find_swing_points(df.iloc[:-1], lookback=lookback)
+    last = df.iloc[-1]
+    
+    if sl_idx is not None:
+        sl_price = float(df.loc[sl_idx, "low"])
+        if last["low"] < sl_price and last["close"] > sl_price:
+            return "bullish_sweep"
+    
+    if sh_idx is not None:
+        sh_price = float(df.loc[sh_idx, "high"])
+        if last["high"] > sh_price and last["close"] < sh_price:
+            return "bearish_sweep"
+    
+    return None
+
+# ── EMA Alignment ──
+
+def detect_ema_alignment(df):
+    """Check if EMA 9 > 21 > 50 (bullish) or 9 < 21 < 50 (bearish)."""
+    e9 = float(df["ema_9"].iloc[-1]) if not pd.isna(df["ema_9"].iloc[-1]) else None
+    e21 = float(df["ema_21"].iloc[-1]) if not pd.isna(df["ema_21"].iloc[-1]) else None
+    e50 = float(df["ema_50"].iloc[-1]) if not pd.isna(df["ema_50"].iloc[-1]) else None
+    if e9 is None or e21 is None or e50 is None:
+        return None
+    if e9 > e21 > e50:
+        return "bullish"
+    elif e9 < e21 < e50:
+        return "bearish"
+    return None
 
 def detect_trend(df):
     c=df["close"].iloc[-1]; e8=df["ema_8"].iloc[-1]; e21=df["ema_21"].iloc[-1]; s50=df["sma_50"].iloc[-1]
@@ -164,7 +274,8 @@ def detect_vwap_state(df):
     s=df["close"].iloc[-20:].std()
     z=(c-v)/s if s and s>0 else 0.0
     p="at" if abs(z)<0.3 else "above" if z>0 else "below"
-    return VWAPState(position=p,zscore_distance=round(z,2))
+    avwaps = compute_avwap_levels(df)
+    return VWAPState(position=p,zscore_distance=round(z,2),anchored_vwaps=avwaps)
 
 def detect_volatility(df):
     av=float(df["atr_14"].iloc[-1]) if not pd.isna(df["atr_14"].iloc[-1]) else 0.0
@@ -271,9 +382,14 @@ def build_crypto_technical_brief(symbol="BTC/USDT"):
         df=compute_indicators(symbol,tf)
         if df is None: continue
         dfs[tf]=df
+        conv, conv_pct = detect_ema_convergence(df)
+        sweep = detect_liquidity_sweep(df) if tf == "1h" else None
+        alignment = detect_ema_alignment(df)
         b=TimeframeBrief(timeframe=tf,trend=detect_trend(df),momentum=detect_momentum(df),
                         vwap_state=detect_vwap_state(df),volatility=detect_volatility(df),
-                        volume=detect_volume(df),market_structure=detect_market_structure(df))
+                        volume=detect_volume(df),market_structure=detect_market_structure(df),
+                        ema_convergence=conv,ema_convergence_pct=conv_pct,
+                        liquidity_sweep=sweep,ema_alignment=alignment)
         tbs.append(b)
     levels=extract_key_levels(dfs)
     signal=generate_signal_summary(tbs,levels)
@@ -282,5 +398,13 @@ def build_crypto_technical_brief(symbol="BTC/USDT"):
     if d is not None and len(d)>=2:
         lc,pc=float(d["close"].iloc[-1]),float(d["close"].iloc[-2])
         rp={"last_close":round(lc,2),"prev_close":round(pc,2),"daily_change_pct":round((lc/pc-1)*100,2) if pc else 0.0}
+    # Build MTF EMA alignment summary
+    mtf_parts = []
+    for b in tbs:
+        if b.ema_alignment:
+            mtf_parts.append(f"{b.ema_alignment.title()} on {b.timeframe}")
+    mtf_summary = "MTF EMA Alignment: " + ", ".join(mtf_parts) if mtf_parts else "MTF EMA Alignment: Mixed"
+
     return TechnicalBrief(symbol=symbol,generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
-                         timeframes=tbs,key_levels=levels,signal_summary=signal,raw_prices=rp)
+                         timeframes=tbs,key_levels=levels,signal_summary=signal,raw_prices=rp,
+                         mtf_ema_alignment=mtf_summary)
