@@ -1,5 +1,5 @@
 """
-Green Lane Scanner — Phase 1
+Green Lane Scanner — Phase 1 + Qullamaggie Enhancements
 Pure deterministic scanner. No LLM calls.
 
 Detects the "Green Lane" setup:
@@ -7,6 +7,14 @@ Detects the "Green Lane" setup:
   2. Liquidity sweep into the zone (wick, not close)
   3. V-reversal with strong volume
   4. Entry above reversal candle high, stop below sweep low, 3:1/5:1 TPs
+
+Qullamaggie additions:
+  - ATR-capped stop loss
+  - Consolidation pattern detection
+  - Volume explosion tiers (1.5x/3x/5x)
+  - Gap detection (EP setup flag)
+  - EMA 10/20 for exit management
+  - Updated quality scoring
 """
 
 from __future__ import annotations
@@ -31,7 +39,7 @@ from .crypto_technical_brief import (
 
 log = logging.getLogger("green_lane_scanner")
 
-# ── BTC event anchors
+# BTC event anchors
 BTC_EVENT_ANCHORS = {
     "halving_2024": "2024-04-19",
     "etf_approval": "2024-01-10",
@@ -88,6 +96,125 @@ def _compute_confluence_zone(df_daily: pd.DataFrame) -> Tuple[float, float, floa
     mid = (zone_bottom + zone_top) / 2
     zone_width_pct = (zone_top - zone_bottom) / mid * 100 if mid > 0 else 0.0
     return zone_bottom, zone_top, round(zone_width_pct, 2)
+
+
+def _compute_daily_atr(df_daily: pd.DataFrame, period: int = 14) -> float:
+    """Compute ATR-14 from daily candles."""
+    try:
+        high = df_daily["high"]
+        low = df_daily["low"]
+        close = df_daily["close"]
+        prev_close = close.shift(1)
+        tr = pd.concat([
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs()
+        ], axis=1).max(axis=1)
+        atr = tr.ewm(span=period, adjust=False).mean()
+        return float(atr.iloc[-1])
+    except Exception as e:
+        log.warning(f"ATR computation failed: {e}")
+        return 0.0
+
+
+def _detect_consolidation(daily_df: pd.DataFrame) -> dict:
+    """Detect if price is in a consolidation phase after a prior rally.
+
+    Returns:
+        {
+            "consolidating": bool,
+            "duration_days": int,
+            "range_tightness_pct": float,
+            "prior_rally_pct": float,
+            "higher_lows": bool,
+        }
+    """
+    result = {
+        "consolidating": False,
+        "duration_days": 0,
+        "range_tightness_pct": 0.0,
+        "prior_rally_pct": 0.0,
+        "higher_lows": False,
+    }
+    try:
+        df = daily_df.tail(90).copy().reset_index(drop=True)
+        if len(df) < 30:
+            return result
+
+        current_price = float(df["close"].iloc[-1])
+
+        # Find highest point (rally peak)
+        peak_idx = int(df["high"].idxmax())
+        if peak_idx < 15 or peak_idx >= len(df) - 5:
+            return result
+
+        # Find rally start: lowest low before peak
+        rally_start_window = df.iloc[max(0, peak_idx - 90):peak_idx]
+        if len(rally_start_window) < 10:
+            return result
+
+        rally_start_idx = int(rally_start_window["low"].idxmin())
+        rally_start_price = float(df["low"].iloc[rally_start_idx])
+        peak_price = float(df["high"].iloc[peak_idx])
+
+        if rally_start_price <= 0:
+            return result
+        rally_pct = (peak_price - rally_start_price) / rally_start_price * 100
+        if rally_pct < 30.0:
+            log.debug(f"consolidation: rally only {rally_pct:.1f}% (need 30%+)")
+            return result
+
+        result["prior_rally_pct"] = round(rally_pct, 1)
+
+        # Consolidation window after peak
+        consol_df = df.iloc[peak_idx:].copy()
+        duration_days = len(consol_df)
+
+        if duration_days < 14 or duration_days > 60:
+            log.debug(f"consolidation: duration {duration_days}d out of range [14,60]")
+            return result
+
+        result["duration_days"] = duration_days
+
+        range_high = float(consol_df["high"].max())
+        range_low = float(consol_df["low"].min())
+        tightness = (range_high - range_low) / current_price * 100 if current_price > 0 else 999
+        result["range_tightness_pct"] = round(tightness, 2)
+
+        if tightness >= 15.0:
+            log.debug(f"consolidation: range too wide {tightness:.1f}% (need < 15%)")
+            return result
+
+        # Check for higher lows: compare medians of first/second half
+        lows = consol_df["low"].values
+        if len(lows) >= 4:
+            half = len(lows) // 2
+            higher_lows = float(np.median(lows[half:])) > float(np.median(lows[:half]))
+        else:
+            higher_lows = False
+        result["higher_lows"] = higher_lows
+        result["consolidating"] = True
+        log.info(
+            f"Consolidation detected: rally={rally_pct:.1f}%, duration={duration_days}d, "
+            f"tightness={tightness:.1f}%, higher_lows={higher_lows}"
+        )
+    except Exception as e:
+        log.warning(f"_detect_consolidation failed: {e}")
+    return result
+
+
+def _detect_gap_up(df5m: pd.DataFrame, df_daily: pd.DataFrame) -> float:
+    """Detect gap up from previous daily close. Returns gap % (0 if no/negative gap)."""
+    try:
+        current_open = float(df5m["open"].iloc[-1])
+        prev_daily_close = float(df_daily["close"].iloc[-2])
+        if prev_daily_close <= 0:
+            return 0.0
+        gap_pct = (current_open - prev_daily_close) / prev_daily_close * 100
+        return round(gap_pct, 2) if gap_pct > 0 else 0.0
+    except Exception as e:
+        log.warning(f"gap detection failed: {e}")
+        return 0.0
 
 
 def _detect_sweep_long(df5m: pd.DataFrame, zone_bottom: float) -> Tuple[Optional[int], float]:
@@ -176,19 +303,56 @@ def _build_mtf_alignment(df_5m: pd.DataFrame, df_daily: pd.DataFrame) -> Tuple[s
     return ", ".join(parts), cat
 
 
-def _quality_score(zone_w, sweep_d, rev_v, drop_v, vol_r, mtf_cat, pinch) -> int:
+def _volume_tier_score(vol_r: float) -> int:
+    """Volume explosion tiers: 1.5-3x=+1, 3-5x=+2, 5x+=+3"""
+    if vol_r >= 5.0:
+        return 3
+    elif vol_r >= 3.0:
+        return 2
+    elif vol_r >= 1.5:
+        return 1
+    return 0
+
+
+def _quality_score(
+    zone_w: float, sweep_d: float, rev_v: float, drop_v: float,
+    vol_r: float, mtf_cat: str, pinch: bool,
+    consolidation: dict = None, gap_up_pct: float = 0.0
+) -> int:
     s = 0
-    if zone_w < 1.0: s += 2
-    elif zone_w < 2.0: s += 1
-    if 0.3 <= sweep_d <= 1.0: s += 2
-    elif 1.0 < sweep_d <= 2.0: s += 1
-    if drop_v > 0 and rev_v >= 2 * drop_v: s += 2
-    elif drop_v > 0 and rev_v >= drop_v: s += 1
-    if vol_r >= 2.0: s += 2
-    elif vol_r >= 1.5: s += 1
-    if "all_bullish" in mtf_cat or "all_bearish" in mtf_cat: s += 2
-    elif "partial" in mtf_cat: s += 1
-    if pinch: s += 2
+    # Zone width
+    if zone_w < 1.0:
+        s += 2
+    elif zone_w < 2.0:
+        s += 1
+    # Sweep depth
+    if 0.3 <= sweep_d <= 1.0:
+        s += 1
+    elif 1.0 < sweep_d <= 2.0:
+        s += 1
+    # Reversal velocity
+    if drop_v > 0 and rev_v >= 2 * drop_v:
+        s += 1
+    elif drop_v > 0 and rev_v >= drop_v:
+        s += 1
+    # Volume tiers
+    s += _volume_tier_score(vol_r)
+    # MTF alignment
+    if "all_bullish" in mtf_cat or "all_bearish" in mtf_cat:
+        s += 2
+    elif "partial" in mtf_cat:
+        s += 1
+    # AVWAP pinch bonus
+    if pinch:
+        s += 2
+    # Consolidation with higher lows bonus
+    if consolidation and consolidation.get("consolidating") and consolidation.get("higher_lows"):
+        s += 2
+        log.debug("Quality: +2 for consolidation with higher lows")
+    # Gap up bonus
+    if gap_up_pct > 5.0:
+        s += 1
+        log.debug(f"Quality: +1 for gap up {gap_up_pct:.1f}%")
     return min(s, 10)
 
 
@@ -218,6 +382,24 @@ def scan_green_lane(symbol: str = "BTC/USDT") -> GreenLaneSignal:
     if df_daily is None:
         return _no_signal("Failed to fetch daily data", timestamp=ts)
 
+    # Compute daily EMA 10/20 alongside existing 9/21/50
+    df_daily["ema_10"] = _ema(df_daily["close"], 10)
+    df_daily["ema_20"] = _ema(df_daily["close"], 20)
+    daily_ema10 = float(df_daily["ema_10"].iloc[-1])
+    daily_ema20 = float(df_daily["ema_20"].iloc[-1])
+
+    # Compute daily ATR
+    daily_atr = _compute_daily_atr(df_daily)
+    log.debug(f"daily_atr={daily_atr:.2f}, ema10={daily_ema10:.2f}, ema20={daily_ema20:.2f}")
+
+    # Consolidation detection
+    consolidation = _detect_consolidation(df_daily)
+
+    # Gap detection
+    gap_up_pct = _detect_gap_up(df5m, df_daily)
+    if gap_up_pct > 3.0:
+        log.info(f"Gap up detected: {gap_up_pct:.2f}% — potential EP setup")
+
     price = float(df5m["close"].iloc[-1])
     pinch_active, pinch_width_pct = _detect_avwap_pinch(df_daily)
     zone_bottom, zone_top, zone_width_pct = _compute_confluence_zone(df_daily)
@@ -225,38 +407,62 @@ def scan_green_lane(symbol: str = "BTC/USDT") -> GreenLaneSignal:
 
     log.debug(f"zone=[{zone_bottom:.2f},{zone_top:.2f}] w={zone_width_pct:.2f}% price={price:.2f} MTF={mtf_summary}")
 
-    # ── LONG ──
+    # Extra fields shared across all returned signals
+    extra_fields = dict(
+        gap_up_pct=gap_up_pct,
+        consolidation_detected=consolidation["consolidating"],
+        consolidation_days=consolidation["duration_days"],
+        prior_rally_pct=consolidation["prior_rally_pct"],
+        daily_ema10=round(daily_ema10, 4),
+        daily_ema20=round(daily_ema20, 4),
+        daily_atr=round(daily_atr, 4),
+    )
+
+    # LONG
     sweep_idx, sweep_depth = _detect_sweep_long(df5m, zone_bottom)
     if sweep_idx is not None:
         valid, rev_v, vol_r, rev_high = _classify_v_reversal_long(df5m, sweep_idx)
         if valid and price > rev_high:
             entry = price
             sweep_low = float(df5m.loc[sweep_idx, "low"]) * 0.9995
-            risk = entry - sweep_low
+
+            # ATR-capped stop: use tighter of sweep-based or ATR-based stop
+            atr_stop = entry - daily_atr if daily_atr > 0 else sweep_low
+            stop_loss = max(sweep_low, atr_stop)
+            if daily_atr > 0 and (entry - sweep_low) > daily_atr:
+                log.info(f"ATR cap applied (long): sweep_stop={sweep_low:.2f} -> atr_stop={atr_stop:.2f}")
+
+            risk = entry - stop_loss
             stop_pct = risk / entry * 100 if entry > 0 else 0
             if risk > 0 and 1.5 <= stop_pct <= 3.0:
                 tp1 = entry + 3 * risk
                 tp2 = entry + 5 * risk
                 sweep_open = float(df5m.loc[sweep_idx, "open"])
                 drop_v = (sweep_open - float(df5m.loc[sweep_idx, "low"])) / sweep_open * 100 if sweep_open > 0 else 0
-                quality = _quality_score(zone_width_pct, sweep_depth, rev_v, drop_v, vol_r, mtf_cat, pinch_active)
+                quality = _quality_score(
+                    zone_width_pct, sweep_depth, rev_v, drop_v, vol_r, mtf_cat, pinch_active,
+                    consolidation=consolidation, gap_up_pct=gap_up_pct
+                )
+                vol_tier = "EP" if vol_r >= 5 else "institutional" if vol_r >= 3 else "standard"
                 reasoning = (
                     f"Long setup: zone=[{zone_bottom:.2f},{zone_top:.2f}] ({zone_width_pct:.2f}% wide), "
                     f"sweep depth={sweep_depth:.2f}%, V-rev velocity={rev_v:.4f}%/bar, "
-                    f"vol_ratio={vol_r:.2f}x, MTF={mtf_summary}, pinch={pinch_active}"
+                    f"vol_ratio={vol_r:.2f}x ({vol_tier}), MTF={mtf_summary}, pinch={pinch_active}, "
+                    f"gap={gap_up_pct:.2f}%, consol={consolidation['consolidating']} ({consolidation['duration_days']}d)"
                 )
                 log.info(f"TRIGGERED LONG q={quality}: {reasoning}")
                 return GreenLaneSignal(
                     triggered=True, quality_score=quality, direction="long",
-                    entry_price=round(entry, 4), stop_loss=round(sweep_low, 4),
+                    entry_price=round(entry, 4), stop_loss=round(stop_loss, 4),
                     tp1=round(tp1, 4), tp2=round(tp2, 4), trail_ema="daily_ema9",
                     pinch_active=pinch_active, pinch_width_pct=pinch_width_pct,
                     zone_width_pct=zone_width_pct, sweep_depth_pct=sweep_depth,
                     reversal_velocity=rev_v, volume_ratio=vol_r,
                     mtf_alignment=mtf_summary, timestamp=ts, reasoning=reasoning,
+                    **extra_fields,
                 )
 
-    # ── SHORT ──
+    # SHORT
     sweep_idx_s, sweep_depth_s = _detect_sweep_short(df5m, zone_top)
     if sweep_idx_s is not None:
         try:
@@ -278,16 +484,30 @@ def scan_green_lane(symbol: str = "BTC/USDT") -> GreenLaneSignal:
                 if down_pct >= 0.005:
                     vol_r = rev_vol / vol_sma if vol_sma > 0 else 1.0
                     if vol_r >= 1.5 and price < rev_low:
-                        entry = price; stop = sh * 1.0005; risk = stop - entry
+                        entry = price
+
+                        # ATR-capped stop for shorts
+                        raw_stop = sh * 1.0005
+                        atr_stop_short = entry + daily_atr if daily_atr > 0 else raw_stop
+                        stop = min(raw_stop, atr_stop_short)
+                        if daily_atr > 0 and (raw_stop - entry) > daily_atr:
+                            log.info(f"ATR cap applied (short): raw_stop={raw_stop:.2f} -> atr_stop={atr_stop_short:.2f}")
+
+                        risk = stop - entry
                         stop_pct = risk / entry * 100 if entry > 0 else 0
                         if risk > 0 and 1.5 <= stop_pct <= 3.0:
-                            tp1 = entry - 3 * risk; tp2 = entry - 5 * risk
+                            tp1 = entry - 2 * risk; tp2 = entry - 3 * risk  # shorts: 2:1 and 3:1 (faster profit-taking)
                             drop_v = up_pct * 100; rev_v = down_pct / max(can_down, 1) * 100
-                            quality = _quality_score(zone_width_pct, sweep_depth_s, rev_v, drop_v, vol_r, mtf_cat, pinch_active)
+                            quality = _quality_score(
+                                zone_width_pct, sweep_depth_s, rev_v, drop_v, vol_r, mtf_cat, pinch_active,
+                                consolidation=consolidation, gap_up_pct=gap_up_pct
+                            )
+                            vol_tier = "EP" if vol_r >= 5 else "institutional" if vol_r >= 3 else "standard"
                             reasoning = (
                                 f"Short setup: zone=[{zone_bottom:.2f},{zone_top:.2f}] ({zone_width_pct:.2f}% wide), "
                                 f"sweep depth={sweep_depth_s:.2f}%, V-rev down={rev_v:.4f}%/bar, "
-                                f"vol_ratio={vol_r:.2f}x, MTF={mtf_summary}, pinch={pinch_active}"
+                                f"vol_ratio={vol_r:.2f}x ({vol_tier}), MTF={mtf_summary}, pinch={pinch_active}, "
+                                f"gap={gap_up_pct:.2f}%, consol={consolidation['consolidating']} ({consolidation['duration_days']}d)"
                             )
                             log.info(f"TRIGGERED SHORT q={quality}: {reasoning}")
                             return GreenLaneSignal(
@@ -298,12 +518,15 @@ def scan_green_lane(symbol: str = "BTC/USDT") -> GreenLaneSignal:
                                 zone_width_pct=zone_width_pct, sweep_depth_pct=sweep_depth_s,
                                 reversal_velocity=rev_v, volume_ratio=vol_r,
                                 mtf_alignment=mtf_summary, timestamp=ts, reasoning=reasoning,
+                                max_hold_days=3,  # shorts: time-based exit after 3 days
+                                **extra_fields,
                             )
 
-    # ── No setup ──
+    # No setup
     reason = (
         f"No Green Lane setup. zone=[{zone_bottom:.2f},{zone_top:.2f}] ({zone_width_pct:.2f}% wide), "
-        f"price={price:.2f}, MTF={mtf_summary}, pinch={pinch_active} ({pinch_width_pct:.2f}%)"
+        f"price={price:.2f}, MTF={mtf_summary}, pinch={pinch_active} ({pinch_width_pct:.2f}%), "
+        f"gap={gap_up_pct:.2f}%, consol={consolidation['consolidating']} ({consolidation['duration_days']}d)"
     )
     log.info(f"Not triggered: {reason}")
     return GreenLaneSignal(
@@ -312,4 +535,5 @@ def scan_green_lane(symbol: str = "BTC/USDT") -> GreenLaneSignal:
         trail_ema="daily_ema9", pinch_active=pinch_active, pinch_width_pct=pinch_width_pct,
         zone_width_pct=zone_width_pct, sweep_depth_pct=0.0, reversal_velocity=0.0,
         volume_ratio=0.0, mtf_alignment=mtf_summary, timestamp=ts, reasoning=reason,
+        **extra_fields,
     )

@@ -542,6 +542,34 @@ def check_green_lane_exits(state: dict, current_price: float, daily_ema9: float)
         if current_price >= stop_loss:
             log.info(f"🔴 Green lane STOP LOSS hit (short): ${current_price:,.2f} >= ${stop_loss:,.2f}")
             return [{"type": "stop_loss", "price": current_price, "fraction": 1.0, "reason": "stop_loss"}]
+        # Time-based exit for shorts
+        max_hold_days = pos.get("max_hold_days", 0)
+        if max_hold_days > 0:
+            entry_time_str = pos.get("entry_time") or pos.get("opened_at")
+            if entry_time_str:
+                try:
+                    from datetime import datetime, timezone
+                    entry_dt = datetime.fromisoformat(entry_time_str.replace("Z", "+00:00"))
+                    held_days = (datetime.now(timezone.utc) - entry_dt).days
+                    if held_days >= max_hold_days:
+                        log.info(f"⏰ Green lane short time exit: held {held_days}d >= max {max_hold_days}d")
+                        return [{"type": "time_exit", "price": current_price, "fraction": 1.0, "reason": f"max_hold_{max_hold_days}d"}]
+                except Exception as e:
+                    log.warning(f"Could not parse entry_time for time-based exit: {e}")
+        # Acceleration detection: big drop in a day → take remaining profits
+        daily_atr = pos.get("daily_atr", 0.0)
+        prev_day_price = pos.get("prev_day_price")
+        if prev_day_price and prev_day_price > 0:
+            day_drop_pct = (prev_day_price - current_price) / prev_day_price * 100
+            if day_drop_pct > 5.0:
+                log.info(f"🚀 Short acceleration: dropped {day_drop_pct:.2f}% in a day — closing remaining")
+                return [{"type": "acceleration", "price": current_price, "fraction": 1.0, "reason": "acceleration_5pct_day"}]
+            if daily_atr > 0:
+                atr_2x = 2 * daily_atr
+                gain = prev_day_price - current_price
+                if gain >= atr_2x:
+                    log.info(f"🚀 Short acceleration: gained {gain:.2f} >= 2x ATR ({atr_2x:.2f}) in one day — suggesting close")
+                    actions.append({"type": "acceleration", "price": current_price, "fraction": 1.0, "reason": "acceleration_2x_atr"})
         if tp1 and not tp1_hit and current_price <= tp1:
             log.info(f"🎯 Green lane TP1 hit (short): ${current_price:,.2f}")
             actions.append({"type": "tp1", "price": current_price, "fraction": 1/3, "reason": "tp1"})

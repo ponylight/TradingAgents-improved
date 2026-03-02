@@ -210,3 +210,12 @@ class GreenLaneSignal(BaseModel):
     mtf_alignment: str
     timestamp: str
     reasoning: str
+    # Qullamaggie-style fields
+    gap_up_pct: float = 0.0
+    consolidation_detected: bool = False
+    consolidation_days: int = 0
+    prior_rally_pct: float = 0.0
+    daily_ema10: float = 0.0
+    daily_ema20: float = 0.0
+    daily_atr: float = 0.0
+    max_hold_days: int = 0  # 0 = no limit (longs), >0 = time-based exit (shorts default: 3)
