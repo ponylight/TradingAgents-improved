@@ -144,9 +144,13 @@ def get_cold_streak(executor_state):
 
 
 def check_circuit_breaker(equity):
+    global PEAK_EQUITY
+    if equity > PEAK_EQUITY:
+        log.info(f"📈 New peak equity: ${equity:,.0f} (was ${PEAK_EQUITY:,.0f})")
+        PEAK_EQUITY = equity
     threshold = PEAK_EQUITY * (1 - CIRCUIT_BREAKER_PCT)
     if equity < threshold:
-        log.error(f"🚨 CIRCUIT BREAKER: ${equity:,.0f} < ${threshold:,.0f}")
+        log.error(f"🚨 CIRCUIT BREAKER: ${equity:,.0f} < ${threshold:,.0f} (peak ${PEAK_EQUITY:,.0f})")
         return True
     return False
 
@@ -974,8 +978,9 @@ def main():
                         log.info(f"⏸️  HOLD — reversal blocked by flip-flop protection")
                         record["transition"] = "HOLD"
                         record["flip_flop_blocked"] = True
+                        executor_state["trades"] = executor_state.get("trades", [])
+                        executor_state["trades"].append(record)
                         save_state(executor_state)
-                        save_report(record)
                         return
                 except (ValueError, TypeError):
                     pass
@@ -1021,28 +1026,27 @@ def main():
                 log.info(f"🔧 Auto SL from 2×daily ATR: ${stop_loss:,.0f} (ATR=${atr:,.0f})")
 
             # If no TP from agent, calculate at 1.5R
+            # Pre-validate TP/SL before opening (catches parsing errors like $78 instead of $78,000)
+            pre_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+            for param_name, param_val in [('take_profit_1', tp1), ('stop_loss', stop_loss)]:
+                if param_val and abs(param_val - pre_price) / pre_price > 0.50:
+                    log.warning(f'⚠️ {param_name} ${param_val:,.0f} is >50% from price ${pre_price:,.0f} — ignoring (will auto-calculate)')
+                    if param_name == 'take_profit_1':
+                        tp1 = None
+                    elif param_name == 'stop_loss':
+                        stop_loss = None
+                        atr = get_atr(exchange, period=14, timeframe='1d')
+                        if new_direction == 'BUY':
+                            stop_loss = pre_price - (2 * atr)
+                        else:
+                            stop_loss = pre_price + (2 * atr)
+                        log.info(f'🔧 Recalculated SL from 2×ATR: ${stop_loss:,.0f}')
+
             result = open_position(exchange, new_direction, equity, alloc_pct, stop_loss, risk_multiplier=risk_multiplier)
 
             if result:
                 fill_price = result["fill_price"]
                 amount = result["amount"]
-
-
-                # Sanity check: TP/SL values must be within 50% of current price
-                # Catches parsing errors like $78 instead of $78,000
-                for param_name, param_val in [('take_profit_1', tp1), ('stop_loss', stop_loss)]:
-                    if param_val and abs(param_val - fill_price) / fill_price > 0.50:
-                        log.warning(f'⚠️ {param_name} ${param_val:,.0f} is >50% from price ${fill_price:,.0f} — ignoring (will auto-calculate)')
-                        if param_name == 'take_profit_1':
-                            tp1 = None
-                        elif param_name == 'stop_loss':
-                            stop_loss = None
-                            atr = get_atr(exchange, period=14, timeframe='1d')
-                            if new_direction == 'BUY':
-                                stop_loss = fill_price - (2 * atr)
-                            else:
-                                stop_loss = fill_price + (2 * atr)
-                            log.info(f'🔧 Recalculated SL from 2×ATR: ${stop_loss:,.0f}')
 
                 risk_dist = abs(fill_price - stop_loss)
                 if not tp1:
