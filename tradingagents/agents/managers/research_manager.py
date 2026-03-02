@@ -1,7 +1,12 @@
-from tradingagents.agents.utils.report_context import get_agent_context
+"""
+Research Manager — Debate judge for bull/bear research team.
 
-import time
-import json
+Evaluates debate, picks a winner, outputs a conviction-scored
+investment recommendation using standardized LONG/NEUTRAL/SHORT.
+"""
+
+from tradingagents.agents.utils.report_context import get_agent_context
+from tradingagents.agents.utils.trading_context import build_trading_context
 
 
 def create_research_manager(llm, memory):
@@ -22,41 +27,49 @@ def create_research_manager(llm, memory):
             past_memory_str += rec["recommendation"] + "\n\n"
 
         budgeted_context = get_agent_context(state, "research_manager")
+        trading_ctx = build_trading_context(state)
 
-        prompt = f"""You are the Research Manager and debate judge for a Bitcoin trading desk. Evaluate the bull/bear debate and produce a decisive investment recommendation.
+        prompt = f"""You are the Research Manager and debate judge for a Bitcoin perpetual futures trading desk.
+
+## Trading Mode
+{trading_ctx['mode_instructions']}
+
+Current position: {trading_ctx['current_position']}
+
+{trading_ctx['position_logic']}
 
 ## Evidence Weighting
-1. **Data-Backed (High Weight)**: Arguments with specific numbers from reports — hash rates, RSI values, funding rates, price levels, volume data
+1. **Data-Backed (High Weight)**: Arguments with specific numbers — hash rates, RSI values, funding rates, price levels, volume data
 2. **Logical Reasoning (Medium Weight)**: Sound frameworks applied to available data
-3. **Speculative (Low Weight)**: Claims without supporting evidence from reports
+3. **Speculative (Low Weight)**: Claims without supporting evidence
 4. **Contradicted (Zero Weight)**: Arguments effectively rebutted with stronger evidence
 
 ## Conviction Scoring (1-10)
-- **9-10**: Overwhelming evidence, debate was one-sided. High-conviction trade.
+- **9-10**: Overwhelming evidence, debate was one-sided
 - **7-8**: Strong evidence favoring one side, minor valid counterpoints
-- **5-6**: Balanced, slight edge. Trade with reduced size.
-- **3-4**: Highly uncertain. Default to HOLD unless current position warrants exit.
-- **1-2**: Insufficient data. HOLD.
+- **5-6**: Balanced with slight edge. Trade with reduced size.
+- **3-4**: Highly uncertain. Default to NEUTRAL.
+- **1-2**: Insufficient data. NEUTRAL.
 
 ## Minimum Conviction to Trade
 - Opening a NEW position: conviction >= 6
-- HOLDING existing position: conviction >= 4 (lower bar to stay in)
-- REVERSING a position: conviction >= 8 (high bar to flip)
-If conviction is below threshold: recommend HOLD regardless of debate outcome.
+- HOLDING existing position: conviction >= 4
+- REVERSING a position: conviction >= 8
+If conviction is below threshold → recommend NEUTRAL.
 
-## Anti-HOLD Default
-HOLD is not a neutral fallback. Choose HOLD only when:
-- Risk-reward is unattractive in BOTH directions
-- A specific catalyst makes waiting optimal
+## Anti-NEUTRAL Default
+NEUTRAL is not a fence-sit. Choose NEUTRAL only when:
+- R:R is unattractive in BOTH directions
 - Both sides are equally strong AND equally evidenced
-- Conviction is below the minimum threshold
+- Conviction is below threshold
+- A specific catalyst makes waiting optimal
 
 ## Deliverables
 1. **Strongest Bull Points**: 2-3 key arguments with data citations
 2. **Strongest Bear Points**: 2-3 key arguments with data citations
 3. **Winner**: Which side presented the stronger data-backed case?
 4. **Conviction Score**: 1-10 with justification
-5. **Recommendation**: BUY (long), SELL (short), or HOLD
+5. **Recommendation**: {trading_ctx['actions']}
 6. **Investment Plan for Trader**: Concrete direction with rationale
 
 ## Debate History
@@ -65,7 +78,9 @@ HOLD is not a neutral fallback. Choose HOLD only when:
 ## Past Reflections
 {past_memory_str}
 
-Be decisive. The trader needs a clear direction backed by the stronger argument, not a balanced summary."""
+Conclude with: {trading_ctx['final_format']}
+
+Be decisive. The Trader needs a clear direction, not a balanced summary."""
 
         response = llm.invoke(prompt)
 

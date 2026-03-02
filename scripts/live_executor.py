@@ -24,7 +24,8 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
-from tradingagents.graph.crypto_trading_graph import CryptoTradingAgentsGraph, CRYPTO_DEFAULT_CONFIG
+from tradingagents.graph.crypto_trading_graph import CryptoTradingAgentsGraph
+from tradingagents.agents.utils.agent_trading_modes import extract_recommendation, get_position_transition, CRYPTO_DEFAULT_CONFIG
 from tradingagents.agents.utils.agent_trading_modes import get_position_transition
 
 # === CONFIG ===
@@ -491,7 +492,44 @@ def run_agents(ta, trade_date, portfolio_context=None):
             decision = "SELL"
         elif action in ("CLOSE", "HOLD"):
             decision = "HOLD"
-        log.info(f"🏛️ Fund Manager overrode to: {decision} (action={action})")
+        elif action in ("LONG", "SHORT", "NEUTRAL"):
+            # TradingModeConfig standardized signals
+            current_pos = (portfolio_context or {}).get("position", "none")
+            if "long" in current_pos.lower():
+                curr = "LONG"
+            elif "short" in current_pos.lower():
+                curr = "SHORT"
+            else:
+                curr = "NEUTRAL"
+            transition = get_position_transition(curr, action)
+            trans_action = transition["action"]
+            if trans_action in ("OPEN_LONG", "REVERSE_TO_LONG"):
+                decision = "BUY"
+            elif trans_action in ("OPEN_SHORT", "REVERSE_TO_SHORT"):
+                decision = "SELL"
+            else:
+                decision = "HOLD"
+            log.info(f"📐 Position transition: {curr} → {action} = {trans_action}")
+        log.info(f"🏛️ Fund Manager: {decision} (action={action})")
+    
+    # Fallback: extract from raw text if FM parsing failed
+    if decision == "HOLD" and not fund_parsed:
+        extracted = extract_recommendation(agent_state.get("final_trade_decision", ""), "trading")
+        if extracted and extracted != "NEUTRAL":
+            current_pos = (portfolio_context or {}).get("position", "none")
+            if "long" in current_pos.lower():
+                curr = "LONG"
+            elif "short" in current_pos.lower():
+                curr = "SHORT"
+            else:
+                curr = "NEUTRAL"
+            transition = get_position_transition(curr, extracted)
+            trans_action = transition["action"]
+            if trans_action in ("OPEN_LONG", "REVERSE_TO_LONG"):
+                decision = "BUY"
+            elif trans_action in ("OPEN_SHORT", "REVERSE_TO_SHORT"):
+                decision = "SELL"
+            log.info(f"📐 Fallback extraction: {curr} → {extracted} = {trans_action} → {decision}")
 
     full_decision = agent_state.get("final_trade_decision", "")
     trade_params = parse_trade_params(full_decision)

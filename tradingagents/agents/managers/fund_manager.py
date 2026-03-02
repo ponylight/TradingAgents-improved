@@ -9,6 +9,7 @@ In a real trading firm:
 """
 
 import re
+from tradingagents.agents.utils.trading_context import build_trading_context
 import logging
 
 log = logging.getLogger("fund_manager")
@@ -97,7 +98,7 @@ You DO:
 
 Brief assessment (3-5 sentences max), then:
 
-FINAL TRANSACTION PROPOSAL: **BUY/SELL/HOLD**
+{trading_ctx["final_format"]}
 
 ```
 ---FUND_DECISION---

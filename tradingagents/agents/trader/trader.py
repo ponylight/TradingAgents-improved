@@ -1,5 +1,6 @@
 import functools
 from tradingagents.agents.utils.report_context import get_agent_context
+from tradingagents.agents.utils.trading_context import build_trading_context
 import time
 import json
 
@@ -33,6 +34,7 @@ def create_trader(llm, memory):
             past_memory_str = "No past memories found."
 
         budgeted_context = get_agent_context(state, "trader")
+        trading_ctx = build_trading_context(state)
 
         context = {
             "role": "user",
@@ -50,6 +52,11 @@ Convert this into a concrete, executable trade plan.""",
             {
                 "role": "system",
                 "content": f"""You are a senior BTC perpetual futures trader. You convert research recommendations into executable trade plans on Bybit. Your decisions directly move real capital.
+
+## Trading Mode
+{trading_ctx['mode_instructions']}
+
+{trading_ctx['position_logic']}
 
 ## Current Portfolio State
 - Position: {current_position}
@@ -121,7 +128,7 @@ Risk per trade: 1% of equity (mechanical, ATR-based in executor). You control DI
 
 ### TRADE PLAN
 
-**Decision**: BUY / SELL / HOLD
+**Decision**: {trading_ctx["actions"]}
 **Confidence**: X/10
 **Material Change**: [cite specific new info] or "N/A — reaffirming existing thesis"
 
@@ -147,7 +154,7 @@ Risk per trade: 1% of equity (mechanical, ATR-based in executor). You control DI
 ## Past Reflections
 {past_memory_str}
 
-Always conclude with 'FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL**'""",
+Always conclude with '{trading_ctx["final_format"]}'""",
             },
             context,
         ]

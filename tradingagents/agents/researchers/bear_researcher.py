@@ -1,4 +1,5 @@
 from tradingagents.agents.utils.debate_utils import create_invest_debate_node
+from tradingagents.agents.utils.trading_context import build_trading_context
 
 
 def _build_prompt(reports, history, opponent_response, past_memory_str):
