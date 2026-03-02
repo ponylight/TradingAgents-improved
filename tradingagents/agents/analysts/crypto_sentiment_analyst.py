@@ -11,6 +11,9 @@ from tradingagents.agents.utils.crypto_tools import (
 )
 
 
+from tradingagents.dataflows.social_sentiment import get_social_sentiment, format_social_sentiment_report
+
+
 def create_crypto_sentiment_analyst(llm):
 
     def crypto_sentiment_analyst_node(state):
@@ -24,10 +27,13 @@ def create_crypto_sentiment_analyst(llm):
             get_liquidation_info,
         ]
 
+        social_section = f"""\n## Pre-Fetched Social Sentiment Data\n{social_report}\n"""
+
         system_message = """You are a senior crypto sentiment analyst specializing in derivatives market sentiment for BTC.
 Your role is to gauge market sentiment and positioning to identify contrarian opportunities.
 
 ## CRITICAL: You MUST use the tools provided to fetch data. Do NOT claim you lack access.
+
 You have these tools available: get_crypto_fear_greed, get_funding_rate, get_open_interest, get_liquidation_info.
 Call them one by one. Do NOT skip tool calls or claim another agent should handle data fetching.
 
