@@ -75,7 +75,7 @@ def get_blockchain_stats() -> Dict[str, Any]:
             "btc_sent_24h": round(data.get("total_btc_sent", 0) / 1e8, 0),
             "tx_count_24h": data.get("n_tx", 0),
             "market_price_usd": round(data.get("market_price_usd", 0), 2),
-            "miners_revenue_usd": round(data.get("miners_revenue_usd", 0), 0),
+            "miners_revenue_usd": round(data.get("miners_revenue_usd", 0), 0) or round(data.get("n_blocks_mined", 144) * 3.125 * data.get("market_price_usd", 0), 0),  # fallback: blocks × reward × price
             "mempool_size_bytes": data.get("mempool_size_bytes", 0),
             "mempool_count": data.get("mempool_count", 0),
         }
