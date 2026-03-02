@@ -13,7 +13,7 @@ from tradingagents.agents.utils.crypto_tools import (
     get_funding_rate,
     get_open_interest,
 )
-from tradingagents.dataflows.social_sentiment import get_social_sentiment, format_social_sentiment_report
+from tradingagents.dataflows.social_sentiment import get_social_sentiment_enhanced, format_social_sentiment_report_enhanced
 
 import logging
 log = logging.getLogger("crypto_sentiment")
@@ -27,8 +27,8 @@ def create_crypto_sentiment_analyst(llm):
 
         # Pre-fetch social sentiment (real-time, no LLM needed)
         try:
-            social_data = get_social_sentiment()
-            social_report = format_social_sentiment_report(social_data)
+            social_data = get_social_sentiment_enhanced(llm=llm)
+            social_report = format_social_sentiment_report_enhanced(social_data)
         except Exception as e:
             log.warning(f"Social sentiment fetch failed: {e}")
             social_report = "Social sentiment unavailable."

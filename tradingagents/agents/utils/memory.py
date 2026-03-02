@@ -47,6 +47,24 @@ FINANCIAL_SYNONYMS = {
     "breakout": "breakout_signal", "breakdown": "breakdown_signal",
     "uptrend": "trend_up", "downtrend": "trend_down",
     "buy": "buy_signal", "sell": "sell_signal", "hold": "hold_signal",
+    # Crypto-specific
+    "btc": "bitcoin", "eth": "ethereum", "usdt": "tether_stablecoin",
+    "funding": "funding_rate", "oi": "open_interest", "open-interest": "open_interest",
+    "hashrate": "hash_rate", "hash-rate": "hash_rate",
+    "halving": "halving_cycle", "halvening": "halving_cycle",
+    "liquidation": "liquidation_event", "liquidations": "liquidation_event",
+    "perp": "perpetual_futures", "perps": "perpetual_futures", "perpetual": "perpetual_futures",
+    "defi": "decentralized_finance", "nft": "non_fungible_token",
+    "whale": "whale_movement", "whales": "whale_movement",
+    "fud": "fear_uncertainty_doubt", "fomo": "fear_of_missing_out",
+    "dxy": "dollar_index", "fomc": "federal_reserve_meeting",
+    "cpi": "consumer_price_index", "ppi": "producer_price_index",
+    "etf": "exchange_traded_fund", "spot-etf": "spot_etf",
+    "onchain": "on_chain", "on-chain": "on_chain",
+    "mempool": "mempool_congestion",
+    "long": "long_position", "short": "short_position",
+    "squeeze": "short_squeeze", "short-squeeze": "short_squeeze",
+    "bbw": "bollinger_band_width", "vwap": "volume_weighted_avg_price",
 }
 
 

@@ -225,6 +225,137 @@ def format_social_sentiment_report(data: Dict[str, Any]) -> str:
     return "\n".join(lines)
 
 
+
+def classify_posts_with_llm(posts: List[Dict], llm=None) -> Dict[str, Any]:
+    """Use an auxiliary LLM to classify top posts for sentiment.
+    
+    Per paper Section 5.2: "sentiment scores of posts calculated by auxiliary language models"
+    
+    This is more accurate than keyword scoring because it handles:
+    - Sarcasm ("great, another crash")
+    - Crypto memes ("number go up technology")  
+    - Context-dependent terms ("short" can mean brief or short-selling)
+    - Coded language ("diamond hands", "paper hands", "ngmi")
+    
+    Args:
+        posts: List of post dicts from get_reddit_posts()
+        llm: A LangChain-compatible LLM (quick-thinking model)
+    
+    Returns:
+        Dict with LLM-classified sentiment scores and narratives
+    """
+    if not llm or not posts:
+        return {}
+    
+    # Take top 15 by engagement (more signal, less noise)
+    top = sorted(posts, key=lambda p: p["score"] + p["comments"], reverse=True)[:15]
+    
+    post_text = ""
+    for i, p in enumerate(top, 1):
+        post_text += f"{i}. [{p['subreddit']}] (↑{p['score']}, 💬{p['comments']}) {p['title']}\n"
+    
+    prompt = f"""Classify the sentiment of these crypto Reddit posts. Consider sarcasm, memes, and crypto slang.
+
+{post_text}
+
+For each post, classify as: BULLISH, BEARISH, or NEUTRAL.
+Then provide an overall summary.
+
+Respond in this exact JSON format (no markdown):
+{{"posts": [{{"id": 1, "sentiment": "BULLISH|BEARISH|NEUTRAL", "confidence": 0.0-1.0}}], "overall": "BULLISH|BEARISH|NEUTRAL", "confidence": 0.0-1.0, "dominant_narrative": "one sentence summary of what crypto Reddit is focused on", "contrarian_signal": "none|weak|moderate|strong — is sentiment extreme enough to be contrarian?"}}"""
+
+    try:
+        result = llm.invoke(prompt)
+        import json
+        # Try to parse JSON from response
+        text = result.content if hasattr(result, 'content') else str(result)
+        # Strip markdown code fences if present
+        text = text.strip()
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1] if "\n" in text else text[3:]
+        if text.endswith("```"):
+            text = text[:-3]
+        text = text.strip()
+        
+        parsed = json.loads(text)
+        
+        # Calculate scores from classifications
+        sentiments = [p["sentiment"] for p in parsed.get("posts", [])]
+        bull_count = sentiments.count("BULLISH")
+        bear_count = sentiments.count("BEARISH")
+        neutral_count = sentiments.count("NEUTRAL")
+        total = len(sentiments) or 1
+        
+        return {
+            "llm_overall": parsed.get("overall", "NEUTRAL"),
+            "llm_confidence": parsed.get("confidence", 0.5),
+            "llm_bull_pct": round(bull_count / total, 2),
+            "llm_bear_pct": round(bear_count / total, 2),
+            "llm_neutral_pct": round(neutral_count / total, 2),
+            "dominant_narrative": parsed.get("dominant_narrative", ""),
+            "contrarian_signal": parsed.get("contrarian_signal", "none"),
+            "post_count": total,
+        }
+    except Exception as e:
+        log.warning(f"LLM sentiment classification failed: {e}")
+        return {}
+
+
+def get_social_sentiment_enhanced(llm=None) -> Dict[str, Any]:
+    """Get social sentiment with optional LLM classification overlay.
+    
+    Always runs keyword scoring (fast, free).
+    If an LLM is provided, also runs auxiliary classification on top posts.
+    LLM results are merged as an additional "llm_classification" field.
+    """
+    base = get_social_sentiment()
+    
+    if llm and "error" not in base:
+        # Collect all posts for LLM classification
+        all_posts = []
+        for sub in SUBREDDITS:
+            posts = get_reddit_posts(sub, "hot", 25)
+            all_posts.extend(posts)
+            time.sleep(0.3)
+        
+        if all_posts:
+            llm_result = classify_posts_with_llm(all_posts, llm)
+            if llm_result:
+                base["llm_classification"] = llm_result
+                # If LLM disagrees with keyword scoring, note it
+                keyword_mood = base.get("overall_mood", "NEUTRAL")
+                llm_mood = llm_result.get("llm_overall", "NEUTRAL")
+                if keyword_mood != llm_mood:
+                    base["sentiment_divergence"] = f"Keywords say {keyword_mood}, LLM says {llm_mood}"
+    
+    return base
+
+
+def format_social_sentiment_report_enhanced(data: Dict[str, Any]) -> str:
+    """Format social sentiment with LLM overlay into a report."""
+    base_report = format_social_sentiment_report(data)
+    
+    llm = data.get("llm_classification")
+    if not llm:
+        return base_report
+    
+    lines = [
+        base_report,
+        "",
+        "## LLM Sentiment Classification (auxiliary model)",
+        f"- Overall: {llm.get('llm_overall', 'N/A')} (confidence: {llm.get('llm_confidence', 0):.0%})",
+        f"- Bullish: {llm.get('llm_bull_pct', 0):.0%} | Bearish: {llm.get('llm_bear_pct', 0):.0%} | Neutral: {llm.get('llm_neutral_pct', 0):.0%}",
+        f"- Dominant narrative: {llm.get('dominant_narrative', 'N/A')}",
+        f"- Contrarian signal: {llm.get('contrarian_signal', 'none')}",
+    ]
+    
+    divergence = data.get("sentiment_divergence")
+    if divergence:
+        lines.append(f"- ⚠️ DIVERGENCE: {divergence}")
+    
+    return "\n".join(lines)
+
+
 if __name__ == "__main__":
     data = get_social_sentiment()
     print(format_social_sentiment_report(data))
