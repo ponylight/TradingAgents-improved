@@ -1,23 +1,39 @@
-from tradingagents.agents.utils.report_context import get_agent_context
+"""
+Risk Judge — Evaluates and gates risk for BTC perpetual futures.
 
-import time
-import json
+Authority: APPROVE, RESIZE, or VETO.
+Cannot: change direction, propose trades, or override the Trader's thesis.
+Per paper Section 3.4: Risk team adjusts parameters, not just vetoes.
+"""
+
+from tradingagents.agents.utils.report_context import get_agent_context
+import logging
+
+log = logging.getLogger("risk_manager")
 
 
 def create_risk_manager(llm, memory):
     def risk_manager_node(state) -> dict:
-
         company_name = state["company_of_interest"]
 
-        history = state["risk_debate_state"]["history"]
         risk_debate_state = state["risk_debate_state"]
-        market_research_report = state["market_report"]
-        news_report = state["news_report"]
-        fundamentals_report = state["fundamentals_report"]
-        sentiment_report = state["sentiment_report"]
+        history = risk_debate_state["history"]
         trader_plan = state["investment_plan"]
 
+        # Portfolio context
+        portfolio_context = state.get("portfolio_context", {})
+        current_position = portfolio_context.get("position", "none")
+        position_pnl_pct = portfolio_context.get("pnl_pct", 0)
+        hours_held = portfolio_context.get("hours_held", 0)
+        equity = portfolio_context.get("equity", 0)
+
         budgeted_context = get_agent_context(state, "risk_manager")
+
+        # Past memories
+        market_research_report = state["market_report"]
+        sentiment_report = state["sentiment_report"]
+        news_report = state["news_report"]
+        fundamentals_report = state["fundamentals_report"]
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
 
@@ -25,29 +41,68 @@ def create_risk_manager(llm, memory):
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
 
-        prompt = f"""You are the Risk Manager. Your role is to EVALUATE and GATE risk — NOT to decide trade direction.
+        prompt = f"""You are the Risk Judge for a BTC perpetual futures desk on Bybit.
 
-## Your Authority
-- You can APPROVE, RESIZE, or VETO a trade
-- You CANNOT change the direction (BUY→SELL or vice versa)
-- You CANNOT propose trades — that is the Portfolio Manager's job
-- If risk is unacceptable, you VETO. The Portfolio Manager decides what to do next.
+## Your Authority (STRICT)
+- ✅ APPROVE — trade passes all risk checks
+- ✅ APPROVE WITH ADJUSTMENTS — tighten stop-loss, reduce size, add conditions
+- ✅ VETO — hard limit breached, trade rejected
+- ❌ You CANNOT change direction (BUY→SELL or vice versa)
+- ❌ You CANNOT propose trades
+- ❌ You CANNOT override the Trader's thesis
 
-## Position Risk Scoring
-Score each dimension 1-5 (5 = highest risk):
-- **Market Risk**: Sensitivity to broad market movements and volatility regime
-- **Liquidity Risk**: Can the position be exited quickly without significant slippage?
-- **Concentration Risk**: Does this position create excessive portfolio concentration?
-- **Event Risk**: Are there upcoming binary events that could gap the asset?
-- **Timing Risk**: Is the entry point technically sound, or are we chasing?
+## Current Portfolio
+- Position: {current_position}
+- P&L: {position_pnl_pct:+.2f}%
+- Hours held: {hours_held:.1f}
+- Equity: ${equity:,.0f}
+
+## Risk Scoring (score each 1-5, 5 = highest risk)
+
+### 1. Leverage Risk
+- What effective leverage does the proposed size imply?
+- At 20x, a 5% move = 100% gain or total loss. At 5x, manageable.
+- >15x on a swing trade = EXTREMELY dangerous. Flag it.
+- Distance to liquidation price: < 2× ATR(4h) = too close.
+
+### 2. Volatility Risk
+- Current ATR percentile: is the market in a high-vol or low-vol regime?
+- High ATR + high leverage = compounding risk. Require size reduction.
+- Bollinger Band Width: compressed = breakout imminent (stop might get gapped).
+- Weekend/holiday approaching: liquidity drops, gaps risk increases.
+
+### 3. Funding Rate Risk
+- Extreme positive funding (>0.05%): longs pay ~0.15%/day to hold. This bleeds capital.
+  - If Trader proposes LONG with extreme positive funding → flag the carry cost.
+- Extreme negative funding: shorts pay to hold.
+- Near-zero: neutral, no carry risk.
+
+### 4. Liquidation Cascade Risk
+- Are there visible liquidation clusters near the proposed stop?
+- High OI + thin orderbook at key levels = cascade risk.
+- If stop is near a liquidation cluster → recommend wider stop or smaller size.
+
+### 5. Event Risk
+- FOMC, CPI, jobs report within 24h? Binary event → require smaller size or wait.
+- Regulatory hearings, ETF decisions, major protocol upgrades?
+- Weekend approaching with open position?
+
+### 6. Correlation Risk
+- Is BTC correlating with S&P/Nasdaq right now? If macro is risk-off, BTC follows.
+- Is the Trader accounting for macro headwinds/tailwinds?
 
 ## Hard Risk Limits (Non-Negotiable)
-- **2% Max Loss Rule**: No single trade should risk more than 2% of total portfolio value. If stop-loss implies more → RESIZE (reduce position size, do NOT change direction)
-- **Exit Strategy Required**: Every trade MUST have stop-loss and take-profit. No exit strategy → VETO
-- **Risk-Reward Minimum**: Only approve trades with at least 2:1 reward-to-risk ratio. Below 2:1 → VETO
+| Rule | Threshold | Action |
+|------|-----------|--------|
+| Max loss per trade | 1% of equity | RESIZE if breached |
+| Stop-loss required | Must exist | VETO if missing |
+| R:R minimum | 2:1 | VETO if below |
+| Max leverage (swing) | 15x | RESIZE if above |
+| Max leverage (position) | 10x | RESIZE if above |
+| Liquidation distance | > 2× ATR(4h) | RESIZE if too close |
 
-## Past Reflections on Mistakes
-{past_memory_str}
+## Past Reflections on Risk Mistakes
+{past_memory_str if past_memory_str else "None."}
 
 ## Analyst Reports (role-weighted context)
 {budgeted_context}
@@ -55,21 +110,36 @@ Score each dimension 1-5 (5 = highest risk):
 ## Trader's Proposed Plan
 {trader_plan}
 
-## Risk Debate History
+## Risk Debate Summary
 {history}
 
 ## Required Output
-1. Score each risk dimension
-2. Calculate composite risk score
-3. Check each hard limit
-4. Issue your verdict:
 
-RISK VERDICT: APPROVED / APPROVED_WITH_RESIZE / VETOED
-- If APPROVED: state the risk parameters you are comfortable with
-- If APPROVED_WITH_RESIZE: specify the maximum position size and why
-- If VETOED: state which hard limit was breached and why
+### Risk Scorecard
+| Dimension | Score (1-5) | Notes |
+|-----------|-------------|-------|
+| Leverage | | |
+| Volatility | | |
+| Funding Rate | | |
+| Liquidation Cascade | | |
+| Event Risk | | |
+| Correlation | | |
+| **Composite** | | (average) |
 
-Do NOT recommend a trade direction. Do NOT say BUY, SELL, or HOLD. Your job is risk assessment only."""
+### Hard Limit Check
+- [ ] Max loss ≤ 1% equity
+- [ ] Stop-loss defined
+- [ ] R:R ≥ 2:1
+- [ ] Leverage within limits
+- [ ] Liquidation distance safe
+
+### RISK VERDICT: APPROVED / APPROVED_WITH_ADJUSTMENTS / VETOED
+
+If APPROVED: "Risk parameters acceptable. Proceed as proposed."
+If APPROVED_WITH_ADJUSTMENTS: specify EXACTLY what to change (e.g., "Reduce size from 2% to 3% margin to bring leverage from 12x to 7x" or "Tighten stop to $XX,XXX").
+If VETOED: state which hard limit was breached and why.
+
+Do NOT recommend a trade direction. Do NOT say BUY, SELL, or HOLD."""
 
         response = llm.invoke(prompt)
 

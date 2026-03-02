@@ -1,29 +1,25 @@
-"""Portfolio Manager (Fund Manager) — Final approver.
+"""
+Fund Manager (Portfolio Manager) — Final approver for trade execution.
 
-In a real trading firm, the Fund Manager:
-- Reviews the Trader's proposal and Risk Manager's assessment
-- Approves, rejects, or resizes at a PORTFOLIO level
+In a real trading firm:
+- Reviews Trader's proposal + Risk Judge's assessment
+- Approves, rejects, or defers from a PORTFOLIO perspective
 - Does NOT re-analyze the market or second-guess direction
-- Considers portfolio-wide exposure, correlation, capital allocation
-
-The Trader owns the thesis. The Risk Manager gates the risk.
-The Fund Manager says "yes, go" or "no, not now" from a portfolio perspective.
+- The Trader owns the thesis. The Risk Judge gates the risk. The FM says GO/NO-GO.
 """
 
 import re
-import json
 import logging
 
 log = logging.getLogger("fund_manager")
 
 
 def create_fund_manager(llm, memory=None):
-    """Create the Fund Manager (Portfolio Manager) node."""
 
     def fund_manager_node(state) -> dict:
         risk_decision = state.get("final_trade_decision", "")
         trader_plan = state.get("trader_investment_plan", "")
-        
+
         # Portfolio context
         portfolio_context = state.get("portfolio_context", {})
         current_position = portfolio_context.get("position", "none")
@@ -31,8 +27,9 @@ def create_fund_manager(llm, memory=None):
         hours_held = portfolio_context.get("hours_held", 0)
         equity = portfolio_context.get("equity", 0)
         last_decision = portfolio_context.get("last_decision", "HOLD")
+        open_orders = portfolio_context.get("open_orders", 0)
 
-        # Get past memories if available
+        # Past memories
         past_memory_str = ""
         if memory:
             try:
@@ -42,55 +39,79 @@ def create_fund_manager(llm, memory=None):
             except Exception:
                 pass
 
-        prompt = f"""You are the Fund Manager — the final approver for trade execution.
+        prompt = f"""You are the Fund Manager — the final authority on whether a trade executes.
 
-## Your Role
-- You APPROVE or REJECT the Trader's proposal at a portfolio level
-- You do NOT re-analyze the market or change the trade direction
-- You do NOT second-guess the Trader's thesis — that is their job
-- You consider: portfolio exposure, capital allocation, timing, risk assessment
+## Your Role (STRICT)
+You are the last checkpoint before capital moves. You do NOT:
+- Re-analyze the market (analysts did that)
+- Second-guess the Trader's thesis (they own it)
+- Override the Risk Judge's veto (they gate risk)
+
+You DO:
+- Verify the decision chain is coherent (analyst → researcher → trader → risk judge)
+- Check portfolio-level constraints
+- Approve or reject from a capital allocation perspective
+- Ensure the overall process was followed
 
 ## Current Portfolio
 - Position: {current_position}
-- P&L: {position_pnl_pct:+.2f}%
+- Unrealized P&L: {position_pnl_pct:+.2f}%
 - Hours held: {hours_held:.1f}
 - Equity: ${equity:,.0f}
 - Last decision: {last_decision}
+- Open orders: {open_orders}
 
-## Trader's Proposal
-{trader_plan[:2000]}
+## Decision Rules
 
-## Risk Manager's Assessment
-{risk_decision[:1500]}
+### Automatic REJECT:
+- Risk Judge VETOED → you MUST reject. No override. Ever.
+- No stop-loss defined → reject
+- Missing confidence score or thesis → reject (process failure)
+
+### Automatic APPROVE:
+- Risk Judge APPROVED + Trader HOLD with reaffirmed thesis → approve HOLD
+- Risk Judge APPROVED + Trader proposal with R:R ≥ 2:1 + clear thesis → approve
+
+### Judgment Calls:
+- Risk Judge APPROVED_WITH_ADJUSTMENTS → approve with the adjusted parameters
+- If Trader's confidence is borderline (5-6) and setup is mediocre → may downgrade to HOLD
+- If we already have a profitable position and Trader wants to add → scrutinize carefully (don't chase)
+- Capital allocation: never commit >20% of equity to a single position (margin + unrealized)
+
+## Crypto-Specific Portfolio Considerations
+- **24/7 Exposure**: Position stays open through weekends/holidays. Account for reduced liquidity.
+- **Funding Carry**: If holding a position costs >0.1%/day in funding, factor that into approval.
+- **Exchange Risk**: Single exchange (Bybit). No hedge on another venue. Accept this but size accordingly.
+- **Drawdown Budget**: If account is down >5% from peak, reduce max position size by 50%.
 
 ## Past Reflections
 {past_memory_str if past_memory_str else "None."}
 
-## Decision Framework
-1. If Risk Manager VETOED → you MUST reject (do not override risk veto)
-2. If Risk Manager APPROVED and Trader proposal is sound → APPROVE
-3. If Risk Manager APPROVED WITH RESIZE → approve with the resized parameters
-4. You may reject if:
-   - Portfolio is already overexposed to this asset/sector
-   - Capital allocation limits would be breached
-   - Timing is poor (e.g., right before a major known event)
+## Trader's Proposal
+{trader_plan[:2500]}
+
+## Risk Judge's Assessment
+{risk_decision[:2000]}
 
 ## Required Output
-State your decision, then end with:
+
+Brief assessment (3-5 sentences max), then:
 
 FINAL TRANSACTION PROPOSAL: **BUY/SELL/HOLD**
 
-And include:
 ```
 ---FUND_DECISION---
 ACTION: OPEN_LONG/OPEN_SHORT/CLOSE/HOLD
 CONFIDENCE: <1-10>
 STOP_LOSS: <price or "as_proposed">
 TAKE_PROFIT_1: <price or "as_proposed">
-REASON: <one-line>
+TAKE_PROFIT_2: <price or "as_proposed">
+MARGIN_ALLOCATION: <percentage>
+REASON: <one-line summary>
 ---END_FUND_DECISION---
 ```
-"""
+
+Keep it short. You are an approver, not an analyst. The work is already done — you just stamp it."""
 
         response = llm.invoke(prompt)
         fund_decision = response.content
@@ -108,9 +129,11 @@ REASON: <one-line>
 
 
 def _parse_fund_decision(text):
+    """Parse the structured decision block from FM output."""
     parsed = {}
     block = re.search(r'---FUND_DECISION---(.*?)---END_FUND_DECISION---', text, re.DOTALL)
     if not block:
+        # Fallback: extract action from text
         upper = text.upper()
         for action in ["OPEN_LONG", "OPEN_SHORT", "CLOSE", "HOLD"]:
             if action in upper:
@@ -118,10 +141,18 @@ def _parse_fund_decision(text):
                 break
         return parsed
 
-    for key, name in [("ACTION","action"),("CONFIDENCE","confidence"),("STOP_LOSS","stop_loss"),
-                      ("TAKE_PROFIT_1","take_profit_1"),("REASON","reason")]:
+    fields = [
+        ("ACTION", "action"), ("CONFIDENCE", "confidence"),
+        ("STOP_LOSS", "stop_loss"), ("TAKE_PROFIT_1", "take_profit_1"),
+        ("TAKE_PROFIT_2", "take_profit_2"), ("MARGIN_ALLOCATION", "margin_allocation"),
+        ("REASON", "reason"),
+    ]
+    for key, name in fields:
         m = re.search(rf'{key}:\s*(.+)', block.group(1))
         if m:
             val = m.group(1).strip()
-            parsed[name] = int(val) if key == "CONFIDENCE" and val.isdigit() else val
+            if key == "CONFIDENCE" and val.isdigit():
+                parsed[name] = int(val)
+            else:
+                parsed[name] = val
     return parsed
