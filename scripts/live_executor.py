@@ -810,10 +810,32 @@ def save_state(state):
 
 # === MAIN ===
 
+def preflight_check(timeout=10):
+    """Verify Bybit API is reachable before starting. Fails fast if VPN is down."""
+    import urllib.request
+    url = "https://api.bybit.com/v5/market/time"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "preflight"})
+        resp = urllib.request.urlopen(req, timeout=timeout)
+        data = json.loads(resp.read())
+        if data.get("retCode") == 0:
+            log.info("✅ Preflight: Bybit API reachable")
+            return True
+        log.error(f"❌ Preflight: Bybit returned error: {data}")
+        return False
+    except Exception as e:
+        log.error(f"❌ Preflight: Cannot reach Bybit API ({e}). VPN down?")
+        return False
+
+
 def main():
     log.info("=" * 60)
     log.info("🚀 TradingAgents Live Executor v2")
     log.info("=" * 60)
+
+    if not preflight_check():
+        log.error("🛑 Aborting: Bybit API unreachable. Check VPN connection.")
+        return
 
     exchange = get_exchange()
     equity = get_equity(exchange)
