@@ -36,12 +36,23 @@ def _get_cached(key: str, fetcher, ttl: int = CACHE_TTL) -> Any:
 
 
 def _safe_get(url: str, params: dict = None, timeout: int = TIMEOUT) -> Optional[dict]:
-    """Safe HTTP GET with error handling."""
+    """Safe HTTP GET with error handling and mempool.space fallback."""
     try:
         r = requests.get(url, params=params, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except Exception as e:
+        # Fallback: try mempool.space mirror if primary fails
+        if "mempool.space" in url:
+            fallback = url.replace("mempool.space", "mempool.emzy.de", 1)
+            try:
+                log.info(f"Trying mempool mirror: {fallback}")
+                r = requests.get(fallback, params=params, timeout=timeout)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e2:
+                log.warning(f"Both mempool endpoints failed: {e} / {e2}")
+                return None
         log.warning(f"API error {url}: {e}")
         return None
 

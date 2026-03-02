@@ -338,18 +338,81 @@ def get_fear_greed_index() -> str:
 
 def get_crypto_liquidations_summary(
     symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
+    exchange_id: str = "bybit",
 ) -> str:
     """
-    Get a summary of recent liquidation activity.
-    Note: Detailed liquidation data may require CryptoQuant or Coinglass API.
-    This provides what's available from exchange data.
+    Get derivatives positioning summary: funding, OI, long/short ratio.
+    Uses Bybit API directly — no third-party key needed.
     """
-    # Placeholder — detailed liquidation data requires premium APIs
-    return (
-        f"# Liquidation Summary for {symbol}\n\n"
-        "Note: Detailed liquidation data requires CryptoQuant or Coinglass API integration.\n"
-        "For now, use funding rate extremes and open interest changes as proxy indicators:\n"
-        "- Extreme positive funding (>0.05%) → overleveraged longs, liquidation risk\n"
-        "- Extreme negative funding (<-0.05%) → overleveraged shorts, squeeze risk\n"
-        "- Sudden OI drops → liquidation cascade occurred\n"
-    )
+    import urllib.request
+
+    lines = [f"# Derivatives Positioning for {symbol}\n"]
+
+    try:
+        exchange = _get_exchange(exchange_id)
+
+        # 1. Current funding rate
+        fr = exchange.fetch_funding_rate(symbol)
+        rate = fr.get("fundingRate", 0)
+        lines.append(f"## Funding Rate")
+        lines.append(f"Current: {rate:.6f} ({rate*100:.4f}%)")
+        if abs(rate) > 0.0005:
+            lines.append(f"⚠️ EXTREME funding — {'longs' if rate > 0 else 'shorts'} paying heavy")
+        lines.append("")
+
+        # 2. Open interest
+        bybit_symbol = symbol.replace("/", "").replace(":USDT", "")
+        try:
+            r = urllib.request.urlopen(
+                f"https://api.bybit.com/v5/market/open-interest?category=linear&symbol={bybit_symbol}&intervalTime=5min&limit=6",
+                timeout=5,
+            )
+            oi_data = __import__("json").loads(r.read())
+            if oi_data["retCode"] == 0 and oi_data["result"]["list"]:
+                oi_list = oi_data["result"]["list"]
+                latest_oi = float(oi_list[0]["openInterest"])
+                oldest_oi = float(oi_list[-1]["openInterest"]) if len(oi_list) > 1 else latest_oi
+                oi_delta = ((latest_oi - oldest_oi) / oldest_oi * 100) if oldest_oi else 0
+                lines.append(f"## Open Interest")
+                lines.append(f"Current: {latest_oi:,.2f} BTC")
+                lines.append(f"30m change: {oi_delta:+.2f}%")
+                if abs(oi_delta) > 3:
+                    lines.append(f"⚠️ Significant OI {'build-up' if oi_delta > 0 else 'flush'}")
+                lines.append("")
+        except Exception as e:
+            lines.append(f"## Open Interest\nUnavailable: {e}\n")
+
+        # 3. Long/short account ratio
+        try:
+            r = urllib.request.urlopen(
+                f"https://api.bybit.com/v5/market/account-ratio?category=linear&symbol={bybit_symbol}&period=4h&limit=6",
+                timeout=5,
+            )
+            ls_data = __import__("json").loads(r.read())
+            if ls_data["retCode"] == 0 and ls_data["result"]["list"]:
+                ls_list = ls_data["result"]["list"]
+                latest = ls_list[0]
+                lines.append(f"## Long/Short Account Ratio (4h)")
+                lines.append(f"Longs: {float(latest['buyRatio'])*100:.1f}% | Shorts: {float(latest['sellRatio'])*100:.1f}%")
+                # Trend over last 6 periods
+                if len(ls_list) > 1:
+                    prev = ls_list[-1]
+                    delta = float(latest["buyRatio"]) - float(prev["buyRatio"])
+                    lines.append(f"Trend: {'more longs' if delta > 0 else 'more shorts'} ({delta*100:+.1f}pp over {len(ls_list)} periods)")
+                lines.append("")
+        except Exception as e:
+            lines.append(f"## Long/Short Ratio\nUnavailable: {e}\n")
+
+        # 4. Interpretation
+        lines.append("## Positioning Interpretation")
+        if rate > 0.0003:
+            lines.append("- Longs paying shorts — crowded long, liquidation risk to downside")
+        elif rate < -0.0003:
+            lines.append("- Shorts paying longs — crowded short, squeeze risk to upside")
+        else:
+            lines.append("- Funding neutral — no strong directional crowding")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        return f"Derivatives positioning unavailable: {e}"
