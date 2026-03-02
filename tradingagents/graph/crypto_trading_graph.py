@@ -18,6 +18,7 @@ from tradingagents.utils.telemetry import wrap_with_telemetry
 from tradingagents.agents.analysts.crypto_market_analyst import create_crypto_market_analyst
 from tradingagents.agents.analysts.crypto_sentiment_analyst import create_crypto_sentiment_analyst
 from tradingagents.agents.analysts.macro_analyst import create_macro_analyst
+from tradingagents.agents.analysts.crypto_fundamentals_analyst import create_crypto_fundamentals_analyst
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory import FinancialSituationMemory
 from tradingagents.agents.utils.agent_states import AgentState
@@ -42,6 +43,7 @@ from tradingagents.agents.utils.macro_tools import (
     get_economic_data,
     get_economic_calendar,
 )
+from tradingagents.agents.analysts.crypto_fundamentals_analyst import get_onchain_fundamentals
 
 # News tools (reuse existing for crypto news)
 from tradingagents.agents.utils.news_data_tools import (
@@ -90,7 +92,7 @@ class CryptoTradingAgentsGraph:
 
     def __init__(
         self,
-        selected_analysts=["market", "sentiment", "macro", "news"],
+        selected_analysts=["market", "sentiment", "fundamentals", "news"],
         debug=False,
         config: Dict[str, Any] = None,
         callbacks: Optional[List] = None,
@@ -182,12 +184,8 @@ class CryptoTradingAgentsGraph:
                 get_open_interest,
                 get_liquidation_info,
             ]),
-            "macro": ToolNode([
-                get_dollar_index,
-                get_yields,
-                get_sp500,
-                get_economic_data,
-                get_economic_calendar,
+            "fundamentals": ToolNode([
+                get_onchain_fundamentals,
             ]),
             "news": ToolNode([
                 get_news,
@@ -203,16 +201,16 @@ class CryptoTradingAgentsGraph:
         analyst_creators = {
             "market": create_crypto_market_analyst,
             "sentiment": create_crypto_sentiment_analyst,
-            "macro": create_macro_analyst,
+            "fundamentals": create_crypto_fundamentals_analyst,
             "news": create_news_analyst,
         }
 
-        # Report field mapping
+        # Report field mapping — each analyst writes to its correct field
         report_fields = {
             "market": "market_report",
             "sentiment": "sentiment_report",
-            "macro": "news_report",  # Reusing news_report for macro
-            "news": "fundamentals_report",  # Reusing fundamentals_report for news
+            "fundamentals": "fundamentals_report",
+            "news": "news_report",
         }
 
         analyst_nodes = {}
