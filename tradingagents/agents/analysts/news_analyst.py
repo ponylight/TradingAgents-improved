@@ -21,6 +21,7 @@ from tradingagents.agents.utils.macro_tools import (
 )
 
 import logging
+from tradingagents.dataflows.geopolitical_news import fetch_all_news, format_geopolitical_report
 log = logging.getLogger("news_analyst")
 
 
@@ -39,7 +40,27 @@ def create_news_analyst(llm):
             get_economic_calendar,
         ]
 
-        system_message = """You are a senior crypto news and macro analyst. You analyze news events AND macroeconomic indicators that impact Bitcoin's price.
+        # Pre-fetch geopolitical news from 30+ RSS feeds + GDELT
+        try:
+            geo_data = fetch_all_news(max_per_feed=8)
+            geo_report = format_geopolitical_report(geo_data)
+            alert_count = geo_data.get("alert_count", 0)
+        except Exception as e:
+            log.warning(f"Geopolitical news fetch failed: {e}")
+            geo_report = "Geopolitical news unavailable."
+            alert_count = 0
+
+        system_message = f"""You are a senior crypto news and macro analyst.
+
+## Pre-Fetched Geopolitical & Market Intelligence
+This is REAL-TIME data from {geo_data.get('sources_fetched', 0)} news sources + GDELT.
+{"⚠️ " + str(alert_count) + " GEOPOLITICAL ALERTS DETECTED — prioritize these." if alert_count > 0 else "No active geopolitical alerts."}
+
+{geo_report}
+
+## Additional Context from Tools
+Use your tools to supplement the above with macro data (DXY, yields, economic calendar).
+The pre-fetched news covers headlines; tools provide quantitative macro data. You analyze news events AND macroeconomic indicators that impact Bitcoin's price.
 
 ## Your Two Domains
 
