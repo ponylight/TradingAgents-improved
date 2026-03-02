@@ -188,3 +188,25 @@ class TechnicalBrief(BaseModel):
         description="Multi-timeframe EMA alignment summary",
         default="",
     )
+
+
+# ── Green Lane Signal ────────────────────────────────────────────────────
+
+class GreenLaneSignal(BaseModel):
+    triggered: bool
+    quality_score: int  # 1-10
+    direction: str  # "long" or "short"
+    entry_price: float
+    stop_loss: float
+    tp1: float  # 3:1 R:R
+    tp2: float  # 5:1 R:R
+    trail_ema: str  # "daily_ema9"
+    pinch_active: bool
+    pinch_width_pct: float
+    zone_width_pct: float
+    sweep_depth_pct: float
+    reversal_velocity: float
+    volume_ratio: float
+    mtf_alignment: str
+    timestamp: str
+    reasoning: str

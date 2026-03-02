@@ -298,7 +298,8 @@ def open_position(exchange, direction, equity, alloc_pct, stop_loss=None, risk_m
     log.info(f"📥 {direction} {amount:.3f} BTC @ ~${price:,.0f} | ${notional:,.0f} notional | {leverage}x lev | {alloc_pct*100:.1f}% alloc | risk ${risk_dollars:,.0f} ({effective_risk*100:.1f}%)")
     log.info(f"   ATR(14d)=${atr:,.0f} | SL dist=${sl_distance:,.0f} ({sl_distance/price*100:.1f}%)")
 
-    order = exchange.create_order(SYMBOL, "market", side, amount)
+    link_id = f"committee_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    order = exchange.create_order(SYMBOL, "market", side, amount, params={"orderLinkId": link_id})
     fill_price = float(order.get("average") or price)
     log.info(f"✅ Filled: {order['id']} @ ${fill_price:,.2f}")
 
@@ -395,6 +396,190 @@ def manage_trailing_stop(exchange, positions, state):
                 log.info(f"📊 Trail close P&L: {returns_pct:+.2f}%")
                 state.pop("active_trade", None)
 
+    return state
+
+
+# === MULTI-POSITION SUPPORT (Phase 3) ===
+
+def migrate_state(state: dict) -> dict:
+    """Ensure state has positions dict. Backwards compatible."""
+    if "positions" not in state:
+        log.info("🔄 Migrating state to multi-position format")
+        state["positions"] = {"committee": None, "green_lane": None}
+        if state.get("active_trade"):
+            state["positions"]["committee"] = dict(state["active_trade"])
+            state["positions"]["committee"]["source"] = "committee"
+            log.info("✅ Migrated active_trade → positions.committee")
+    return state
+
+
+def get_combined_exposure(state: dict) -> dict:
+    """Calculate total exposure across all positions.
+    Returns: {total_size_pct, total_leverage_est, position_count, positions_summary}
+    """
+    positions = state.get("positions", {})
+    total_size_pct = 0.0
+    position_count = 0
+    positions_summary = []
+
+    committee = positions.get("committee")
+    if committee:
+        size = committee.get("size_pct", DEFAULT_ALLOC_PCT * 100)
+        total_size_pct += size
+        position_count += 1
+        positions_summary.append({"source": "committee", "side": committee.get("side", committee.get("direction", "?")), "size_pct": size})
+
+    green_lane = positions.get("green_lane")
+    if green_lane:
+        size = green_lane.get("size_pct", 2.0)
+        total_size_pct += size
+        position_count += 1
+        positions_summary.append({"source": "green_lane", "side": green_lane.get("side", "?"), "size_pct": size})
+
+    total_leverage_est = 10.0 if total_size_pct > 0 else 0.0
+
+    result = {
+        "total_size_pct": round(total_size_pct, 2),
+        "total_leverage_est": total_leverage_est,
+        "position_count": position_count,
+        "positions_summary": positions_summary,
+    }
+    log.info(f"📊 Combined exposure: {position_count} position(s), {total_size_pct:.1f}% margin")
+    return result
+
+
+def can_open_green_lane(state: dict, equity: float) -> tuple:
+    """Check if a green lane position can be opened.
+    Rules: max 1 green lane, combined size <= 10%, combined leverage <= 20x.
+    Returns: (allowed: bool, reason: str)
+    """
+    positions = state.get("positions", {})
+    if positions.get("green_lane") is not None:
+        reason = "Already have an active green lane position"
+        log.info(f"🚫 Cannot open green lane: {reason}")
+        return False, reason
+
+    exposure = get_combined_exposure(state)
+    GREEN_LANE_SIZE_PCT = 2.0
+    projected_size = exposure["total_size_pct"] + GREEN_LANE_SIZE_PCT
+    if projected_size > 10.0:
+        reason = f"Combined margin would be {projected_size:.1f}% (max 10%)"
+        log.info(f"🚫 Cannot open green lane: {reason}")
+        return False, reason
+
+    committee = positions.get("committee")
+    committee_notional = (committee.get("size_pct", DEFAULT_ALLOC_PCT * 100) * 10) if committee else 0.0
+    projected_leverage = (committee_notional + GREEN_LANE_SIZE_PCT * 10) / max(projected_size, 0.01)
+    if projected_leverage > 20.0:
+        reason = f"Estimated combined leverage would be {projected_leverage:.1f}x (max 20x)"
+        log.info(f"🚫 Cannot open green lane: {reason}")
+        return False, reason
+
+    log.info(f"✅ Green lane allowed: projected {projected_size:.1f}% margin, ~{projected_leverage:.1f}x lev")
+    return True, "OK"
+
+
+def open_green_lane_position(state: dict, signal, equity: float) -> dict:
+    """Create a green lane position entry from a GreenLaneSignal. Default size: 2% margin."""
+    GREEN_LANE_SIZE_PCT = 2.0
+    if "positions" not in state:
+        state["positions"] = {"committee": None, "green_lane": None}
+    state["positions"]["green_lane"] = {
+        "source": "green_lane",
+        "side": signal.direction,
+        "entry_price": signal.entry_price,
+        "stop_loss": signal.stop_loss,
+        "tp1": signal.tp1,
+        "tp2": signal.tp2,
+        "tp1_hit": False,
+        "tp2_hit": False,
+        "trail_stop": None,
+        "trail_ema": signal.trail_ema,
+        "size_pct": GREEN_LANE_SIZE_PCT,
+        "opened_at": signal.timestamp,
+        "quality_score": signal.quality_score,
+        "pnl_pct": 0.0,
+    }
+    log.info(f"🟢 Opened green lane {signal.direction} @ ${signal.entry_price:,.2f} | SL ${signal.stop_loss:,.2f} | TP1 ${signal.tp1:,.2f} | TP2 ${signal.tp2:,.2f} | Quality {signal.quality_score}/10")
+    return state
+
+
+def check_green_lane_exits(state: dict, current_price: float, daily_ema9: float) -> list:
+    """Check green lane exit conditions. Returns list of exit actions."""
+    pos = state.get("positions", {}).get("green_lane")
+    if not pos:
+        return []
+    actions = []
+    side = pos.get("side", "long")
+    entry = pos.get("entry_price", 0.0)
+    stop_loss = pos.get("stop_loss", 0.0)
+    tp1 = pos.get("tp1")
+    tp2 = pos.get("tp2")
+    tp1_hit = pos.get("tp1_hit", False)
+    tp2_hit = pos.get("tp2_hit", False)
+    trail_stop = pos.get("trail_stop")
+
+    if side == "long":
+        if current_price <= stop_loss:
+            log.info(f"🔴 Green lane STOP LOSS hit: ${current_price:,.2f} <= ${stop_loss:,.2f}")
+            return [{"type": "stop_loss", "price": current_price, "fraction": 1.0, "reason": "stop_loss"}]
+        if tp1 and not tp1_hit and current_price >= tp1:
+            log.info(f"🎯 Green lane TP1 hit: ${current_price:,.2f}")
+            actions.append({"type": "tp1", "price": current_price, "fraction": 1/3, "reason": "tp1"})
+            pos["tp1_hit"] = True
+            pos["stop_loss"] = entry
+            log.info(f"🛡️ Stop moved to breakeven: ${entry:,.2f}")
+        if tp2 and not tp2_hit and current_price >= tp2:
+            log.info(f"🎯 Green lane TP2 hit: ${current_price:,.2f}")
+            actions.append({"type": "tp2", "price": current_price, "fraction": 1/3, "reason": "tp2"})
+            pos["tp2_hit"] = True
+        if tp1_hit and tp2_hit and current_price < daily_ema9:
+            log.info(f"📉 Green lane trail stop hit: price ${current_price:,.2f} < EMA9 ${daily_ema9:,.2f}")
+            actions.append({"type": "trail_stop", "price": current_price, "fraction": 1.0, "reason": "trail_ema9_break"})
+        if trail_stop is None or daily_ema9 > trail_stop:
+            pos["trail_stop"] = daily_ema9
+    else:
+        if current_price >= stop_loss:
+            log.info(f"🔴 Green lane STOP LOSS hit (short): ${current_price:,.2f} >= ${stop_loss:,.2f}")
+            return [{"type": "stop_loss", "price": current_price, "fraction": 1.0, "reason": "stop_loss"}]
+        if tp1 and not tp1_hit and current_price <= tp1:
+            log.info(f"🎯 Green lane TP1 hit (short): ${current_price:,.2f}")
+            actions.append({"type": "tp1", "price": current_price, "fraction": 1/3, "reason": "tp1"})
+            pos["tp1_hit"] = True
+            pos["stop_loss"] = entry
+        if tp2 and not tp2_hit and current_price <= tp2:
+            log.info(f"🎯 Green lane TP2 hit (short): ${current_price:,.2f}")
+            actions.append({"type": "tp2", "price": current_price, "fraction": 1/3, "reason": "tp2"})
+            pos["tp2_hit"] = True
+        if tp1_hit and tp2_hit and current_price > daily_ema9:
+            log.info(f"📈 Green lane trail stop hit (short): price ${current_price:,.2f} > EMA9 ${daily_ema9:,.2f}")
+            actions.append({"type": "trail_stop", "price": current_price, "fraction": 1.0, "reason": "trail_ema9_break"})
+        if trail_stop is None or daily_ema9 < trail_stop:
+            pos["trail_stop"] = daily_ema9
+
+    if actions:
+        log.info(f"📋 Green lane exit actions: {[a[chr(39)+'type'+chr(39)] for a in actions]}")
+    return actions
+
+
+def close_green_lane_position(state: dict, exit_price: float, reason: str) -> dict:
+    """Close green lane position and move to closed_trades."""
+    pos = state.get("positions", {}).get("green_lane")
+    if not pos:
+        log.warning("⚠️ close_green_lane_position called but no green lane position found")
+        return state
+    entry_price = pos.get("entry_price", exit_price)
+    side = pos.get("side", "long")
+    pnl_pct = ((exit_price - entry_price) / entry_price * 100) if side == "long" else ((entry_price - exit_price) / entry_price * 100)
+    state.setdefault("closed_trades", []).append({
+        **pos,
+        "exit_price": exit_price,
+        "exit_reason": reason,
+        "closed_at": datetime.now(timezone.utc).isoformat(),
+        "pnl_pct": round(pnl_pct, 4),
+    })
+    state["positions"]["green_lane"] = None
+    log.info(f"🔴 Closed green lane {side} | Entry ${entry_price:,.2f} → Exit ${exit_price:,.2f} | P&L {pnl_pct:+.2f}% | Reason: {reason}")
     return state
 
 
@@ -584,8 +769,10 @@ def run_agents(ta, trade_date, portfolio_context=None):
 def load_state():
     if STATE_FILE.exists():
         with open(STATE_FILE) as f:
-            return json.load(f)
-    return {"last_run": None, "last_decision": None, "trades": [], "active_trade": None}
+            state = json.load(f)
+    else:
+        state = {"last_run": None, "last_decision": None, "trades": [], "active_trade": None, "closed_trades": []}
+    return migrate_state(state)
 
 
 def save_state(state):
