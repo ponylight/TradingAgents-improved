@@ -676,6 +676,7 @@ def create_agents_graph():
         ("trader", ta.trader_memory),
         ("invest_judge", ta.invest_judge_memory),
         ("risk_manager", ta.risk_manager_memory),
+        ("fund_manager", ta.fund_manager_memory),
     ]:
         mem_path = str(MEMORY_DIR / f"{mem_name}_memory.json")
         if mem_obj.load(mem_path):
@@ -692,6 +693,7 @@ def save_memories(ta):
         ("trader", ta.trader_memory),
         ("invest_judge", ta.invest_judge_memory),
         ("risk_manager", ta.risk_manager_memory),
+        ("fund_manager", ta.fund_manager_memory),
     ]:
         mem_path = str(MEMORY_DIR / f"{mem_name}_memory.json")
         mem_obj.save(mem_path)

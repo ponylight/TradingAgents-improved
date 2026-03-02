@@ -132,28 +132,64 @@ def get_fred_data(
 
 def get_economic_calendar_summary() -> str:
     """
-    Provide a summary of key upcoming economic events that impact BTC.
-    Note: For a full calendar, consider integrating with an economic calendar API.
+    Provide economic calendar context with current-month awareness.
+    Uses date math to identify upcoming events.
     """
-    return (
-        "# Key Economic Events to Watch for BTC Impact\n\n"
-        "## High Impact Events:\n"
-        "- FOMC Rate Decision & Statement (8x/year)\n"
-        "- CPI Report (monthly, ~10th-15th)\n"
-        "- Non-Farm Payrolls (monthly, first Friday)\n"
-        "- PCE Price Index (monthly, ~last week)\n"
-        "- GDP Report (quarterly)\n"
-        "- Fed Chair Press Conferences\n\n"
-        "## Medium Impact Events:\n"
-        "- PPI Report (monthly)\n"
-        "- Retail Sales (monthly)\n"
-        "- ISM Manufacturing/Services PMI (monthly)\n"
-        "- Initial Jobless Claims (weekly, Thursday)\n\n"
-        "## Crypto-Specific Events:\n"
-        "- BTC Options Expiry (monthly/quarterly, last Friday)\n"
-        "- Futures Expiry (quarterly)\n"
-        "- Major Protocol Upgrades\n"
-        "- Regulatory Announcements (SEC, CFTC)\n"
-        "- Exchange Reserve Changes\n\n"
-        "Note: Check an economic calendar (e.g., forexfactory.com) for exact dates and times.\n"
-    )
+    from datetime import datetime, timedelta
+    
+    now = datetime.utcnow()
+    day = now.day
+    weekday = now.weekday()  # 0=Mon
+    month = now.strftime("%B %Y")
+    
+    lines = [f"# Economic Calendar Context — {month}\n"]
+    
+    # FOMC dates 2026 (approximate — 8 meetings)
+    fomc_months = [1, 3, 5, 6, 7, 9, 11, 12]
+    if now.month in fomc_months:
+        lines.append(f"⚠️ FOMC meeting month — rate decision expected this month")
+    
+    # CPI typically 10th-15th
+    if 8 <= day <= 16:
+        lines.append(f"⚠️ CPI release window (typically 10th-15th) — may have just released or upcoming")
+    elif day < 8:
+        lines.append(f"CPI release expected in ~{10-day} days")
+    
+    # NFP: first Friday
+    if day <= 7 and weekday <= 4:
+        days_to_friday = (4 - weekday) % 7
+        if days_to_friday == 0 and day <= 7:
+            lines.append(f"⚠️ Non-Farm Payrolls likely TODAY (first Friday of month)")
+        elif days_to_friday > 0 and day + days_to_friday <= 7:
+            lines.append(f"⚠️ NFP expected in {days_to_friday} days (first Friday)")
+    
+    # Options expiry: last Friday of month
+    import calendar
+    last_day = calendar.monthrange(now.year, now.month)[1]
+    last_friday = last_day
+    while datetime(now.year, now.month, last_friday).weekday() != 4:
+        last_friday -= 1
+    days_to_expiry = last_friday - day
+    if 0 <= days_to_expiry <= 3:
+        lines.append(f"⚠️ BTC Options/Futures expiry in {days_to_expiry} days — expect volatility")
+    elif days_to_expiry < 0:
+        lines.append(f"Options expiry passed this month")
+    else:
+        lines.append(f"Options expiry in ~{days_to_expiry} days ({now.month}/{last_friday})")
+    
+    # Weekly: Jobless claims Thursday
+    if weekday <= 3:
+        days_to_thurs = 3 - weekday
+        lines.append(f"Initial Jobless Claims: {'TODAY' if days_to_thurs == 0 else f'in {days_to_thurs} days'} (Thursday)")
+    
+    lines.append("")
+    lines.append("## Standing Calendar:")
+    lines.append("- FOMC: ~8x/year (Jan, Mar, May, Jun, Jul, Sep, Nov, Dec)")
+    lines.append("- CPI: monthly, ~10th-15th")
+    lines.append("- NFP: first Friday of month")
+    lines.append("- PCE: last week of month")
+    lines.append("- GDP: quarterly")
+    lines.append("- Jobless Claims: weekly Thursday")
+    lines.append("- BTC Options Expiry: last Friday of month")
+    
+    return "\n".join(lines)

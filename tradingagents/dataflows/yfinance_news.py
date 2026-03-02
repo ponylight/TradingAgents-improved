@@ -62,8 +62,15 @@ def get_news_yfinance(
     Returns:
         Formatted string containing news articles
     """
+    # Map crypto symbols to yfinance-compatible tickers
+    CRYPTO_TICKER_MAP = {
+        "BTC": "BTC-USD", "BTC/USDT": "BTC-USD", "BTCUSDT": "BTC-USD",
+        "ETH": "ETH-USD", "ETH/USDT": "ETH-USD", "ETHUSDT": "ETH-USD",
+    }
+    yf_ticker = CRYPTO_TICKER_MAP.get(ticker.upper(), ticker)
+
     try:
-        stock = yf.Ticker(ticker)
+        stock = yf.Ticker(yf_ticker)
         news = stock.get_news(count=20)
 
         if not news:
