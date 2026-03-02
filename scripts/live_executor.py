@@ -25,7 +25,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from tradingagents.graph.crypto_trading_graph import CryptoTradingAgentsGraph
-from tradingagents.agents.utils.agent_trading_modes import extract_recommendation, get_position_transition, CRYPTO_DEFAULT_CONFIG
+from tradingagents.agents.utils.agent_trading_modes import extract_recommendation, get_position_transition
+from tradingagents.graph.crypto_trading_graph import CRYPTO_DEFAULT_CONFIG
 from tradingagents.agents.utils.agent_trading_modes import get_position_transition
 
 # === CONFIG ===
