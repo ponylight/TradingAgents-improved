@@ -1,4 +1,5 @@
 import functools
+from tradingagents.agents.utils.report_context import get_agent_context
 import time
 import json
 
@@ -31,9 +32,11 @@ def create_trader(llm, memory):
         else:
             past_memory_str = "No past memories found."
 
+        budgeted_context = get_agent_context(state, "trader")
+
         context = {
             "role": "user",
-            "content": f"Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment. Use this plan as a foundation for evaluating your next trading decision.\n\nProposed Investment Plan: {investment_plan}\n\nLeverage these insights to make an informed and strategic decision.",
+            "content": f"Based on a comprehensive analysis by a team of analysts, here is an investment plan tailored for {company_name}. This plan incorporates insights from current technical market trends, macroeconomic indicators, and social media sentiment. Use this plan as a foundation for evaluating your next trading decision.\n\nProposed Investment Plan: {investment_plan}\n\nAnalyst Reports (role-weighted context):\n{budgeted_context}\n\nLeverage these insights to make an informed and strategic decision.",
         }
 
         messages = [

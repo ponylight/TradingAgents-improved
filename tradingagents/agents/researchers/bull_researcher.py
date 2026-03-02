@@ -19,11 +19,8 @@ def _build_prompt(reports, history, opponent_response, past_memory_str):
 4. Reference past reflections to avoid repeating overconfident mistakes
 5. Quantify your case: cite specific prices, percentages, ratios
 
-## Available Reports
-Technical & Market Analysis: {reports['market']}
-Sentiment & Social Data: {reports['sentiment']}
-News & Events: {reports['news']}
-On-Chain Fundamentals: {reports['fundamentals']}
+## Analyst Reports (role-weighted context)
+{reports.get('_budgeted_context', 'No context available.')}
 
 ## Debate Context
 Debate history: {history}

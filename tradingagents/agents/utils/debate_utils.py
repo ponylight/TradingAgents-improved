@@ -1,3 +1,5 @@
+from tradingagents.agents.utils.report_context import get_agent_context
+
 """Shared factories for debate agent nodes.
 
 Eliminates code duplication across risk debators (aggressive/conservative/neutral)
@@ -63,6 +65,11 @@ def create_risk_debate_node(llm, role_label, prompt_builder):
             "news": state["news_report"],
             "fundamentals": state["fundamentals_report"],
         }
+
+        # Build budgeted context for this specific risk debate role
+        risk_role_map = {"Aggressive": "aggressive_debator", "Conservative": "conservative_debator", "Neutral": "neutral_debator"}
+        budgeted_context = get_agent_context(state, risk_role_map.get(role_label, "default"))
+        reports["_budgeted_context"] = budgeted_context
         trader_decision = state["trader_investment_plan"]
 
         prompt = prompt_builder(trader_decision, reports, history, other_responses)
@@ -114,8 +121,18 @@ def create_invest_debate_node(llm, memory, role_label, prompt_builder):
             "fundamentals": state["fundamentals_report"],
         }
 
+        # Build budgeted context for this specific risk debate role
+        risk_role_map = {"Aggressive": "aggressive_debator", "Conservative": "conservative_debator", "Neutral": "neutral_debator"}
+        budgeted_context = get_agent_context(state, risk_role_map.get(role_label, "default"))
+        reports["_budgeted_context"] = budgeted_context
+
+        # Build budgeted context for this specific agent role
+        agent_role = "bull_researcher" if role_label == "Bull" else "bear_researcher"
+        budgeted_context = get_agent_context(state, agent_role)
+        reports["_budgeted_context"] = budgeted_context
+
         # Retrieve similar past situations
-        curr_situation = "\n\n".join(reports.values())
+        curr_situation = "\n\n".join(v for k, v in reports.items() if not k.startswith("_"))
         past_memories = memory.get_memories(curr_situation, n_matches=2)
         past_memory_str = "\n\n".join(
             rec["recommendation"] for rec in past_memories

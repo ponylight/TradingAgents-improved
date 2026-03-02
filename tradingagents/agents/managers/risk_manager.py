@@ -1,3 +1,5 @@
+from tradingagents.agents.utils.report_context import get_agent_context
+
 import time
 import json
 
@@ -15,6 +17,7 @@ def create_risk_manager(llm, memory):
         sentiment_report = state["sentiment_report"]
         trader_plan = state["investment_plan"]
 
+        budgeted_context = get_agent_context(state, "risk_manager")
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
 
@@ -45,6 +48,9 @@ Score each dimension 1-5 (5 = highest risk):
 
 ## Past Reflections on Mistakes
 {past_memory_str}
+
+## Analyst Reports (role-weighted context)
+{budgeted_context}
 
 ## Trader's Proposed Plan
 {trader_plan}

@@ -23,10 +23,8 @@ def _build_prompt(trader_decision, reports, history, other_responses):
 ## Context
 Trader's Decision: {trader_decision}
 
-Market Research Report: {reports['market']}
-Social Media Sentiment Report: {reports['sentiment']}
-Latest World Affairs Report: {reports['news']}
-Company Fundamentals Report: {reports['fundamentals']}
+Analyst Reports (role-weighted context):
+{reports.get('_budgeted_context', 'No context available.')}
 
 Debate History: {history}
 Last Aggressive Argument: {aggressive}

@@ -1,3 +1,5 @@
+from tradingagents.agents.utils.report_context import get_agent_context
+
 import time
 import json
 
@@ -18,6 +20,8 @@ def create_research_manager(llm, memory):
         past_memory_str = ""
         for i, rec in enumerate(past_memories, 1):
             past_memory_str += rec["recommendation"] + "\n\n"
+
+        budgeted_context = get_agent_context(state, "research_manager")
 
         prompt = f"""You are the Research Manager and debate judge for a Bitcoin trading desk. Evaluate the bull/bear debate and produce a decisive investment recommendation.
 
