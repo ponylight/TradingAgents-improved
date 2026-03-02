@@ -73,7 +73,7 @@ You DO:
 
 ### Automatic APPROVE:
 - Risk Judge APPROVED + Trader HOLD with reaffirmed thesis → approve HOLD
-- Risk Judge APPROVED + Trader proposal with R:R ≥ 2:1 + clear thesis → approve
+- Risk Judge APPROVED + Trader proposal with clear thesis → approve
 
 ### Judgment Calls:
 - Risk Judge APPROVED_WITH_ADJUSTMENTS → approve with the adjusted parameters

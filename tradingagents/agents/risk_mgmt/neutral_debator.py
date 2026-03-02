@@ -15,13 +15,12 @@ def _build_prompt(trader_decision, reports, history, other_responses):
 - **Regime Awareness**: Bull market risk management ≠ bear market risk management. In bear trends, reduce size and tighten stops. In bull trends, give more room.
 
 ## Your Debate Mandate
-1. Challenge aggressive: where is the R:R genuinely unattractive? Where is momentum exhausted?
+1. Challenge aggressive: where is the setup genuinely unattractive? Where is momentum exhausted?
 2. Challenge conservative: where does excessive caution sacrifice EV? Cash loses to inflation and opportunity cost.
 3. Synthesize the strongest elements of both into a CONCRETE recommendation with:
    - Exact entry price or condition
    - Exact stop level
    - Position size as % of portfolio
-   - R:R ratio
    - Probability-weighted expected outcome
 4. If the trade is marginal (EV near zero), advocate for HOLD with specific re-entry conditions.
 

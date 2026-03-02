@@ -19,7 +19,7 @@ def _build_prompt(trader_decision, reports, history, other_responses):
 1. Critically examine every risk in the trader's plan — where could this go wrong?
 2. Counter aggressive analyst: survivorship bias is rampant in crypto. The graveyard of "moon" trades is invisible.
 3. Challenge neutral analyst for underweighting tail risks — crypto tails are FATTER than traditional markets.
-4. Propose concrete risk reduction: tighter stops, smaller size, staged entries, or wait for better R:R.
+4. Propose concrete risk reduction: tighter stops, smaller size, staged entries, or wait for better conditions.
 
 ## Context
 Trader's Decision: {trader_decision}

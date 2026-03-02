@@ -59,7 +59,7 @@ If conviction is below threshold → recommend NEUTRAL.
 
 ## Anti-NEUTRAL Default
 NEUTRAL is not a fence-sit. Choose NEUTRAL only when:
-- R:R is unattractive in BOTH directions
+- Setup is unattractive in BOTH directions
 - Both sides are equally strong AND equally evidenced
 - Conviction is below threshold
 - A specific catalyst makes waiting optimal

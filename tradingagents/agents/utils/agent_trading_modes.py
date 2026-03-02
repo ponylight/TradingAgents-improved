@@ -67,7 +67,7 @@ Available actions for swing trading:
 - **Holding Period:** 2-10 trading days, capturing intermediate price swings
 - **Entry Strategy:** Based on multi-timeframe confluence (1h/4h/1d), pullbacks to support, or breakouts
 - **Exit Strategy:** Predefined swing targets at key resistance/support or trailing stops
-- **Risk Management:** 1-3% risk per trade, minimum 2:1 risk/reward ratio
+- **Risk Management:** 1-3% risk per trade (R:R assessed by Risk Manager)
 - **Position Sizing:** Based on ATR-derived stop distance and account risk tolerance
 
 **SWING TRADING CRITERIA:**
