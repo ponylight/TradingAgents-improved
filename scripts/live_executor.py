@@ -480,7 +480,8 @@ def run_reflection(ta, returns_pct):
         scorer = PerformanceScorer(str(PROJECT_ROOT))
         optimizer = ParameterOptimizer(str(PROJECT_ROOT))
 
-        trade_date = datetime.now(SYDNEY_TZ).strftime("%Y-%m-%d")
+        from zoneinfo import ZoneInfo
+        trade_date = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
         agent_state = reviewer.load_state_for_date(trade_date)
         if agent_state:
             trade = {"pnl_pct": returns_pct, "side": "long" if returns_pct > 0 else "short", "status": "closed", "open_time": trade_date}
@@ -727,7 +728,6 @@ def main():
             active = executor_state.get("active_trade", {})
             opened_at = active.get("opened_at")
             if opened_at:
-                from datetime import datetime, timezone
                 try:
                     opened_dt = datetime.fromisoformat(opened_at)
                     hours_held = (datetime.now(timezone.utc) - opened_dt).total_seconds() / 3600
