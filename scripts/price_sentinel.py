@@ -122,9 +122,13 @@ def get_current_price():
 # Green Lane scan
 # ─────────────────────────────────────────────────────────────────────────────
 
+import time as _time
+
 def check_green_lane_signal(state: dict = None) -> dict:
     """
     Run green lane scanner and log signal if triggered and passes all gates.
+    # Brief delay to avoid Bybit rate limits after sentinel price check
+    import time; time.sleep(2)
 
     Returns updated state dict (caller must save_state).
     Does NOT execute trades — logs to green_lane_signals.json only.
