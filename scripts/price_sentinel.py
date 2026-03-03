@@ -46,6 +46,22 @@ logging.basicConfig(
 )
 log = logging.getLogger("sentinel")
 
+CANDLE_MOVE_THRESHOLD = 0.03   # 3% candle body triggers pipeline
+
+
+def get_last_two_4h_candles():
+    """Get the last two completed 4H candles for candle-over-candle detection."""
+    exchange = ccxt.bybit({"enableRateLimit": True, "options": {"defaultType": "linear"}})
+    candles = exchange.fetch_ohlcv(SYMBOL, "4h", limit=3)
+    # candles[-1] = current incomplete, [-2] = last closed, [-3] = one before
+    prev = candles[-3]
+    last = candles[-2]
+    return {
+        "prev": {"open": prev[1], "high": prev[2], "low": prev[3], "close": prev[4], "ts": prev[0]},
+        "last": {"open": last[1], "high": last[2], "low": last[3], "close": last[4], "ts": last[0]},
+    }
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Green Lane imports — optional, sentinel keeps running if unavailable
 # ─────────────────────────────────────────────────────────────────────────────
@@ -278,12 +294,60 @@ def main():
     state["last_4h_close"] = candle["close"]
     state["last_change_pct"] = round(change_pct * 100, 2)
 
-    if abs_change >= TRIGGER_THRESHOLD:
-        direction = "UP" if change_pct > 0 else "DOWN"
-        log.warning(f"BIG MOVE ({direction}): {change_pct*100:+.2f}% | ${candle['close']:,.0f} -> ${current:,.0f} | TRIGGERING PIPELINE")
+    # Candle-over-candle check: did the last closed 4H candle have a big body vs prior close?
+    # This catches fast moves that already closed before we check current price
+    candle_trigger = False
+    candle_trigger_reason = ""
+    try:
+        two_candles = get_last_two_4h_candles()
+        prev_close = two_candles["prev"]["close"]
+        last_close = two_candles["last"]["close"]
+        last_high = two_candles["last"]["high"]
+        last_low = two_candles["last"]["low"]
+        last_ts = two_candles["last"]["ts"]
 
+        # Check if we already triggered on this candle
+        last_candle_triggered = state.get("last_candle_trigger_ts", 0)
+
+        if last_ts != last_candle_triggered and prev_close > 0:
+            body_pct = abs(last_close - prev_close) / prev_close
+            range_pct = (last_high - last_low) / prev_close
+            direction_candle = "UP" if last_close > prev_close else "DOWN"
+
+            if body_pct >= CANDLE_MOVE_THRESHOLD:
+                log.warning(
+                    f"BIG CANDLE ({direction_candle}): body={body_pct*100:.2f}% | "
+                    f"prev_close=${prev_close:,.0f} → candle_close=${last_close:,.0f} | TRIGGERING"
+                )
+                candle_trigger = True
+                candle_trigger_reason = f"{body_pct*100:+.2f}% candle body vs prior close"
+                state["last_candle_trigger_ts"] = last_ts
+            elif range_pct >= CANDLE_MOVE_THRESHOLD * 2:
+                # Wick-inclusive: candle range is 6%+ even if body is smaller
+                log.warning(
+                    f"BIG CANDLE RANGE ({direction_candle}): range={range_pct*100:.2f}% | "
+                    f"${last_low:,.0f}-${last_high:,.0f} | TRIGGERING"
+                )
+                candle_trigger = True
+                candle_trigger_reason = f"{range_pct*100:.2f}% candle range"
+                state["last_candle_trigger_ts"] = last_ts
+    except Exception as e:
+        log.warning(f"Candle-over-candle check failed: {e}")
+
+    triggered = abs_change >= TRIGGER_THRESHOLD or candle_trigger
+    if triggered:
+        if candle_trigger and abs_change < TRIGGER_THRESHOLD:
+            direction = "UP" if candle_trigger_reason.startswith("+") or "UP" in candle_trigger_reason else "DOWN"
+            log.warning(f"BIG CANDLE TRIGGER: {candle_trigger_reason} | current=${current:,.0f}")
+            trigger_reason = candle_trigger_reason
+        else:
+            direction = "UP" if change_pct > 0 else "DOWN"
+            log.warning(f"BIG MOVE ({direction}): {change_pct*100:+.2f}% | ${candle['close']:,.0f} -> ${current:,.0f} | TRIGGERING PIPELINE")
+            trigger_reason = f"{change_pct*100:+.2f}% from 4H close"
+
+    if triggered:
         state["last_trigger"] = now.isoformat()
-        state["trigger_reason"] = f"{change_pct*100:+.2f}% from 4H close"
+        state["trigger_reason"] = trigger_reason
         save_state(state)
 
         # Run the full executor
