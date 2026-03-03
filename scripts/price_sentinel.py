@@ -325,24 +325,15 @@ def main():
             vol_ratio = last_vol / avg_vol if avg_vol > 0 else 1.0
             vol_spike = vol_ratio >= VOLUME_SPIKE_MULTIPLIER
 
-            if body_pct >= CANDLE_MOVE_THRESHOLD:
+            if range_pct >= CANDLE_MOVE_THRESHOLD:
+                # Variation (high-low range) >= 3% — covers both big body and big wick
                 log.warning(
-                    f"BIG CANDLE ({direction_candle}): body={body_pct*100:.2f}% "
-                    f"vol={vol_ratio:.1f}x avg | "
-                    f"prev_close=${prev_close:,.0f} → candle_close=${last_close:,.0f} | TRIGGERING"
-                )
-                candle_trigger = True
-                candle_trigger_reason = f"{body_pct*100:+.2f}% candle body, vol={vol_ratio:.1f}x"
-                state["last_candle_trigger_ts"] = last_ts
-            elif range_pct >= CANDLE_MOVE_THRESHOLD * 2:
-                # Wick-inclusive: candle range is 6%+ even if body is smaller
-                log.warning(
-                    f"BIG CANDLE RANGE ({direction_candle}): range={range_pct*100:.2f}% "
-                    f"vol={vol_ratio:.1f}x avg | "
+                    f"BIG CANDLE ({direction_candle}): variation={range_pct*100:.2f}% "
+                    f"body={body_pct*100:.2f}% vol={vol_ratio:.1f}x avg | "
                     f"${last_low:,.0f}-${last_high:,.0f} | TRIGGERING"
                 )
                 candle_trigger = True
-                candle_trigger_reason = f"{range_pct*100:.2f}% candle range, vol={vol_ratio:.1f}x"
+                candle_trigger_reason = f"{range_pct*100:.2f}% candle variation, vol={vol_ratio:.1f}x"
                 state["last_candle_trigger_ts"] = last_ts
             elif vol_spike:
                 # High volume even without big price move — unusual activity, worth checking
