@@ -65,8 +65,8 @@ CRYPTO_DEFAULT_CONFIG = {
     "llm_provider": "anthropic",
     "deep_think_llm": "claude-opus-4-6",
     "quick_think_llm": "claude-sonnet-4-20250514",
-    "max_debate_rounds": 1,
-    "max_risk_discuss_rounds": 1,
+    "max_debate_rounds": 2,
+    "max_risk_discuss_rounds": 2,
     # Crypto-specific settings
     "crypto": {
         "symbol": "BTC/USDT",

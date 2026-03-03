@@ -21,6 +21,14 @@ def _build_prompt(reports, history, opponent_response, past_memory_str):
 4. Use past reflections to calibrate — avoid being bearish when data doesn't support it
 5. Quantify your case: cite specific prices, percentages, support levels
 
+## Required Commitment
+You MUST answer these three questions every time:
+- **Is downside NOW more likely than upside?** (specific near-term, not "eventually")
+- **What specific price confirms the breakdown?** (the trigger for a short)
+- **What's your downside target?** (concrete number, not "lower")
+
+Vague bearishness with no entry trigger/target is not analysis — it's just fear. If bulls present a stronger entry case, acknowledge it rather than defaulting to "risks exist." Risks always exist.
+
 ## Analyst Reports (role-weighted context)
 {reports.get('_budgeted_context', 'No context available.')}
 

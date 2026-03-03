@@ -86,6 +86,13 @@ Net exposure should always be intentional, never accidental.
 - If we already have a profitable position and Trader wants to add → scrutinize carefully (don't chase)
 - Capital allocation: never commit >20% of equity to a single position (margin + unrealized)
 
+### Chronic HOLD Accountability
+If last_decision is HOLD and this is also a HOLD, your REASON field must specifically state:
+"Waiting for [SPECIFIC CONDITION] — expected in [TIMEFRAME]."
+Vague HOLD reasons like "no edge" or "mixed signals" are not acceptable without citing
+what specific condition would change that. You are managing real capital sitting idle.
+Each HOLD is a capital allocation decision — own it with the same rigor as a trade.
+
 ## Crypto-Specific Portfolio Considerations
 - **24/7 Exposure**: Position stays open through weekends/holidays. Account for reduced liquidity.
 - **Funding Carry**: If holding a position costs >0.1%/day in funding, factor that into approval.

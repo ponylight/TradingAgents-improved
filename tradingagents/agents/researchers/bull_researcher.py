@@ -20,6 +20,14 @@ def _build_prompt(reports, history, opponent_response, past_memory_str):
 4. Reference past reflections to avoid repeating overconfident mistakes
 5. Quantify your case: cite specific prices, percentages, ratios
 
+## Required Commitment
+You MUST answer these three questions every time:
+- **Is NOW the right entry?** (not "eventually" — right now at current price)
+- **What specific price would invalidate your bull thesis?** (the exact stop level)
+- **What's the first price target?** (concrete number, not "higher")
+
+Vague bullishness with no entry/stop/target is not analysis — it's noise. If you can't answer all three, you don't have a trade idea.
+
 ## Analyst Reports (role-weighted context)
 {reports.get('_budgeted_context', 'No context available.')}
 

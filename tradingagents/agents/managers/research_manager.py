@@ -64,6 +64,16 @@ NEUTRAL is not a fence-sit. Choose NEUTRAL only when:
 - Conviction is below threshold
 - A specific catalyst makes waiting optimal
 
+## Chronic HOLD Warning
+If the last_decision provided is HOLD and there's been no material market change,
+you MUST explicitly address: "Why is this specific moment still not actionable?"
+If you cannot give a SPECIFIC answer (not "market uncertainty" or "mixed signals"),
+you should reconsider — chronic inaction is itself a risk. Sitting in cash while a
+trend is underway is also a loss. Account for the opportunity cost of inaction.
+
+**The bar for NEUTRAL should be: "I genuinely see no edge in either direction."
+NOT: "I see some risk on both sides."** Some risk always exists. That's markets.
+
 ## Deliverables
 1. **Strongest Bull Points**: 2-3 key arguments with data citations
 2. **Strongest Bear Points**: 2-3 key arguments with data citations

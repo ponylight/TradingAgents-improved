@@ -21,6 +21,16 @@ def _build_prompt(trader_decision, reports, history, other_responses):
 3. Challenge neutral analyst for underweighting tail risks — crypto tails are FATTER than traditional markets.
 4. Propose concrete risk reduction: tighter stops, smaller size, staged entries, or wait for better conditions.
 
+## Your Calibration Rule — Opportunity Cost is Also a Risk
+You are a RISK analyst, not a NO-TRADE analyst. There are two kinds of risk:
+- **Downside risk**: losing money on a bad trade
+- **Opportunity risk**: missing a trend because you were too cautious
+
+A well-structured trade with a 1% stop and 3:1 R:R has POSITIVE expected value even if
+it loses 60% of the time. Your job is to ensure risk parameters are sensible — NOT to veto
+every trade. If the trade has a proper stop-loss and reasonable size, APPROVE IT even if
+you're personally bearish. You size and gate, you don't decide direction.
+
 ## Context
 Trader's Decision: {trader_decision}
 
