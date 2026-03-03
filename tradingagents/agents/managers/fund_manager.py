@@ -132,6 +132,7 @@ Keep it short. You are an approver, not an analyst. The work is already done —
         fund_decision = response.content
 
         parsed = _parse_fund_decision(fund_decision)
+        parsed = _validate_fund_decision(fund_decision, parsed)
         log.info(f"Fund Manager: {parsed.get('action', 'UNKNOWN')} — {parsed.get('reason', 'N/A')}")
 
         return {
@@ -170,4 +171,41 @@ def _parse_fund_decision(text):
                 parsed[name] = int(val)
             else:
                 parsed[name] = val
+    return parsed
+
+
+def _validate_fund_decision(full_text, parsed):
+    """Validate consistency between FM reasoning and structured decision block.
+    
+    If the reasoning text clearly says HOLD but the structured block says
+    OPEN_LONG/OPEN_SHORT (or vice versa), downgrade to HOLD as a safety measure.
+    Contradictory FM output = process failure = no trade.
+    """
+    action = parsed.get('action', '').upper()
+    if action not in ('OPEN_LONG', 'OPEN_SHORT'):
+        return parsed  # Only validate trade-opening actions
+    
+    # Extract reasoning text (everything before the structured block)
+    import re
+    block_start = re.search(r'---FUND_DECISION---', full_text)
+    if not block_start:
+        return parsed
+    reasoning = full_text[:block_start.start()].upper()
+    
+    # Check for contradiction: reasoning says HOLD but block says trade
+    hold_signals = ['HOLD', 'WAIT', 'DEFER', 'REJECT', 'NO TRADE', 'STAY FLAT', 'REMAIN NEUTRAL']
+    trade_signals = ['APPROVE', 'OPEN_LONG', 'OPEN_SHORT', 'GO AHEAD', 'EXECUTE']
+    
+    has_hold = any(s in reasoning for s in hold_signals)
+    has_trade = any(s in reasoning for s in trade_signals)
+    
+    if has_hold and not has_trade:
+        log.warning(
+            f"FM CONTRADICTION DETECTED: reasoning says HOLD but block says {action}. "
+            f"Downgrading to HOLD for safety. Raw reasoning excerpt: {full_text[:200]}..."
+        )
+        parsed['action'] = 'HOLD'
+        parsed['reason'] = f'OVERRIDDEN: reasoning/block contradiction (block said {action}, reasoning said HOLD)'
+        parsed['_contradiction_detected'] = True
+    
     return parsed
