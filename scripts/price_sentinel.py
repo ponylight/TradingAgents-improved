@@ -47,18 +47,24 @@ logging.basicConfig(
 log = logging.getLogger("sentinel")
 
 CANDLE_MOVE_THRESHOLD = 0.03   # 3% candle body triggers pipeline
+VOLUME_SPIKE_MULTIPLIER = 2.5  # Volume >= 2.5x 6-candle average triggers pipeline
 
 
 def get_last_two_4h_candles():
-    """Get the last two completed 4H candles for candle-over-candle detection."""
+    """Get last 8 completed 4H candles for candle-over-candle + volume spike detection."""
     exchange = ccxt.bybit({"enableRateLimit": True, "options": {"defaultType": "linear"}})
-    candles = exchange.fetch_ohlcv(SYMBOL, "4h", limit=3)
-    # candles[-1] = current incomplete, [-2] = last closed, [-3] = one before
-    prev = candles[-3]
-    last = candles[-2]
+    candles = exchange.fetch_ohlcv(SYMBOL, "4h", limit=10)
+    # candles[-1] = current incomplete, [-2] = last closed
+    closed = candles[:-1]  # all completed candles
+    prev = closed[-2]
+    last = closed[-1]
+    # 6-candle average volume excluding the last candle
+    avg_vol = sum(c[5] for c in closed[-7:-1]) / 6
     return {
         "prev": {"open": prev[1], "high": prev[2], "low": prev[3], "close": prev[4], "ts": prev[0]},
-        "last": {"open": last[1], "high": last[2], "low": last[3], "close": last[4], "ts": last[0]},
+        "last": {"open": last[1], "high": last[2], "low": last[3], "close": last[4],
+                 "volume": last[5], "ts": last[0]},
+        "avg_vol_6": avg_vol,
     }
 
 
@@ -314,22 +320,38 @@ def main():
             range_pct = (last_high - last_low) / prev_close
             direction_candle = "UP" if last_close > prev_close else "DOWN"
 
+            last_vol = two_candles["last"]["volume"]
+            avg_vol = two_candles.get("avg_vol_6", 0)
+            vol_ratio = last_vol / avg_vol if avg_vol > 0 else 1.0
+            vol_spike = vol_ratio >= VOLUME_SPIKE_MULTIPLIER
+
             if body_pct >= CANDLE_MOVE_THRESHOLD:
                 log.warning(
-                    f"BIG CANDLE ({direction_candle}): body={body_pct*100:.2f}% | "
+                    f"BIG CANDLE ({direction_candle}): body={body_pct*100:.2f}% "
+                    f"vol={vol_ratio:.1f}x avg | "
                     f"prev_close=${prev_close:,.0f} → candle_close=${last_close:,.0f} | TRIGGERING"
                 )
                 candle_trigger = True
-                candle_trigger_reason = f"{body_pct*100:+.2f}% candle body vs prior close"
+                candle_trigger_reason = f"{body_pct*100:+.2f}% candle body, vol={vol_ratio:.1f}x"
                 state["last_candle_trigger_ts"] = last_ts
             elif range_pct >= CANDLE_MOVE_THRESHOLD * 2:
                 # Wick-inclusive: candle range is 6%+ even if body is smaller
                 log.warning(
-                    f"BIG CANDLE RANGE ({direction_candle}): range={range_pct*100:.2f}% | "
+                    f"BIG CANDLE RANGE ({direction_candle}): range={range_pct*100:.2f}% "
+                    f"vol={vol_ratio:.1f}x avg | "
                     f"${last_low:,.0f}-${last_high:,.0f} | TRIGGERING"
                 )
                 candle_trigger = True
-                candle_trigger_reason = f"{range_pct*100:.2f}% candle range"
+                candle_trigger_reason = f"{range_pct*100:.2f}% candle range, vol={vol_ratio:.1f}x"
+                state["last_candle_trigger_ts"] = last_ts
+            elif vol_spike:
+                # High volume even without big price move — unusual activity, worth checking
+                log.warning(
+                    f"VOLUME SPIKE: {vol_ratio:.1f}x avg | "
+                    f"${last_close:,.0f} body={body_pct*100:.2f}% | TRIGGERING"
+                )
+                candle_trigger = True
+                candle_trigger_reason = f"volume spike {vol_ratio:.1f}x avg (body={body_pct*100:.2f}%)"
                 state["last_candle_trigger_ts"] = last_ts
     except Exception as e:
         log.warning(f"Candle-over-candle check failed: {e}")
