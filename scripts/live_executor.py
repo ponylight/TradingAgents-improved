@@ -1507,7 +1507,7 @@ def main():
                 if not entry_ok:
                     # Place actual limit order on exchange instead of polling
                     log.info(f"\U0001f4cb Placing limit order: {new_direction} @ ${agent_entry:,.0f} (current ${current:,.0f})")
-                    limit_result = open_limit_order(exchange, new_direction, equity, alloc_pct, agent_entry, stop_loss, risk_multiplier=risk_multiplier)
+                    limit_result = open_limit_order(exchange, new_direction, equity, alloc_pct, agent_entry, stop_loss, take_profit=tp1, risk_multiplier=risk_multiplier)
                     if limit_result:
                         executor_state["pending_limit_order"] = {
                             **limit_result,
