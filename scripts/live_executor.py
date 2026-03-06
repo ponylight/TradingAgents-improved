@@ -323,6 +323,147 @@ def parse_trade_params(full_decision: str) -> dict:
 
 # === POSITION MANAGEMENT ===
 
+
+def open_limit_order(exchange, direction, equity, alloc_pct, limit_price, stop_loss=None, risk_multiplier=1.0):
+    """Place a limit order on exchange. Returns order info dict or None."""
+    atr = get_atr(exchange, period=14, timeframe="1d")
+    sl_distance = abs(limit_price - stop_loss) if stop_loss else 2 * atr
+    effective_risk = RISK_PER_TRADE * risk_multiplier
+    risk_dollars = equity * effective_risk
+    notional = (risk_dollars / sl_distance) * limit_price
+    amount = float(exchange.amount_to_precision(SYMBOL, notional / limit_price))
+
+    if amount <= 0:
+        log.error(f"❌ Limit order amount=0. Equity=${equity:.0f}, Price=${limit_price:.0f}")
+        return None
+
+    alloc_pct = min(alloc_pct, MAX_ALLOC_PCT)
+    margin = equity * alloc_pct
+    leverage = max(1, round(notional / margin))
+    leverage = min(leverage, 20)
+
+    try:
+        exchange.set_leverage(leverage, SYMBOL)
+    except Exception as e:
+        log.warning(f"Leverage: {e}")
+
+    side = "buy" if direction == "BUY" else "sell"
+    link_id = f"limit_{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}"
+    
+    log.info(f"📋 LIMIT {direction} {amount:.3f} BTC @ ${limit_price:,.0f} | ${notional:,.0f} notional | {leverage}x lev")
+    
+    order = exchange.create_order(
+        SYMBOL, "limit", side, amount, limit_price,
+        params={"orderLinkId": link_id, "timeInForce": "GTC"}
+    )
+    order_id = order["id"]
+    log.info(f"✅ Limit order placed: {order_id} @ ${limit_price:,.2f}")
+
+    return {
+        "order_id": order_id,
+        "link_id": link_id,
+        "direction": direction,
+        "amount": amount,
+        "limit_price": limit_price,
+        "stop_loss": stop_loss,
+        "leverage": leverage,
+    }
+
+
+def check_pending_limit_order(exchange, executor_state):
+    """Check if a pending limit order has been filled. Returns True if filled and state updated."""
+    pending = executor_state.get("pending_limit_order")
+    if not pending:
+        return False
+
+    order_id = pending.get("order_id")
+    if not order_id:
+        executor_state.pop("pending_limit_order", None)
+        return False
+
+    try:
+        order = exchange.fetch_order(order_id, SYMBOL)
+    except Exception as e:
+        log.warning(f"\u26a0\ufe0f Could not fetch pending order {order_id}: {e}")
+        return False
+
+    status = order.get("status", "").lower()
+    created_at = pending.get("created_at", "")
+    
+    # Check age — cancel if older than 24h
+    if created_at:
+        try:
+            age_h = (datetime.now(timezone.utc) - datetime.fromisoformat(created_at)).total_seconds() / 3600
+            if age_h > 24 and status in ("open", "new"):
+                log.info(f"\u23f3 Cancelling expired limit order {order_id} ({age_h:.0f}h old)")
+                try:
+                    exchange.cancel_order(order_id, SYMBOL)
+                except Exception as e:
+                    log.warning(f"Failed to cancel order: {e}")
+                executor_state.pop("pending_limit_order", None)
+                save_state(executor_state)
+                return False
+        except (ValueError, TypeError):
+            pass
+
+    if status == "closed":  # Filled
+        fill_price = float(order.get("average") or pending["limit_price"])
+        amount = float(order.get("filled") or pending["amount"])
+        direction = pending["direction"]
+        stop_loss = pending.get("stop_loss")
+        tp1 = pending.get("tp1")
+        
+        log.info(f"\u2705 LIMIT ORDER FILLED: {direction} {amount:.3f} BTC @ ${fill_price:,.2f}")
+        
+        # Set SL on exchange
+        if stop_loss:
+            sync_stop_loss_to_exchange(exchange, direction.lower(), amount, stop_loss)
+        
+        # Set TP
+        risk_dist = abs(fill_price - stop_loss) if stop_loss else get_atr(exchange) * 2
+        if not tp1:
+            if direction == "BUY":
+                tp1 = fill_price + (TP1_R_MULTIPLE * risk_dist)
+            else:
+                tp1 = fill_price - (TP1_R_MULTIPLE * risk_dist)
+            log.info(f"\U0001f527 Auto TP1 at {TP1_R_MULTIPLE}R: ${tp1:,.0f}")
+        set_take_profit(exchange, direction, amount, tp1)
+        
+        atr = get_atr(exchange)
+        if direction == "BUY":
+            initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
+        else:
+            initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
+        
+        executor_state["active_trade"] = {
+            "direction": direction,
+            "entry": fill_price,
+            "amount": amount,
+            "stop_loss": stop_loss,
+            "tp1": tp1,
+            "tp2": pending.get("tp2"),
+            "trailing_stop": initial_trail,
+            "opened_at": datetime.now(timezone.utc).isoformat(),
+            "confidence": pending.get("confidence"),
+            "atr_at_entry": atr,
+            "from_limit_order": True,
+        }
+        executor_state.pop("pending_limit_order", None)
+        save_state(executor_state)
+        return True
+    
+    elif status in ("canceled", "cancelled", "expired", "rejected"):
+        log.info(f"\u274c Limit order {order_id} was {status}")
+        executor_state.pop("pending_limit_order", None)
+        save_state(executor_state)
+        return False
+    
+    else:  # Still open
+        fill_pct = float(order.get("filled", 0)) / float(order.get("amount", 1)) * 100
+        log.info(f"\u23f8\ufe0f  Limit order {order_id} still open ({status}, {fill_pct:.0f}% filled) @ ${pending['limit_price']:,.0f}")
+        return False
+
+
 def close_position(exchange, position, fraction=1.0):
     """Close all or part of a position."""
     side = "sell" if position["side"] == "long" else "buy"
@@ -1032,6 +1173,15 @@ def main():
             executor_state.pop("active_trade", None)
             save_state(executor_state)
 
+    # Check if a pending limit order was filled since last cycle
+    if check_pending_limit_order(exchange, executor_state):
+        positions = get_positions(exchange)
+        has_position = len(positions) > 0
+        if has_position:
+            for p in positions:
+                pnl = float(p.get("unrealizedPnl", 0))
+                log.info(f"\U0001f4ca Limit fill: {p['side']} {p['contracts']} @ ${float(p['entryPrice']):,.0f} | PnL: ${pnl:,.2f}")
+
     # Check for pending entry from previous cycle (agent specified limit entry)
     pending = executor_state.get("pending_entry")
     if pending and not has_position:
@@ -1158,6 +1308,24 @@ def main():
         "equity": equity,
         "params": trade_params,
     }
+
+    # Cancel pending limit order if agents changed direction
+    pending_lo = executor_state.get("pending_limit_order")
+    if pending_lo:
+        old_dir = pending_lo.get("direction", "")
+        new_signal = "BUY" if decision == "BUY" else "SELL" if decision == "SELL" else ""
+        if new_signal and new_signal != old_dir:
+            log.info(f"\U0001f504 Agents changed direction ({old_dir} \u2192 {new_signal}) \u2014 cancelling pending limit order")
+            try:
+                exchange.cancel_order(pending_lo["order_id"], SYMBOL)
+                log.info(f"\u274c Cancelled limit order {pending_lo['order_id']}")
+            except Exception as e:
+                log.warning(f"Failed to cancel limit order: {e}")
+            executor_state.pop("pending_limit_order", None)
+            save_state(executor_state)
+        elif decision == "HOLD" and not has_position:
+            # Agents say HOLD with no position — keep the pending limit alive
+            log.info(f"\u23f8\ufe0f  Agents say HOLD, keeping pending limit order {pending_lo.get('order_id','?')} alive")
 
     # Map signal to position transition
     current_pos = "NEUTRAL"
@@ -1337,18 +1505,23 @@ def main():
                     entry_ok = True
                 
                 if not entry_ok:
-                    log.info(f"\u23f8\ufe0f  WAITING: Agent wants {new_direction} @ ${agent_entry:,.0f} but price is ${current:,.0f} \u2014 skipping this cycle")
-                    record["transition"] = "HOLD"
-                    record["waiting_for_entry"] = agent_entry
-                    executor_state["pending_entry"] = {
-                        "direction": new_direction,
-                        "entry_price": agent_entry,
-                        "stop_loss": stop_loss,
-                        "tp1": tp1,
-                        "alloc_pct": alloc_pct,
-                        "params": trade_params,
-                        "created_at": datetime.now(timezone.utc).isoformat(),
-                    }
+                    # Place actual limit order on exchange instead of polling
+                    log.info(f"\U0001f4cb Placing limit order: {new_direction} @ ${agent_entry:,.0f} (current ${current:,.0f})")
+                    limit_result = open_limit_order(exchange, new_direction, equity, alloc_pct, agent_entry, stop_loss, risk_multiplier=risk_multiplier)
+                    if limit_result:
+                        executor_state["pending_limit_order"] = {
+                            **limit_result,
+                            "tp1": tp1,
+                            "tp2": trade_params.get("take_profit_2"),
+                            "confidence": trade_params.get("confidence"),
+                            "created_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        record["transition"] = "LIMIT_PLACED"
+                        record["limit_order_id"] = limit_result["order_id"]
+                        record["limit_price"] = agent_entry
+                    else:
+                        record["transition"] = "HOLD"
+                        record["limit_failed"] = True
                     executor_state["trades"] = executor_state.get("trades", [])
                     executor_state["trades"].append(record)
                     save_state(executor_state)
