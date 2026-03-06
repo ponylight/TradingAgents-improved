@@ -220,7 +220,8 @@ def parse_trade_params(full_decision: str) -> dict:
             return params
 
     # Fallback: regex parsing from prose
-    text = full_decision.lower()
+    # Strip markdown bold/italic markers that interfere with regex
+    text = re.sub(r'\*{1,2}', '', full_decision).lower()
 
     size_patterns = [
         r'position\s*size[:\s]*(\d+(?:\.\d+)?)\s*%',
@@ -240,6 +241,7 @@ def parse_trade_params(full_decision: str) -> dict:
         r'stop[- ]?loss[:\s]*\$?([\d,]+(?:\.\d+)?)',
         r'sl[:\s]*\$?([\d,]+(?:\.\d+)?)',
         r'stop\s*(?:at|@)\s*\$?([\d,]+(?:\.\d+)?)',
+        r'stop.?loss.*?\$?([\d,]{4,}(?:\.\d+)?)',
     ]
     for pattern in sl_patterns:
         m = re.search(pattern, text)
@@ -248,8 +250,9 @@ def parse_trade_params(full_decision: str) -> dict:
             break
 
     tp_patterns = [
-        r'(?:take[- ]?profit|tp)\s*(?:1|a)?[:\s]*\$?([\d,]+(?:\.\d+)?)',
-        r'(?:target|tp1?)[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        r'(?:take[- ]?profit|tp)\s*1[:\s]*\$?([\d,]{4,}(?:\.\d+)?)',
+        r'(?:take[- ]?profit|tp)[:\s]*\$?([\d,]{4,}(?:\.\d+)?)',
+        r'(?:target|tp)\s*1?[:\s]*\$?([\d,]{4,}(?:\.\d+)?)',
     ]
     for pattern in tp_patterns:
         m = re.search(pattern, text)
@@ -258,8 +261,8 @@ def parse_trade_params(full_decision: str) -> dict:
             break
 
     tp2_patterns = [
-        r'(?:take[- ]?profit|tp)\s*(?:2|b)[:\s]*\$?([\d,]+(?:\.\d+)?)',
-        r'(?:target|tp)\s*2[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        r'(?:take[- ]?profit|tp)\s*2[:\s]*\$?([\d,]{4,}(?:\.\d+)?)',
+        r'(?:target|tp)\s*2[:\s]*\$?([\d,]{4,}(?:\.\d+)?)',
     ]
     for pattern in tp2_patterns:
         m = re.search(pattern, text)
@@ -276,6 +279,43 @@ def parse_trade_params(full_decision: str) -> dict:
         m = re.search(pattern, text)
         if m:
             params["confidence"] = int(m.group(1))
+            break
+
+    # Entry price and type (limit vs market)
+    entry_patterns = [
+        r'entry[:\s]*(?:limit\s*(?:at|@)\s*)\$?([\d,]+(?:\.\d+)?)',
+        r'entry[:\s]*\$?([\d,]+(?:\.\d+)?)',
+        r'enter\s*(?:at|@)\s*\$?([\d,]+(?:\.\d+)?)',
+        r'limit\s*(?:entry\s*)?(?:at|@)\s*\$?([\d,]+(?:\.\d+)?)',
+    ]
+    for pattern in entry_patterns:
+        m = re.search(pattern, text)
+        if m:
+            params["entry_price"] = float(m.group(1).replace(",", ""))
+            break
+
+    # Detect if entry is limit or market
+    if re.search(r'limit\s*(?:at|@|entry|order)', text):
+        params["entry_type"] = "limit"
+    elif re.search(r'market\s*(?:entry|order)|enter\s*(?:at\s*)?market', text):
+        params["entry_type"] = "market"
+
+    # Margin allocation (e.g. "3-4% margin" or "3.5% margin")
+    margin_patterns = [
+        r'margin\s*allocation[:\s]*(\d+(?:\.\d+)?)\s*%',
+        r'(\d+(?:\.\d+)?)\s*%\s*margin',
+        r'(\d+)-(\d+)%\s*margin',
+    ]
+    for pattern in margin_patterns:
+        m = re.search(pattern, text)
+        if m:
+            if m.lastindex == 2:
+                # Range like "3-4%" — use midpoint
+                pct = (float(m.group(1)) + float(m.group(2))) / 2 / 100
+            else:
+                pct = float(m.group(1)) / 100
+            if 0.005 <= pct <= MAX_ALLOC_PCT:
+                params["risk_pct"] = params.get("risk_pct", pct)
             break
 
     return params
@@ -880,7 +920,19 @@ def run_agents(ta, trade_date, portfolio_context=None):
             log.info(f"📐 Fallback extraction: {curr} → {extracted} = {trans_action} → {decision}")
 
     full_decision = agent_state.get("final_trade_decision", "")
+    trader_plan = agent_state.get("trader_investment_plan", "") or agent_state.get("trader_investment_decision", "")
+    
+    # Parse from fund manager first (has final authority)
     trade_params = parse_trade_params(full_decision)
+    
+    # If fund manager said "as_proposed" or params are missing, get them from trader's plan
+    if trader_plan:
+        trader_params = parse_trade_params(trader_plan)
+        # Fill in any missing params from trader (fund manager overrides if present)
+        for key in ("stop_loss", "take_profit_1", "take_profit_2", "risk_pct", "confidence", "risk_reward"):
+            if key not in trade_params and key in trader_params:
+                trade_params[key] = trader_params[key]
+                log.info(f"📝 Using trader's {key}: {trader_params[key]}")
 
     log.info(f"🎯 Decision: {decision}")
     log.info(f"📋 Parsed params: {trade_params}")
@@ -979,6 +1031,72 @@ def main():
             log.warning(f"🔄 RECONCILE: Clearing stale active_trade (was {stale.get('side','')} @ ${stale.get('entry_price',0):,.0f}) — exchange has no position")
             executor_state.pop("active_trade", None)
             save_state(executor_state)
+
+    # Check for pending entry from previous cycle (agent specified limit entry)
+    pending = executor_state.get("pending_entry")
+    if pending and not has_position:
+        current = float(exchange.fetch_ticker(SYMBOL)["last"])
+        pe_dir = pending["direction"]
+        pe_price = pending["entry_price"]
+        pe_age_h = (datetime.now(timezone.utc) - datetime.fromisoformat(pending["created_at"])).total_seconds() / 3600
+        
+        # Expire pending entries after 24h
+        if pe_age_h > 24:
+            log.info(f"\u23f3 Pending entry expired ({pe_age_h:.0f}h old): {pe_dir} @ ${pe_price:,.0f}")
+            executor_state.pop("pending_entry", None)
+            save_state(executor_state)
+        else:
+            entry_ok = False
+            if pe_dir == "BUY" and current <= pe_price * 1.003:
+                entry_ok = True
+            elif pe_dir == "SELL" and current >= pe_price * 0.997:
+                entry_ok = True
+            
+            if entry_ok:
+                log.info(f"\u2705 Pending entry triggered! {pe_dir} @ ${pe_price:,.0f} (price ${current:,.0f})")
+                alloc_pct = pending.get("alloc_pct", DEFAULT_ALLOC_PCT)
+                stop_loss = pending.get("stop_loss")
+                tp1 = pending.get("tp1")
+                risk_multiplier_pe = 1.0
+                
+                result = open_position(exchange, pe_dir, equity, alloc_pct, stop_loss, risk_multiplier=risk_multiplier_pe)
+                if result:
+                    fill_price = result["fill_price"]
+                    amount = result["amount"]
+                    
+                    risk_dist = abs(fill_price - stop_loss) if stop_loss else get_atr(exchange) * 2
+                    if not tp1:
+                        if pe_dir == "BUY":
+                            tp1 = fill_price + (TP1_R_MULTIPLE * risk_dist)
+                        else:
+                            tp1 = fill_price - (TP1_R_MULTIPLE * risk_dist)
+                    
+                    set_take_profit(exchange, pe_dir, amount, tp1)
+                    atr = get_atr(exchange)
+                    if pe_dir == "BUY":
+                        initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
+                    else:
+                        initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
+                    
+                    executor_state["active_trade"] = {
+                        "direction": pe_dir,
+                        "entry": fill_price,
+                        "amount": amount,
+                        "stop_loss": stop_loss,
+                        "tp1": tp1,
+                        "tp2": pending.get("params", {}).get("take_profit_2"),
+                        "trailing_stop": initial_trail,
+                        "opened_at": datetime.now(timezone.utc).isoformat(),
+                        "confidence": pending.get("params", {}).get("confidence"),
+                        "atr_at_entry": atr,
+                        "from_pending": True,
+                    }
+                    executor_state.pop("pending_entry", None)
+                    save_state(executor_state)
+                    log.info(f"\u2705 Pending entry filled: {pe_dir} {amount} BTC @ ${fill_price:,.0f}")
+                    has_position = True
+            else:
+                log.info(f"\u23f8\ufe0f  Pending entry still waiting: {pe_dir} @ ${pe_price:,.0f} (price ${current:,.0f}, age {pe_age_h:.1f}h)")
 
     # Create agents graph with persistent memory
     ta = create_agents_graph()
@@ -1207,6 +1325,36 @@ def main():
                         else:
                             stop_loss = pre_price + (2 * atr)
                         log.info(f'🔧 Recalculated SL from 2×ATR: ${stop_loss:,.0f}')
+
+            # Respect agent's entry price — only open if market is at or better than proposed entry
+            agent_entry = trade_params.get("entry_price")
+            if agent_entry:
+                current = float(exchange.fetch_ticker(SYMBOL)["last"])
+                entry_ok = False
+                if new_direction == "BUY" and current <= agent_entry * 1.003:  # within 0.3% of limit
+                    entry_ok = True
+                elif new_direction == "SELL" and current >= agent_entry * 0.997:
+                    entry_ok = True
+                
+                if not entry_ok:
+                    log.info(f"\u23f8\ufe0f  WAITING: Agent wants {new_direction} @ ${agent_entry:,.0f} but price is ${current:,.0f} \u2014 skipping this cycle")
+                    record["transition"] = "HOLD"
+                    record["waiting_for_entry"] = agent_entry
+                    executor_state["pending_entry"] = {
+                        "direction": new_direction,
+                        "entry_price": agent_entry,
+                        "stop_loss": stop_loss,
+                        "tp1": tp1,
+                        "alloc_pct": alloc_pct,
+                        "params": trade_params,
+                        "created_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    executor_state["trades"] = executor_state.get("trades", [])
+                    executor_state["trades"].append(record)
+                    save_state(executor_state)
+                    return
+                else:
+                    log.info(f"\u2705 Price ${current:,.0f} favorable vs agent entry ${agent_entry:,.0f} \u2014 proceeding")
 
             result = open_position(exchange, new_direction, equity, alloc_pct, stop_loss, risk_multiplier=risk_multiplier)
 
