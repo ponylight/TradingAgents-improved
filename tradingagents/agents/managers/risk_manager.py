@@ -26,6 +26,7 @@ def create_risk_manager(llm, memory):
         position_pnl_pct = portfolio_context.get("pnl_pct", 0)
         hours_held = portfolio_context.get("hours_held", 0)
         equity = portfolio_context.get("equity", 0)
+        performance_feedback = portfolio_context.get("performance_feedback", "No historical trade outcomes available yet.")
 
         budgeted_context = get_agent_context(state, "risk_manager")
 
@@ -99,6 +100,9 @@ def create_risk_manager(llm, memory):
 | Max leverage (swing) | 15x | RESIZE if above |
 | Max leverage (position) | 10x | RESIZE if above |
 | Liquidation distance | > 2× ATR(4h) | RESIZE if too close |
+
+## Historical Performance (Risk Awareness)
+{performance_feedback}
 
 ## Past Reflections on Risk Mistakes
 {past_memory_str if past_memory_str else "None."}

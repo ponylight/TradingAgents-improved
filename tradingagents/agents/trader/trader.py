@@ -22,6 +22,7 @@ def create_trader(llm, memory):
         last_decision = portfolio_context.get("last_decision", "HOLD")
         last_decision_reasoning = portfolio_context.get("last_decision_reasoning", "No prior reasoning available.")
         last_decision_time = portfolio_context.get("last_decision_time", "Unknown")
+        performance_feedback = portfolio_context.get("performance_feedback", "No historical trade outcomes available yet.")
 
         curr_situation = f"{market_research_report}\n\n{sentiment_report}\n\n{news_report}\n\n{fundamentals_report}"
         past_memories = memory.get_memories(curr_situation, n_matches=2)
@@ -147,6 +148,9 @@ Risk per trade: 1% of equity (mechanical, ATR-based in executor). You control DI
 - Conviction < 5 → HOLD (insufficient edge)
 - Strong case + poor entry → HOLD with limit order at better level
 - Moderate case + great entry → proceed with smaller size
+
+## Historical Performance (Learn From This)
+{performance_feedback}
 
 ## Past Reflections
 {past_memory_str}

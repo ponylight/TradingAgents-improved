@@ -29,6 +29,7 @@ def create_fund_manager(llm, memory=None):
         equity = portfolio_context.get("equity", 0)
         last_decision = portfolio_context.get("last_decision", "HOLD")
         open_orders = portfolio_context.get("open_orders", 0)
+        performance_feedback = portfolio_context.get("performance_feedback", "No historical trade outcomes available yet.")
 
         # Past memories
         past_memory_str = ""
@@ -98,6 +99,9 @@ Each HOLD is a capital allocation decision — own it with the same rigor as a t
 - **Funding Carry**: If holding a position costs >0.1%/day in funding, factor that into approval.
 - **Exchange Risk**: Single exchange (Bybit). No hedge on another venue. Accept this but size accordingly.
 - **Drawdown Budget**: If account is down >5% from peak, reduce max position size by 50%.
+
+## Historical Performance (Your Track Record)
+{performance_feedback}
 
 ## Past Reflections
 {past_memory_str if past_memory_str else "None."}

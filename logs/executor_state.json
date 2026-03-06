@@ -1,5 +1,5 @@
 {
-  "last_run": "2026-03-06T04:15:48.193733+00:00",
+  "last_run": "2026-03-06T08:19:38.094600+00:00",
   "last_decision": "HOLD",
   "trades": [
     {
@@ -232,6 +232,25 @@
       "transition": "HOLD",
       "tp_updated": 69792.0,
       "sl_updated": 74100.0
+    },
+    {
+      "timestamp": "2026-03-06T08:19:38.094600+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 152726.08396102,
+      "params": {
+        "confidence": 7,
+        "stop_loss": 71500.0,
+        "take_profit_1": 69792.0,
+        "take_profit_2": 66054.0
+      },
+      "objective_score": 7.4,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "HOLD",
+      "sl_updated": 71500.0
     }
   ],
   "active_trade": {
@@ -241,13 +260,14 @@
     "stop_loss": 74550.0,
     "tp1": 69792.0,
     "tp2": 65000.0,
-    "trailing_stop": 74100.0,
+    "trailing_stop": 71500.0,
     "opened_at": "2026-03-05T08:14:25.996775+00:00",
     "confidence": 6,
-    "atr_at_entry": 3317.8142857142843
+    "atr_at_entry": 3317.8142857142843,
+    "max_favorable_pct": 1.21
   },
-  "last_decision_reasoning": "Decision chain is coherent: analysts identified overbought stochastics + macro risk-off, trader built a defensible short thesis with clear invalidation levels, risk judge caught the 1% breach and sized down appropriately. Process was followed. Risk judge approved with adjustments \u2014 I adopt those adjustments as-is. Position sizing to 0.5 BTC keeps max loss at 0.99% equity, which is clean. Event risk score of 5 on Iran escalation is the real concern, but the tight invalidation at $74,100 handles i",
-  "last_decision_time": "2026-03-06T04:15:48.193733+00:00",
+  "last_decision_reasoning": "**Assessment:** Decision chain is coherent \u2014 analysts identified deteriorating 4h structure, trader built a disciplined thesis with defined invalidation, risk judge scored composite 2.83 (moderate) with no veto. Position is already open and profitable (+0.13%), trader is reaffirming not adding. The risk judge's \u26a0\ufe0f on position sizing is noted but not a hard fail \u2014 current allocation appears within the 1% equity risk rule given the tight $567/unit stop. Event risk (US-Iran) is the dominant factor ",
+  "last_decision_time": "2026-03-06T08:19:38.094600+00:00",
   "starting_equity": 153885.33,
   "closed_trades": [],
   "positions": {

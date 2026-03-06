@@ -1361,6 +1361,11 @@ def main():
             hours = (datetime.now(timezone.utc) - opened_dt).total_seconds() / 3600
             portfolio_ctx["age_bars"] = int(hours / 4)
     
+    # Inject performance feedback from outcome tracker
+    portfolio_ctx["performance_feedback"] = outcome_tracker.get_feedback_for_agents()
+    portfolio_ctx["last_decision_reasoning"] = executor_state.get("last_decision_reasoning", "No prior reasoning available.")
+    portfolio_ctx["last_decision_time"] = executor_state.get("last_decision_time", "Unknown")
+    
     # Count consecutive same-direction signals
     recent_decisions = [t.get("decision") for t in executor_state.get("trades", [])[-5:]]
     if recent_decisions:
@@ -1520,8 +1525,10 @@ def main():
                         direction_str = "tighter" if sl_is_tighter else "wider"
                         log.info(f"🛡️ Fund manager {direction_str} SL: ${current_trail:,.2f} → ${proposed_sl:,.2f} (price ${current_price:,.2f})")
                         active["trailing_stop"] = proposed_sl
+                        active["stop_loss"] = proposed_sl  # Keep stop_loss in sync
                         sync_stop_loss_to_exchange(exchange, direction, amount, proposed_sl)
                         record["sl_updated"] = proposed_sl
+                        save_state(executor_state)  # Persist SL update immediately
                     elif not sl_not_breached:
                         log.error(f"🚨 ALERT: Fund manager SL ${proposed_sl:,.2f} already breached (price ${current_price:,.2f}), keeping ${current_trail:,.2f}")
         log.info(f"⏸️  {action} — no action")
@@ -1543,6 +1550,21 @@ def main():
             }
             record["closed"] = p["side"]
             record["close_pnl_pct"] = returns_pct
+            
+            # Record outcome for learning
+            active = executor_state.get("active_trade", {})
+            ot_id = active.get("outcome_tracker_id")
+            if ot_id is not None:
+                try:
+                    outcome_tracker.record_outcome(
+                        record_id=ot_id,
+                        exit_price=exit_price,
+                        exit_reason="close_signal",
+                        max_favorable_pct=active.get("max_favorable_pct", 0),
+                        max_adverse_pct=active.get("max_drawdown_pct", 0),
+                    )
+                except Exception as e:
+                    log.warning(f"Failed to record outcome: {e}")
         has_position = False
         executor_state.pop("active_trade", None)
 
@@ -1584,6 +1606,21 @@ def main():
                 }
                 record["closed"] = p["side"]
                 record["close_pnl_pct"] = returns_pct
+                
+                # Record outcome for learning
+                active = executor_state.get("active_trade", {})
+                ot_id = active.get("outcome_tracker_id")
+                if ot_id is not None:
+                    try:
+                        outcome_tracker.record_outcome(
+                            record_id=ot_id,
+                            exit_price=exit_price,
+                            exit_reason="reversal",
+                            max_favorable_pct=active.get("max_favorable_pct", 0),
+                            max_adverse_pct=active.get("max_drawdown_pct", 0),
+                        )
+                    except Exception as e:
+                        log.warning(f"Failed to record outcome: {e}")
             has_position = False
             executor_state.pop("active_trade", None)
 
@@ -1734,6 +1771,25 @@ def main():
                 record["alloc_pct"] = alloc_pct
 
                 log.info(f"📋 Trade plan: Entry ${fill_price:,.0f} | SL ${stop_loss:,.0f} | TP1 ${tp1:,.0f} | Alloc {alloc_pct*100:.1f}% | Risk 1% | Trail {ATR_TRAIL_MULTIPLE}×ATR")
+                
+                # Record decision for outcome tracking
+                try:
+                    ot_id = outcome_tracker.record_decision(
+                        decision=new_direction,
+                        confidence=trade_params.get("confidence", 5),
+                        entry_price=fill_price,
+                        stop_loss=stop_loss,
+                        take_profit=tp1,
+                        objective_score=obj_score.overall,
+                        objective_signal=obj_score.signal,
+                        was_overridden=validation.overridden,
+                        override_reason=validation.override_reason if validation.overridden else "",
+                        trade_params=trade_params,
+                        validation_warnings=validation.warnings,
+                    )
+                    executor_state["active_trade"]["outcome_tracker_id"] = ot_id
+                except Exception as e:
+                    log.warning(f"Failed to record decision in outcome tracker: {e}")
             else:
                 record["action"] = "failed"
 
