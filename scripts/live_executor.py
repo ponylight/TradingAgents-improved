@@ -63,6 +63,23 @@ TIME_EXIT_BARS = 24           # Close if flat after 24 4H bars
 LOG_DIR = PROJECT_ROOT / "logs"
 MEMORY_DIR = PROJECT_ROOT / "memory"
 STATE_FILE = LOG_DIR / "executor_state.json"
+
+# Module-level singletons
+outcome_tracker = OutcomeTracker()
+risk_mgr = RiskManager({
+    "max_position_pct": MAX_ALLOC_PCT,
+    "max_leverage": 20,
+    "max_daily_loss_pct": 0.03,
+    "max_drawdown_pct": 0.10,
+    "cooldown_minutes": 30,
+    "max_trades_per_day": 6,
+})
+analyst_scheduler = AnalystScheduler({
+    "market": 4,
+    "sentiment": 8,
+    "news": 12,
+    "fundamentals": 24,
+})
 LOG_DIR.mkdir(exist_ok=True)
 MEMORY_DIR.mkdir(exist_ok=True)
 
@@ -1017,7 +1034,7 @@ def run_reflection(ta, returns_pct):
         log.error(f"Review/optimization failed (non-fatal): {e}")
 
 
-def run_agents(ta, trade_date, portfolio_context=None):
+def run_agents(ta, trade_date, portfolio_context=None, analysts_to_run=None, analysts_to_cache=None, analyst_scheduler=None):
     log.info(f"🧠 Running agents for {SPOT_SYMBOL} on {trade_date}...")
 
     # Inject portfolio context into the graph's initial state
@@ -1147,8 +1164,20 @@ def load_state():
 
 
 def save_state(state):
-    with open(STATE_FILE, "w") as f:
-        json.dump(state, f, indent=2, default=str)
+    """Atomic state save — write to temp file then rename to prevent corruption."""
+    import tempfile
+    tmp_fd, tmp_path = tempfile.mkstemp(dir=STATE_FILE.parent, suffix=".tmp")
+    try:
+        with os.fdopen(tmp_fd, "w") as f:
+            json.dump(state, f, indent=2, default=str)
+        os.replace(tmp_path, STATE_FILE)  # Atomic on POSIX
+    except Exception as e:
+        log.error(f"Failed to save state: {e}")
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        raise
 
 
 # === MAIN ===
@@ -1346,7 +1375,7 @@ def main():
 
     # Run agents for new signal
     trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    decision, trade_params, reports = run_agents(ta, trade_date, portfolio_ctx)
+    decision, trade_params, reports = run_agents(ta, trade_date, portfolio_ctx, analysts_to_run=analysts_to_run, analysts_to_cache=analysts_to_cache, analyst_scheduler=analyst_scheduler)
 
     # === OBJECTIVE SCORING GUARDRAIL ===
     try:

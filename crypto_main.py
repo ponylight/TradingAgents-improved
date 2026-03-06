@@ -25,7 +25,7 @@ def main():
 
     # Initialize the graph
     ta = CryptoTradingAgentsGraph(
-        selected_analysts=["market", "sentiment", "macro", "news"],
+        selected_analysts=["market", "sentiment", "fundamentals", "news"],
         config=config,
         debug=True,
     )

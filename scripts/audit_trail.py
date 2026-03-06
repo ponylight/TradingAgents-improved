@@ -252,7 +252,7 @@ def _to_sydney(iso_str):
         dt = datetime.fromisoformat(iso_str)
         if dt.tzinfo is None:
             dt = dt.replace(tzinfo=timezone.utc)
-        return dt.astimezone(SYDNEY_TZ).strftime("%Y-%m-%d %H:%M AEDT")
+        return dt.astimezone(SYDNEY_TZ).strftime("%Y-%m-%d %H:%M %Z")
     except (ValueError, TypeError):
         return iso_str
 

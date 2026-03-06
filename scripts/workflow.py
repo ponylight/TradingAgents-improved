@@ -59,8 +59,8 @@ if str(PROJECT_DIR) not in sys.path:
 
 load_dotenv(PROJECT_DIR / ".env")
 
-BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "hr3xN6ozshJJhFbgxs")
-BYBIT_SECRET  = os.getenv("BYBIT_SECRET",  "Q5LcRuP4XxcUiasxAZm76FKbdrCcoCFDRQy0")
+BYBIT_API_KEY = os.getenv("BYBIT_API_KEY", "")
+BYBIT_SECRET  = os.getenv("BYBIT_SECRET",  "")
 SYMBOL        = "BTC/USDT:USDT"
 
 SYDNEY_TZ = ZoneInfo("Australia/Sydney")
