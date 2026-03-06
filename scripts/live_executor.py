@@ -31,6 +31,7 @@ from tradingagents.scoring.decision_validator import validate_decision
 from tradingagents.scoring.outcome_tracker import OutcomeTracker
 from tradingagents.scoring.risk_manager import RiskManager
 from tradingagents.scoring.stability import compute_system_stability
+from tradingagents.scheduling.analyst_schedule import AnalystScheduler
 from tradingagents.agents.utils.agent_trading_modes import extract_recommendation, get_position_transition
 from tradingagents.graph.crypto_trading_graph import CRYPTO_DEFAULT_CONFIG
 from tradingagents.agents.utils.agent_trading_modes import get_position_transition
@@ -897,8 +898,12 @@ def close_green_lane_position(state: dict, exit_price: float, reason: str) -> di
 
 # === AGENTS ===
 
-def create_agents_graph():
-    """Create and return the TradingAgents graph with persistent memory."""
+def create_agents_graph(analysts_to_run=None):
+    """Create and return the TradingAgents graph with persistent memory.
+    
+    Args:
+        analysts_to_run: list of analyst names to actually run. Default: all.
+    """
     config = CRYPTO_DEFAULT_CONFIG.copy()
     config["llm_provider"] = "anthropic"
     config["deep_think_llm"] = "claude-opus-4-6"
@@ -907,8 +912,12 @@ def create_agents_graph():
     config["fallback_provider"] = "openrouter"
     config["fallback_model"] = "minimax/minimax-m2.5"
 
+    # Only include analysts that need fresh runs
+    selected = analysts_to_run or ["market", "sentiment", "fundamentals", "news"]
+    log.info(f"\U0001f4ca Creating graph with analysts: {selected}")
+
     ta = CryptoTradingAgentsGraph(
-        selected_analysts=["market", "sentiment", "fundamentals", "news"],
+        selected_analysts=selected,
         config=config,
         debug=False,
     )
@@ -1015,7 +1024,35 @@ def run_agents(ta, trade_date, portfolio_context=None):
     if portfolio_context:
         ta.portfolio_context = portfolio_context
 
+    # Inject cached reports for analysts we're skipping
+    for cached_analyst in analysts_to_cache:
+        cached_report = analyst_scheduler.get_cached_report(cached_analyst)
+        if cached_report:
+            report_field = {
+                "market": "market_report",
+                "sentiment": "sentiment_report", 
+                "fundamentals": "fundamentals_report",
+                "news": "news_report",
+            }.get(cached_analyst)
+            if report_field:
+                # Inject into the graph's initial state
+                if not hasattr(ta, '_cached_reports'):
+                    ta._cached_reports = {}
+                ta._cached_reports[report_field] = cached_report
+                log.info(f"\U0001f4be Injected cached {cached_analyst} report")
+    
     agent_state, decision = ta.propagate(SPOT_SYMBOL, trade_date)
+    
+    # Cache fresh reports from analysts that ran
+    for analyst in analysts_to_run:
+        report_field = {
+            "market": "market_report",
+            "sentiment": "sentiment_report",
+            "fundamentals": "fundamentals_report", 
+            "news": "news_report",
+        }.get(analyst)
+        if report_field and agent_state.get(report_field):
+            analyst_scheduler.update_cache(analyst, agent_state[report_field])
 
     # Check if fund manager overrode the decision
     fund_parsed = agent_state.get("fund_manager_parsed", {})
@@ -1254,8 +1291,11 @@ def main():
             else:
                 log.info(f"\u23f8\ufe0f  Pending entry still waiting: {pe_dir} @ ${pe_price:,.0f} (price ${current:,.0f}, age {pe_age_h:.1f}h)")
 
-    # Create agents graph with persistent memory
-    ta = create_agents_graph()
+    # Determine which analysts need fresh runs vs cached
+    analysts_to_run, analysts_to_cache = analyst_scheduler.get_analysts_to_run()
+    
+    # Create graph with only the analysts that need refreshing
+    ta = create_agents_graph(analysts_to_run=analysts_to_run)
 
     # If a trade just closed, reflect on the outcome
     if executor_state.get("pending_reflection"):

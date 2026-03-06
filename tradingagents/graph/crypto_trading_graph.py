@@ -387,6 +387,10 @@ class CryptoTradingAgentsGraph:
         # Inject portfolio context if available
         if hasattr(self, "portfolio_context") and self.portfolio_context:
             init_agent_state["portfolio_context"] = self.portfolio_context
+        # Inject cached reports for analysts not running this cycle
+        if hasattr(self, "_cached_reports"):
+            for field, report in self._cached_reports.items():
+                init_agent_state[field] = report
         args = self.propagator.get_graph_args()
 
         if self.debug:
