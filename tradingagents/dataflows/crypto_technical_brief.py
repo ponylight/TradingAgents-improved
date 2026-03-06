@@ -107,7 +107,9 @@ def compute_indicators(symbol, tf_key):
     df["boll_ub"],df["boll_lb"],df["boll_bw"]=_bollinger(df["close"])
     df["obv"]=_obv(df["close"],df["volume"])
     df["vol_sma_20"]=_sma(df["volume"],20)
-    df["vwap"]=(df["close"]*df["volume"]).cumsum()/df["volume"].cumsum()
+    # Rolling VWAP (20-bar) — cumulative from bar 0 drifts, producing nonsensical z-scores
+    _tp = (df["high"] + df["low"] + df["close"]) / 3
+    df["vwap"] = (_tp * df["volume"]).rolling(20).sum() / df["volume"].rolling(20).sum()
     return df
 
 # ── Detectors ──
@@ -298,13 +300,15 @@ def detect_volatility(df):
                           squeeze=bp<20,breakout=bp>80,gap_percent=round(gp,2))
 
 def detect_volume(df):
-    vl=float(df["volume"].iloc[-1])
-    vs=float(df["vol_sma_20"].iloc[-1]) if not pd.isna(df["vol_sma_20"].iloc[-1]) else 1.0
+    # Use second-to-last bar to avoid incomplete candle skewing ratios
+    idx = -2 if len(df) >= 3 else -1
+    vl=float(df["volume"].iloc[idx])
+    vs=float(df["vol_sma_20"].iloc[idx]) if not pd.isna(df["vol_sma_20"].iloc[idx]) else 1.0
     vr=vl/vs if vs>0 else 1.0
-    sr=df["vol_sma_20"].tail(5)
+    sr=df["vol_sma_20"].iloc[-6:-1] if len(df) >= 7 else df["vol_sma_20"].tail(5)
     sl=(sr.iloc[-1]/sr.iloc[0])-1 if len(sr)>=5 and sr.iloc[0]>0 else 0
     vt="up" if sl>0.05 else "down" if sl<-0.05 else "flat"
-    ob=df["obv"].tail(5)
+    ob=df["obv"].iloc[-6:-1] if len(df) >= 7 else df["obv"].tail(5)
     os_=float(ob.iloc[-1]-ob.iloc[0]) if len(ob)>=5 else 0.0
     return VolumeState(vol_ma_ratio=round(vr,2),vol_trend=vt,obv_slope=round(os_,2))
 

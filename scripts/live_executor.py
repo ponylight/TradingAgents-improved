@@ -36,7 +36,15 @@ DEFAULT_ALLOC_PCT = 0.03      # 3% default margin allocation if agent doesn't sp
 MAX_ALLOC_PCT = 0.12          # Never exceed 12% margin allocation
 RISK_PER_TRADE = 0.01         # 1% of equity at risk per trade (professional standard)
 CIRCUIT_BREAKER_PCT = 0.09
-PEAK_EQUITY = 154_425
+# Load peak equity from state file (was hardcoded — never updated across restarts)
+def _load_peak_equity():
+    try:
+        import json
+        state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
+        return state.get('peak_equity', 154_425)
+    except Exception:
+        return 154_425
+PEAK_EQUITY = _load_peak_equity()
 DAILY_LOSS_LIMIT = 0.02       # 2% daily loss limit — lock out after this
 COLD_STREAK_THRESHOLD = 3     # After 3 consecutive losses, halve risk
 COLD_STREAK_RISK_MULT = 0.5   # Multiply risk by this during cold streak
@@ -159,6 +167,14 @@ def check_circuit_breaker(equity):
     if equity > PEAK_EQUITY:
         log.info(f"📈 New peak equity: ${equity:,.0f} (was ${PEAK_EQUITY:,.0f})")
         PEAK_EQUITY = equity
+        # Persist to state file so it survives restarts
+        try:
+            import json
+            state = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
+            state['peak_equity'] = equity
+            STATE_FILE.write_text(json.dumps(state, indent=2))
+        except Exception as e:
+            log.warning(f"Failed to persist peak equity: {e}")
     threshold = PEAK_EQUITY * (1 - CIRCUIT_BREAKER_PCT)
     if equity < threshold:
         log.error(f"🚨 CIRCUIT BREAKER: ${equity:,.0f} < ${threshold:,.0f} (peak ${PEAK_EQUITY:,.0f})")
@@ -173,7 +189,7 @@ def parse_trade_params(full_decision: str) -> dict:
     params = {}
 
     # Try structured block first (from trader agent)
-    block_match = re.search(r'---TRADE_PLAN---(.*?)---END_TRADE_PLAN---', full_decision, re.DOTALL)
+    block_match = re.search(r'---(?:TRADE_PLAN|FUND_DECISION)---(.*?)---END_(?:TRADE_PLAN|FUND_DECISION)---', full_decision, re.DOTALL)
     if block_match:
         block = block_match.group(1)
         field_map = {
@@ -318,61 +334,72 @@ def open_position(exchange, direction, equity, alloc_pct, stop_loss=None, risk_m
     fill_price = float(order.get("average") or price)
     log.info(f"✅ Filled: {order['id']} @ ${fill_price:,.2f}")
 
-    # Set stop loss on exchange
+    # Set stop loss on position (native TP/SL, not separate order)
     if stop_loss and stop_loss > 0:
         try:
-            sl_side = "sell" if direction == "BUY" else "buy"
-            sl_params = {"triggerPrice": str(stop_loss), "reduceOnly": True}
-            if direction == "BUY":
-                sl_params["triggerDirection"] = 2  # trigger when price falls below
-            else:
-                sl_params["triggerDirection"] = 1  # trigger when price rises above
-            exchange.create_order(SYMBOL, "market", sl_side, amount, params=sl_params)
-            log.info(f"🛡️ Stop loss set @ ${stop_loss:,.2f}")
+            bybit_symbol = SYMBOL.replace("/", "").replace(":USDT", "")
+            exchange.private_post_v5_position_trading_stop({
+                "category": "linear",
+                "symbol": bybit_symbol,
+                "stopLoss": str(round(stop_loss, 2)),
+                "slTriggerBy": "MarkPrice",
+                "positionIdx": 0,
+            })
+            log.info(f"🛡️ Stop loss set @ ${stop_loss:,.2f} (position TP/SL)")
         except Exception as e:
-            log.warning(f"⚠️ Failed to set SL on exchange: {e}")
+            log.warning(f"⚠️ Failed to set SL on position: {e}")
 
     return {"order": order, "fill_price": fill_price, "amount": amount}
 
 
 def set_take_profit(exchange, direction, amount, tp_price):
-    """Set TP order for partial close."""
+    """Set TP on position (native TP/SL, not separate order)."""
     try:
-        tp_side = "sell" if direction == "BUY" else "buy"
+        bybit_symbol = SYMBOL.replace("/", "").replace(":USDT", "")
+        exchange.private_post_v5_position_trading_stop({
+            "category": "linear",
+            "symbol": bybit_symbol,
+            "takeProfit": str(round(tp_price, 2)),
+            "tpTriggerBy": "MarkPrice",
+            "tpSize": str(float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))),
+            "positionIdx": 0,
+        })
         tp_amount = float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))
-        tp_params = {"triggerPrice": str(tp_price), "reduceOnly": True}
-        if direction == "BUY":
-            tp_params["triggerDirection"] = 1  # trigger when price rises above
-        else:
-            tp_params["triggerDirection"] = 2  # trigger when price falls below
-        exchange.create_order(SYMBOL, "market", tp_side, tp_amount, params=tp_params)
-        log.info(f"🎯 TP1 set @ ${tp_price:,.2f} for {tp_amount} BTC ({TP1_CLOSE_PCT*100:.0f}%)")
+        log.info(f"🎯 TP1 set @ ${tp_price:,.2f} for {tp_amount} BTC ({TP1_CLOSE_PCT*100:.0f}%) (position TP/SL)")
     except Exception as e:
-        log.warning(f"⚠️ Failed to set TP on exchange: {e}")
+        log.warning(f"⚠️ Failed to set TP on position: {e}")
+
+
+def sync_take_profit_to_exchange(exchange, direction, amount, new_tp):
+    """Update the position take-profit on Bybit when agents propose a new TP."""
+    try:
+        bybit_symbol = SYMBOL.replace("/", "").replace(":USDT", "")
+        tp_size = float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))
+        exchange.private_post_v5_position_trading_stop({
+            "category": "linear",
+            "symbol": bybit_symbol,
+            "takeProfit": str(round(new_tp, 2)),
+            "tpTriggerBy": "MarkPrice",
+            "tpSize": str(tp_size),
+            "positionIdx": 0,
+        })
+        log.info(f"🎯 Exchange TP synced to ${new_tp:,.2f} (position TP/SL)")
+    except Exception as e:
+        log.warning(f"⚠️ Failed to sync TP to exchange: {e}")
 
 
 def sync_stop_loss_to_exchange(exchange, direction, amount, new_sl):
-    """Update the stop-loss order on Bybit to match our trailing stop."""
+    """Update the position stop-loss on Bybit to match our trailing stop."""
     try:
-        # Cancel existing conditional orders first
-        open_orders = exchange.fetch_open_orders(SYMBOL)
-        for order in open_orders:
-            if order.get("reduceOnly") or order.get("info", {}).get("reduceOnly") == "true":
-                try:
-                    exchange.cancel_order(order["id"], SYMBOL)
-                    log.info(f"🗑️ Cancelled old SL order {order['id']}")
-                except Exception:
-                    pass
-
-        # Place new SL at trailing stop level
-        sl_side = "sell" if direction in ("BUY", "long") else "buy"
-        sl_params = {"triggerPrice": str(round(new_sl, 2)), "reduceOnly": True}
-        if direction in ("BUY", "long"):
-            sl_params["triggerDirection"] = 2
-        else:
-            sl_params["triggerDirection"] = 1
-        exchange.create_order(SYMBOL, "market", sl_side, amount, params=sl_params)
-        log.info(f"🛡️ Exchange SL synced to ${new_sl:,.2f}")
+        bybit_symbol = SYMBOL.replace("/", "").replace(":USDT", "")
+        exchange.private_post_v5_position_trading_stop({
+            "category": "linear",
+            "symbol": bybit_symbol,
+            "stopLoss": str(round(new_sl, 2)),
+            "slTriggerBy": "MarkPrice",
+            "positionIdx": 0,
+        })
+        log.info(f"🛡️ Exchange SL synced to ${new_sl:,.2f} (position TP/SL)")
     except Exception as e:
         log.warning(f"⚠️ Failed to sync SL to exchange: {e}")
 
@@ -911,6 +938,12 @@ def main():
         has_position = len(positions) > 0
     else:
         log.info("📊 No open positions")
+        # Reconcile: clear stale active_trade if exchange has no position
+        if executor_state.get("active_trade"):
+            stale = executor_state["active_trade"]
+            log.warning(f"🔄 RECONCILE: Clearing stale active_trade (was {stale.get('side','')} @ ${stale.get('entry_price',0):,.0f}) — exchange has no position")
+            executor_state.pop("active_trade", None)
+            save_state(executor_state)
 
     # Create agents graph with persistent memory
     ta = create_agents_graph()
@@ -993,6 +1026,52 @@ def main():
     record["transition"] = action
 
     if action in ("HOLD", "STAY_NEUTRAL"):
+        active = executor_state.get("active_trade", {})
+        if active and has_position:
+            direction = active.get("direction", "")
+            entry = active.get("entry", 0)
+            amount = active.get("amount", 0)
+            current_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+
+            # Check if agents proposed a new TP
+            proposed_tp = trade_params.get("take_profit_1")
+            if proposed_tp:
+                current_tp = active.get("tp1")
+                tp_valid = False
+                if direction == "BUY" and proposed_tp > entry:
+                    tp_valid = True
+                elif direction == "SELL" and proposed_tp < entry:
+                    tp_valid = True
+                if tp_valid and current_tp and proposed_tp != current_tp:
+                    log.info(f"🎯 Fund manager TP update: ${current_tp:,.2f} → ${proposed_tp:,.2f}")
+                    active["tp1"] = proposed_tp
+                    sync_take_profit_to_exchange(exchange, direction, amount, proposed_tp)
+                    record["tp_updated"] = proposed_tp
+                elif not tp_valid and proposed_tp:
+                    log.warning(f"⚠️ Ignoring invalid fund manager TP ${proposed_tp:,.2f} (wrong side of entry ${entry:,.2f} for {direction})")
+
+            # Check if agents proposed a tighter SL
+            proposed_sl = trade_params.get("stop_loss")
+            if proposed_sl:
+                current_trail = active.get("trailing_stop")
+                if current_trail:
+                    # Validate: must be tighter (closer to entry) AND price must not have breached it
+                    sl_is_tighter = False
+                    sl_not_breached = False
+                    if direction == "BUY":
+                        sl_is_tighter = proposed_sl > current_trail  # higher SL = tighter for longs
+                        sl_not_breached = current_price > proposed_sl
+                    elif direction == "SELL":
+                        sl_is_tighter = proposed_sl < current_trail  # lower SL = tighter for shorts
+                        sl_not_breached = current_price < proposed_sl
+                    if sl_not_breached and proposed_sl != current_trail:
+                        direction_str = "tighter" if sl_is_tighter else "wider"
+                        log.info(f"🛡️ Fund manager {direction_str} SL: ${current_trail:,.2f} → ${proposed_sl:,.2f} (price ${current_price:,.2f})")
+                        active["trailing_stop"] = proposed_sl
+                        sync_stop_loss_to_exchange(exchange, direction, amount, proposed_sl)
+                        record["sl_updated"] = proposed_sl
+                    elif not sl_not_breached:
+                        log.error(f"🚨 ALERT: Fund manager SL ${proposed_sl:,.2f} already breached (price ${current_price:,.2f}), keeping ${current_trail:,.2f}")
         log.info(f"⏸️  {action} — no action")
 
     elif action in ("CLOSE_LONG", "CLOSE_SHORT"):
