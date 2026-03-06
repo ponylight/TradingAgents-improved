@@ -161,11 +161,10 @@ def check_daily_loss_limit(executor_state, equity):
     
     if daily_loss_abs >= DAILY_LOSS_LIMIT:
         log.error(f"🔒 DAILY LOSS LIMIT: {daily_loss:.2f}% today (limit: {DAILY_LOSS_LIMIT*100:.0f}%). Locked out until next session.")
-        return True
     
     if trades_today:
         log.info(f"📊 Daily P&L: {daily_loss:+.2f}% | Limit: {DAILY_LOSS_LIMIT*100:.0f}%")
-    return False
+    return daily_loss_abs  # Numeric fraction (0.0 to 1.0)
 
 
 def get_cold_streak(executor_state):
@@ -348,7 +347,7 @@ def parse_trade_params(full_decision: str) -> dict:
 # === POSITION MANAGEMENT ===
 
 
-def open_limit_order(exchange, direction, equity, alloc_pct, limit_price, stop_loss=None, risk_multiplier=1.0):
+def open_limit_order(exchange, direction, equity, alloc_pct, limit_price, stop_loss=None, take_profit=None, risk_multiplier=1.0):
     """Place a limit order on exchange. Returns order info dict or None."""
     atr = get_atr(exchange, period=14, timeframe="1d")
     sl_distance = abs(limit_price - stop_loss) if stop_loss else 2 * atr
@@ -376,9 +375,18 @@ def open_limit_order(exchange, direction, equity, alloc_pct, limit_price, stop_l
     
     log.info(f"📋 LIMIT {direction} {amount:.3f} BTC @ ${limit_price:,.0f} | ${notional:,.0f} notional | {leverage}x lev")
     
+    # Attach native SL/TP so position is protected from the moment it fills
+    order_params = {"orderLinkId": link_id, "timeInForce": "GTC"}
+    if stop_loss:
+        order_params["stopLoss"] = str(round(stop_loss, 2))
+        order_params["slTriggerBy"] = "MarkPrice"
+    if take_profit:
+        order_params["takeProfit"] = str(round(take_profit, 2))
+        order_params["tpTriggerBy"] = "MarkPrice"
+    
     order = exchange.create_order(
         SYMBOL, "limit", side, amount, limit_price,
-        params={"orderLinkId": link_id, "timeInForce": "GTC"}
+        params=order_params
     )
     order_id = order["id"]
     log.info(f"✅ Limit order placed: {order_id} @ ${limit_price:,.2f}")
@@ -1218,7 +1226,7 @@ def main():
 
     executor_state = load_state()
 
-    if check_daily_loss_limit(executor_state, equity):
+    if check_daily_loss_limit(executor_state, equity) >= DAILY_LOSS_LIMIT:
         return
 
     # Check cold streak — adjusts risk if on losing run
@@ -1242,6 +1250,20 @@ def main():
         if executor_state.get("active_trade"):
             stale = executor_state["active_trade"]
             log.warning(f"🔄 RECONCILE: Clearing stale active_trade (was {stale.get('side','')} @ ${stale.get('entry_price',0):,.0f}) — exchange has no position")
+            # Record outcome for learning — position was closed externally (SL/TP/liquidation)
+            ot_id = stale.get("outcome_tracker_id")
+            if ot_id is not None:
+                try:
+                    last_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+                    outcome_tracker.record_outcome(
+                        record_id=ot_id,
+                        exit_price=last_price,
+                        exit_reason="exchange_closed",
+                        max_favorable_pct=stale.get("max_favorable_pct", 0),
+                        max_adverse_pct=stale.get("max_drawdown_pct", 0),
+                    )
+                except Exception as e:
+                    log.warning(f"Failed to record reconcile outcome: {e}")
             executor_state.pop("active_trade", None)
             save_state(executor_state)
 
@@ -1672,7 +1694,8 @@ def main():
                 daily_pnl=check_daily_loss_limit(executor_state, equity),
                 peak_equity=PEAK_EQUITY,
                 trades_today=len([t for t in executor_state.get("trades", [])
-                    if t.get("timestamp", "")[:10] == datetime.now(timezone.utc).strftime("%Y-%m-%d")]),
+                    if t.get("timestamp", "")[:10] == datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                    and t.get("action", "").startswith("opened_")]),
                 objective_score=obj_score.overall,
                 geopolitical_severity=geo_severity,
                 validation_result=validation,
@@ -1806,6 +1829,18 @@ def main():
     executor_state["last_decision_time"] = record["timestamp"]
     executor_state["trades"] = executor_state.get("trades", [])
     executor_state["trades"].append(record)
+    save_state(executor_state)
+
+    # Sync positions state for green-lane conflict detection
+    active = executor_state.get("active_trade")
+    if active:
+        executor_state.setdefault("positions", {})["committee"] = {
+            "side": "long" if active.get("direction") == "BUY" else "short",
+            "entry": active.get("entry"),
+            "stop_loss": active.get("stop_loss"),
+        }
+    else:
+        executor_state.setdefault("positions", {})["committee"] = None
     save_state(executor_state)
 
     with open(LOG_DIR / f"agent_reports_{trade_date}.json", "w") as f:
