@@ -716,6 +716,9 @@ def create_agents_graph():
     config["llm_provider"] = "anthropic"
     config["deep_think_llm"] = "claude-opus-4-6"
     config["quick_think_llm"] = "claude-sonnet-4-20250514"
+    # Fallback to OpenRouter/Minimax M2.5 on Anthropic rate limits
+    config["fallback_provider"] = "openrouter"
+    config["fallback_model"] = "minimax/minimax-m2.5"
 
     ta = CryptoTradingAgentsGraph(
         selected_analysts=["market", "sentiment", "fundamentals", "news"],

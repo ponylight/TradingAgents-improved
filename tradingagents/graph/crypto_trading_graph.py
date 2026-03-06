@@ -12,6 +12,7 @@ from typing import Dict, Any, Tuple, List, Optional
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.llm_clients import create_llm_client
+from tradingagents.llm_clients.fallback import FallbackLLM
 from tradingagents.agents import *
 from tradingagents.agents.managers.fund_manager import create_fund_manager
 from tradingagents.utils.telemetry import wrap_with_telemetry
@@ -127,8 +128,25 @@ class CryptoTradingAgentsGraph:
             **llm_kwargs,
         )
 
-        self.deep_thinking_llm = wrap_with_telemetry(deep_client.get_llm(), "deep/opus")
-        self.quick_thinking_llm = wrap_with_telemetry(quick_client.get_llm(), "quick/sonnet")
+        deep_llm = deep_client.get_llm()
+        quick_llm = quick_client.get_llm()
+
+        # Wrap with fallback to OpenRouter/Minimax M2.5 on rate limits
+        fallback_provider = self.config.get("fallback_provider")
+        fallback_model = self.config.get("fallback_model")
+        if fallback_provider and fallback_model:
+            fallback_client = create_llm_client(
+                provider=fallback_provider,
+                model=fallback_model,
+                **llm_kwargs,
+            )
+            fb_llm = fallback_client.get_llm()
+            fb_label = f"{fallback_provider}/{fallback_model}"
+            deep_llm = FallbackLLM(primary=deep_llm, fallback=fb_llm, fallback_label=fb_label)
+            quick_llm = FallbackLLM(primary=quick_llm, fallback=fb_llm, fallback_label=fb_label)
+
+        self.deep_thinking_llm = wrap_with_telemetry(deep_llm, "deep/opus")
+        self.quick_thinking_llm = wrap_with_telemetry(quick_llm, "quick/sonnet")
 
         # Initialize memories
         self.bull_memory = FinancialSituationMemory("bull_memory", self.config)
