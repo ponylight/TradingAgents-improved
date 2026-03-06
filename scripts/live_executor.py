@@ -25,6 +25,10 @@ sys.path.insert(0, str(PROJECT_ROOT))
 load_dotenv(PROJECT_ROOT / ".env")
 
 from tradingagents.graph.crypto_trading_graph import CryptoTradingAgentsGraph
+from tradingagents.scoring.objective_score import calculate_objective_score
+from tradingagents.scoring.geopolitical import detect_geopolitical_events
+from tradingagents.scoring.decision_validator import validate_decision
+from tradingagents.scoring.outcome_tracker import OutcomeTracker
 from tradingagents.agents.utils.agent_trading_modes import extract_recommendation, get_position_transition
 from tradingagents.graph.crypto_trading_graph import CRYPTO_DEFAULT_CONFIG
 from tradingagents.agents.utils.agent_trading_modes import get_position_transition
@@ -1302,11 +1306,67 @@ def main():
     trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     decision, trade_params, reports = run_agents(ta, trade_date, portfolio_ctx)
 
+    # === OBJECTIVE SCORING GUARDRAIL ===
+    try:
+        from tradingagents.dataflows.crypto_technical_brief import build_crypto_technical_brief
+        brief = build_crypto_technical_brief(SYMBOL.replace(":USDT", "").replace("/USDT", "/USDT"))
+        obj_score = calculate_objective_score(brief=brief)
+    except Exception as e:
+        log.warning(f"Objective scoring failed: {e}")
+        from tradingagents.scoring.objective_score import ScoreBreakdown
+        obj_score = ScoreBreakdown()
+
+    # === GEOPOLITICAL EVENT DETECTION ===
+    news_texts = []
+    news_report = reports.get("news_report", "") if isinstance(reports, dict) else ""
+    if news_report:
+        news_texts = [line.strip() for line in news_report.split("\n") if len(line.strip()) > 20]
+    geo_severity, geo_events = detect_geopolitical_events(news_texts)
+    if geo_severity < 0:
+        # Factor geopolitical risk into objective score
+        obj_score.macro = round(max(-100, obj_score.macro + geo_severity * 0.5), 1)
+        obj_score.overall = round(
+            obj_score.technical * 0.25 + obj_score.momentum * 0.25 +
+            obj_score.volume * 0.15 + obj_score.sentiment * 0.20 +
+            obj_score.macro * 0.15, 1
+        )
+
+    # === DECISION VALIDATION ===
+    current_pos_str = "NEUTRAL"
+    if has_position and positions:
+        current_pos_str = positions[0]["side"].upper()
+    
+    validation = validate_decision(
+        agent_decision=decision,
+        agent_confidence=trade_params.get("confidence", 5),
+        objective_score=obj_score,
+        trade_params=trade_params,
+        current_position=current_pos_str,
+        geopolitical_severity=geo_severity,
+        geopolitical_events=geo_events,
+    )
+    
+    # Apply validation result
+    original_decision = decision
+    if validation.overridden:
+        decision = validation.validated_decision
+        log.warning(f"\U0001f6a8 DECISION OVERRIDDEN: {original_decision} \u2192 {decision} | Reason: {validation.override_reason}")
+    
+    if validation.warnings:
+        for w in validation.warnings:
+            log.warning(f"\u26a0\ufe0f  Validation: {w}")
+
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "decision": decision,
+        "original_decision": original_decision if validation.overridden else None,
         "equity": equity,
         "params": trade_params,
+        "objective_score": obj_score.overall,
+        "objective_signal": obj_score.signal,
+        "geo_severity": geo_severity if geo_severity < 0 else None,
+        "validation_warnings": validation.warnings if validation.warnings else None,
+        "was_overridden": validation.overridden,
     }
 
     # Cancel pending limit order if agents changed direction
