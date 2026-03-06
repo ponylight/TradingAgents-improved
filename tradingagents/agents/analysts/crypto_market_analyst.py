@@ -21,7 +21,20 @@ def create_crypto_market_analyst(llm):
     # Pre-compute the technical brief (no LLM needed)
     from tradingagents.dataflows.crypto_technical_brief import build_crypto_technical_brief
 
-    tools = []  # Minimal tools — brief is pre-computed
+    # Backtest tools — lets the analyst validate hypotheses with real data
+    from tradingagents.agents.utils.backtest_tools import backtest_strategy, compare_strategies
+
+    @tool
+    def run_backtest(strategy: str, symbol: str = "BTC/USDT", days: int = 30) -> str:
+        """Backtest a strategy (ma_crossover, macd, breakout, rsi_reversal, bollinger_bands) on historical data."""
+        return backtest_strategy(strategy, symbol, days)
+
+    @tool
+    def compare_strats(strategies: str = "ma_crossover,macd,breakout", symbol: str = "BTC/USDT", days: int = 30) -> str:
+        """Compare multiple strategies side-by-side on the same data."""
+        return compare_strategies(strategies, symbol, days)
+
+    tools = [run_backtest, compare_strats]
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
     def analyst_node(state) -> dict:

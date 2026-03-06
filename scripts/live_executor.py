@@ -29,6 +29,8 @@ from tradingagents.scoring.objective_score import calculate_objective_score
 from tradingagents.scoring.geopolitical import detect_geopolitical_events
 from tradingagents.scoring.decision_validator import validate_decision
 from tradingagents.scoring.outcome_tracker import OutcomeTracker
+from tradingagents.scoring.risk_manager import RiskManager
+from tradingagents.scoring.stability import compute_system_stability
 from tradingagents.agents.utils.agent_trading_modes import extract_recommendation, get_position_transition
 from tradingagents.graph.crypto_trading_graph import CRYPTO_DEFAULT_CONFIG
 from tradingagents.agents.utils.agent_trading_modes import get_position_transition
@@ -1553,6 +1555,35 @@ def main():
                         else:
                             stop_loss = pre_price + (2 * atr)
                         log.info(f'🔧 Recalculated SL from 2×ATR: ${stop_loss:,.0f}')
+
+            # === CONSOLIDATED RISK CHECK ===
+            risk_actions = risk_mgr.check_all(
+                equity=equity,
+                proposed_direction=new_direction,
+                proposed_alloc_pct=alloc_pct,
+                proposed_leverage=10,
+                current_position=None,
+                daily_pnl=check_daily_loss_limit(executor_state, equity),
+                peak_equity=PEAK_EQUITY,
+                trades_today=len([t for t in executor_state.get("trades", [])
+                    if t.get("timestamp", "")[:10] == datetime.now(timezone.utc).strftime("%Y-%m-%d")]),
+                objective_score=obj_score.overall,
+                geopolitical_severity=geo_severity,
+                validation_result=validation,
+            )
+            
+            blocked = [a for a in risk_actions if a.action in ("BLOCK", "FLATTEN")]
+            if blocked:
+                log.warning(f"\U0001f6d1 RISK BLOCKED: {blocked[0].reason}")
+                record["risk_blocked"] = blocked[0].reason
+                record["transition"] = "RISK_BLOCKED"
+                executor_state["trades"] = executor_state.get("trades", [])
+                executor_state["trades"].append(record)
+                save_state(executor_state)
+                return
+            
+            # Apply any REDUCE adjustments
+            alloc_pct = risk_mgr.get_adjusted_allocation(alloc_pct, risk_actions)
 
             # Respect agent's entry price — only open if market is at or better than proposed entry
             agent_entry = trade_params.get("entry_price")
