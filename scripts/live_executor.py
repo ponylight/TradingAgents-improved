@@ -416,6 +416,20 @@ def manage_trailing_stop(exchange, positions, state):
         if not trade_info:
             continue
 
+        # Track max adverse excursion (worst unrealized P&L during trade)
+        if side == "long":
+            unrealized_pct = ((current - entry) / entry) * 100
+        else:
+            unrealized_pct = ((entry - current) / entry) * 100
+        prev_max_dd = trade_info.get("max_drawdown_pct", 0.0)
+        if unrealized_pct < prev_max_dd:
+            trade_info["max_drawdown_pct"] = round(unrealized_pct, 2)
+            log.info(f"📉 New max drawdown: {unrealized_pct:.2f}% (was {prev_max_dd:.2f}%)")
+        # Also track peak favorable excursion
+        prev_peak = trade_info.get("max_favorable_pct", 0.0)
+        if unrealized_pct > prev_peak:
+            trade_info["max_favorable_pct"] = round(unrealized_pct, 2)
+
         atr = get_atr(exchange)
         trail_dist = ATR_TRAIL_MULTIPLE * atr
         opened_at = trade_info.get("opened_at", "")
