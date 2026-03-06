@@ -89,10 +89,9 @@ def get_orderbook_depth(
 def get_crypto_fear_greed() -> str:
     """
     Get the Crypto Fear & Greed Index (last 30 days).
-    0-25: Extreme Fear (potential buying opportunity)
-    25-50: Fear
-    50-75: Greed
-    75-100: Extreme Greed (potential selling signal)
+    A lagged composite of volatility, momentum, social volume, and surveys.
+    0-25: Extreme Fear, 25-50: Fear, 50-75: Greed, 75-100: Extreme Greed.
+    NOTE: This is a lagging indicator — weight it LOW relative to funding rates and OI.
     """
     return get_fear_greed_index()
 
