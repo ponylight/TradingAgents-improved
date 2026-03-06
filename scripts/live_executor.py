@@ -428,10 +428,14 @@ def check_pending_limit_order(exchange, executor_state):
             age_h = (datetime.now(timezone.utc) - datetime.fromisoformat(created_at)).total_seconds() / 3600
             if age_h > 24 and status in ("open", "new"):
                 log.info(f"\u23f3 Cancelling expired limit order {order_id} ({age_h:.0f}h old)")
+                # Check for partial fills before cancelling
+                filled_qty = float(order.get("filled", 0))
                 try:
                     exchange.cancel_order(order_id, SYMBOL)
                 except Exception as e:
                     log.warning(f"Failed to cancel order: {e}")
+                if filled_qty > 0:
+                    log.warning(f"\u26a0\ufe0f Expired order had partial fill: {filled_qty:.3f} BTC — will be picked up as active position")
                 executor_state.pop("pending_limit_order", None)
                 save_state(executor_state)
                 return False
@@ -485,10 +489,45 @@ def check_pending_limit_order(exchange, executor_state):
         return True
     
     elif status in ("canceled", "cancelled", "expired", "rejected"):
-        log.info(f"\u274c Limit order {order_id} was {status}")
+        filled_qty = float(order.get("filled", 0))
+        if filled_qty > 0:
+            # Partial fill — we have a live position that needs management!
+            fill_price = float(order.get("average") or pending["limit_price"])
+            direction = pending["direction"]
+            stop_loss = pending.get("stop_loss")
+            tp1 = pending.get("tp1")
+            log.warning(f"\u26a0\ufe0f Partial fill on {status} order: {filled_qty:.3f} BTC @ ${fill_price:,.2f} — creating active_trade")
+            
+            atr = get_atr(exchange)
+            if direction == "BUY":
+                initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
+            else:
+                initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
+            
+            executor_state["active_trade"] = {
+                "direction": direction,
+                "entry": fill_price,
+                "amount": filled_qty,
+                "stop_loss": stop_loss,
+                "tp1": tp1,
+                "tp2": pending.get("tp2"),
+                "trailing_stop": initial_trail,
+                "opened_at": datetime.now(timezone.utc).isoformat(),
+                "confidence": pending.get("confidence"),
+                "atr_at_entry": atr,
+                "from_limit_order": True,
+                "partial_fill": True,
+            }
+            # Ensure SL/TP on exchange for the filled portion
+            if stop_loss:
+                sync_stop_loss_to_exchange(exchange, direction.lower(), filled_qty, stop_loss)
+            if tp1:
+                set_take_profit(exchange, direction, filled_qty, tp1)
+        else:
+            log.info(f"\u274c Limit order {order_id} was {status} (no fills)")
         executor_state.pop("pending_limit_order", None)
         save_state(executor_state)
-        return False
+        return filled_qty > 0
     
     else:  # Still open
         fill_pct = float(order.get("filled", 0)) / float(order.get("amount", 1)) * 100
@@ -517,7 +556,14 @@ def open_position(exchange, direction, equity, alloc_pct, stop_loss=None, risk_m
 
     # Mechanical sizing: risk exactly RISK_PER_TRADE of equity
     atr = get_atr(exchange, period=14, timeframe="1d")
-    sl_distance = 2 * atr  # 2×daily ATR stop
+    # Use actual SL distance when provided, fallback to 2×ATR
+    if stop_loss:
+        sl_distance = abs(price - stop_loss)
+        if sl_distance < 0.001 * price:  # SL too close (<0.1%), use ATR
+            log.warning(f"⚠️ SL ${stop_loss:,.0f} too close to price ${price:,.0f} — using 2×ATR")
+            sl_distance = 2 * atr
+    else:
+        sl_distance = 2 * atr  # 2×daily ATR stop
     effective_risk = RISK_PER_TRADE * risk_multiplier
     risk_dollars = equity * effective_risk
     notional = (risk_dollars / sl_distance) * price  # exact notional for 1% risk
@@ -1267,6 +1313,34 @@ def main():
             executor_state.pop("active_trade", None)
             save_state(executor_state)
 
+    # Reverse reconcile: exchange has position but we lost active_trade (crash recovery)
+    if has_position and not executor_state.get("active_trade"):
+        p = positions[0]
+        entry_price = float(p["entryPrice"])
+        contracts = abs(float(p["contracts"]))
+        side = p["side"]
+        log.warning(f"🔄 REVERSE RECONCILE: Exchange has {side} {contracts} BTC @ ${entry_price:,.0f} but no active_trade — reconstructing")
+        atr = get_atr(exchange)
+        if side == "long":
+            default_sl = entry_price - (2 * atr)
+            default_trail = entry_price - (ATR_TRAIL_MULTIPLE * atr)
+        else:
+            default_sl = entry_price + (2 * atr)
+            default_trail = entry_price + (ATR_TRAIL_MULTIPLE * atr)
+        executor_state["active_trade"] = {
+            "direction": "BUY" if side == "long" else "SELL",
+            "entry": entry_price,
+            "amount": contracts,
+            "stop_loss": default_sl,
+            "trailing_stop": default_trail,
+            "opened_at": datetime.now(timezone.utc).isoformat(),
+            "confidence": 5,
+            "atr_at_entry": atr,
+            "reconstructed": True,
+        }
+        sync_stop_loss_to_exchange(exchange, side, contracts, default_sl)
+        save_state(executor_state)
+
     # Check if a pending limit order was filled since last cycle
     if check_pending_limit_order(exchange, executor_state):
         positions = get_positions(exchange)
@@ -1544,13 +1618,15 @@ def main():
                         sl_is_tighter = proposed_sl < current_trail  # lower SL = tighter for shorts
                         sl_not_breached = current_price < proposed_sl
                     if sl_not_breached and proposed_sl != current_trail:
-                        direction_str = "tighter" if sl_is_tighter else "wider"
-                        log.info(f"🛡️ Fund manager {direction_str} SL: ${current_trail:,.2f} → ${proposed_sl:,.2f} (price ${current_price:,.2f})")
-                        active["trailing_stop"] = proposed_sl
-                        active["stop_loss"] = proposed_sl  # Keep stop_loss in sync
-                        sync_stop_loss_to_exchange(exchange, direction, amount, proposed_sl)
-                        record["sl_updated"] = proposed_sl
-                        save_state(executor_state)  # Persist SL update immediately
+                        if not sl_is_tighter:
+                            log.warning(f"⚠️ Rejecting SL widening: ${current_trail:,.2f} → ${proposed_sl:,.2f} (monotonic tightening enforced)")
+                        else:
+                            log.info(f"🛡️ Fund manager tighter SL: ${current_trail:,.2f} → ${proposed_sl:,.2f} (price ${current_price:,.2f})")
+                            active["trailing_stop"] = proposed_sl
+                            active["stop_loss"] = proposed_sl  # Keep stop_loss in sync
+                            sync_stop_loss_to_exchange(exchange, direction, amount, proposed_sl)
+                            record["sl_updated"] = proposed_sl
+                            save_state(executor_state)  # Persist SL update immediately
                     elif not sl_not_breached:
                         log.error(f"🚨 ALERT: Fund manager SL ${proposed_sl:,.2f} already breached (price ${current_price:,.2f}), keeping ${current_trail:,.2f}")
         log.info(f"⏸️  {action} — no action")
@@ -1815,6 +1891,20 @@ def main():
                     log.warning(f"Failed to record decision in outcome tracker: {e}")
             else:
                 record["action"] = "failed"
+
+    # Compact trades history — keep last 200 entries, archive older
+    trades = executor_state.get("trades", [])
+    if len(trades) > 200:
+        archived = trades[:-200]
+        executor_state["trades"] = trades[-200:]
+        archive_file = LOG_DIR / f"trades_archive_{datetime.now(timezone.utc).strftime('%Y%m')}.json"
+        try:
+            existing = json.loads(archive_file.read_text()) if archive_file.exists() else []
+            existing.extend(archived)
+            archive_file.write_text(json.dumps(existing, indent=2, default=str))
+            log.info(f"📦 Archived {len(archived)} old trade records")
+        except Exception as e:
+            log.warning(f"Failed to archive trades: {e}")
 
     executor_state["last_run"] = record["timestamp"]
     executor_state["last_decision"] = decision
