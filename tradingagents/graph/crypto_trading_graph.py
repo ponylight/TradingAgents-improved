@@ -34,6 +34,8 @@ from tradingagents.agents.utils.crypto_tools import (
     get_orderbook_depth,
     get_crypto_fear_greed,
     get_liquidation_info,
+    get_macro_signal_radar,
+    get_stablecoin_peg_health,
 )
 
 # Macro tools
@@ -207,6 +209,8 @@ class CryptoTradingAgentsGraph:
             ]),
             "fundamentals": ToolNode([
                 get_onchain_fundamentals,
+                get_macro_signal_radar,
+                get_stablecoin_peg_health,
             ]),
             "news": ToolNode([
                 get_news,
@@ -270,8 +274,18 @@ class CryptoTradingAgentsGraph:
         risk_manager_node = create_risk_manager(
             self.deep_thinking_llm, self.risk_manager_memory
         )
+        # Fund manager can use a separate LLM (e.g. GPT-5.4 for financial reasoning)
+        fund_manager_llm = self.deep_thinking_llm
+        fm_model = self.config.get("fund_manager_llm")
+        if fm_model:
+            fm_provider = self.config.get("fund_manager_llm_provider", "openrouter")
+            log.info(f"🏦 Fund manager using dedicated LLM: {fm_model} via {fm_provider}")
+            from tradingagents.llm_clients.factory import create_llm_client
+            fm_client = create_llm_client(fm_provider, fm_model)
+            fund_manager_llm = fm_client.get_llm()
+            fund_manager_llm = wrap_with_telemetry(fund_manager_llm, f"fund_manager/{fm_model.split('/')[-1]}")
         fund_manager_node = create_fund_manager(
-            self.deep_thinking_llm, self.fund_manager_memory
+            fund_manager_llm, self.fund_manager_memory
         )
 
         # Build workflow

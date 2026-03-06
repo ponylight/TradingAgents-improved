@@ -611,40 +611,182 @@ def open_position(exchange, direction, equity, alloc_pct, stop_loss=None, risk_m
     return {"order": order, "fill_price": fill_price, "amount": amount}
 
 
+def set_take_profits(exchange, direction, amount, tp1_price, tp2_price=None):
+    """Place multiple TP conditional orders on entry.
+
+    TP1: closes TP1_CLOSE_PCT (50%) of position
+    TP2: closes remaining (50%) if provided
+    Uses conditional market orders with reduceOnly=True.
+
+    Returns list of order dicts: [{"level": 1, "order_id": ..., "price": ..., "amount": ...}, ...]
+    """
+    dir_lower = str(direction).lower()
+    is_short = dir_lower in ("sell", "short")
+    close_side = "buy" if is_short else "sell"
+    # For shorts, TP triggers when price falls → triggerDirection=2
+    # For longs, TP triggers when price rises → triggerDirection=1
+    trigger_dir = 2 if is_short else 1
+    tp_orders = []
+
+    # TP1 — partial close
+    tp1_amount = float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))
+    try:
+        order = exchange.create_order(
+            SYMBOL, "market", close_side, tp1_amount,
+            params={
+                "reduceOnly": True,
+                "triggerPrice": str(round(tp1_price, 2)),
+                "triggerBy": "MarkPrice",
+                "triggerDirection": trigger_dir,
+            }
+        )
+        tp_orders.append({"level": 1, "order_id": order["id"], "price": tp1_price, "amount": tp1_amount})
+        log.info(f"🎯 TP1 order placed @ ${tp1_price:,.2f} for {tp1_amount} BTC ({TP1_CLOSE_PCT*100:.0f}%)")
+    except Exception as e:
+        log.warning(f"⚠️ Failed to place TP1 order: {e}")
+
+    # TP2 — close remainder
+    if tp2_price:
+        tp2_amount = float(exchange.amount_to_precision(SYMBOL, amount * (1 - TP1_CLOSE_PCT)))
+        try:
+            order = exchange.create_order(
+                SYMBOL, "market", close_side, tp2_amount,
+                params={
+                    "reduceOnly": True,
+                    "triggerPrice": str(round(tp2_price, 2)),
+                    "triggerBy": "MarkPrice",
+                    "triggerDirection": trigger_dir,
+                }
+            )
+            tp_orders.append({"level": 2, "order_id": order["id"], "price": tp2_price, "amount": tp2_amount})
+            log.info(f"🎯 TP2 order placed @ ${tp2_price:,.2f} for {tp2_amount} BTC ({(1-TP1_CLOSE_PCT)*100:.0f}%)")
+        except Exception as e:
+            log.warning(f"⚠️ Failed to place TP2 order: {e}")
+
+    return tp_orders
+
+
+def cancel_tp_orders(exchange, tp_orders):
+    """Cancel existing TP conditional orders."""
+    for tp in tp_orders:
+        try:
+            exchange.cancel_order(tp["order_id"], SYMBOL)
+            log.info(f"🗑️ Cancelled TP{tp['level']} order {tp['order_id'][:12]}")
+        except Exception as e:
+            # Order might already be filled or expired
+            log.debug(f"Could not cancel TP{tp['level']} order {tp['order_id'][:12]}: {e}")
+
+
+def sync_take_profits(exchange, direction, amount, active_trade, tp1_price=None, tp2_price=None):
+    """Update TP orders when agents propose new levels. Cancel old, place new.
+    Skips TP1 if already hit. Skips unchanged levels to avoid churn."""
+    old_orders = active_trade.get("tp_orders", [])
+    tp1_hit = active_trade.get("tp1_hit", False)
+    new_orders = []
+
+    # Determine which levels need updating
+    old_tp1 = next((o for o in old_orders if o["level"] == 1), None)
+    old_tp2 = next((o for o in old_orders if o["level"] == 2), None)
+
+    dir_lower = str(direction).lower()
+    is_short = dir_lower in ("sell", "short")
+    close_side = "buy" if is_short else "sell"
+    trigger_dir = 2 if is_short else 1
+
+    # TP1 — only update if not yet hit
+    if not tp1_hit and tp1_price:
+        needs_place = False
+        if old_tp1 and abs(old_tp1["price"] - tp1_price) > 1.0:
+            # Cancel old TP1
+            try:
+                exchange.cancel_order(old_tp1["order_id"], SYMBOL)
+                log.info(f"🗑️ Cancelled old TP1 @ ${old_tp1['price']:,.2f}")
+            except Exception as e:
+                log.warning(f"⚠️ Could not cancel old TP1: {e} — placing new anyway")
+            needs_place = True
+        elif not old_tp1:
+            # No existing TP1 order (missing/failed/restart) — place fresh
+            needs_place = True
+            log.info(f"🎯 No existing TP1 order — placing @ ${tp1_price:,.2f}")
+        else:
+            new_orders.append(old_tp1)  # Keep existing (unchanged)
+
+        if needs_place:
+            tp1_amount = float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))
+            if tp1_amount > 0:
+                try:
+                    order = exchange.create_order(
+                        SYMBOL, "market", close_side, tp1_amount,
+                        params={
+                            "reduceOnly": True,
+                            "triggerPrice": str(round(tp1_price, 2)),
+                            "triggerBy": "MarkPrice",
+                            "triggerDirection": trigger_dir,
+                        }
+                    )
+                    new_orders.append({"level": 1, "order_id": order["id"], "price": tp1_price, "amount": tp1_amount})
+                    log.info(f"🎯 TP1 set → ${tp1_price:,.2f} for {tp1_amount} BTC")
+                except Exception as e:
+                    log.warning(f"⚠️ Failed to place TP1: {e}")
+            else:
+                log.warning(f"⚠️ TP1 amount rounded to 0 — skipping")
+
+    # TP2 — update if price changed or missing
+    if tp2_price:
+        needs_place = False
+        if old_tp2 and abs(old_tp2["price"] - tp2_price) > 1.0:
+            try:
+                exchange.cancel_order(old_tp2["order_id"], SYMBOL)
+                log.info(f"🗑️ Cancelled old TP2 @ ${old_tp2['price']:,.2f}")
+            except Exception as e:
+                log.warning(f"⚠️ Could not cancel old TP2: {e} — placing new anyway")
+            needs_place = True
+        elif not old_tp2:
+            needs_place = True
+            log.info(f"🎯 No existing TP2 order — placing @ ${tp2_price:,.2f}")
+        else:
+            new_orders.append(old_tp2)  # Keep existing
+
+        if needs_place:
+            remaining = amount * (1 - TP1_CLOSE_PCT) if not tp1_hit else amount
+            tp2_amount = float(exchange.amount_to_precision(SYMBOL, remaining))
+            if tp2_amount > 0:
+                try:
+                    order = exchange.create_order(
+                        SYMBOL, "market", close_side, tp2_amount,
+                        params={
+                            "reduceOnly": True,
+                            "triggerPrice": str(round(tp2_price, 2)),
+                            "triggerBy": "MarkPrice",
+                            "triggerDirection": trigger_dir,
+                        }
+                    )
+                    new_orders.append({"level": 2, "order_id": order["id"], "price": tp2_price, "amount": tp2_amount})
+                    log.info(f"🎯 TP2 set → ${tp2_price:,.2f} for {tp2_amount} BTC")
+                except Exception as e:
+                    log.warning(f"⚠️ Failed to place TP2: {e}")
+            else:
+                log.warning(f"⚠️ TP2 amount rounded to 0 — skipping")
+    elif not tp2_price and old_tp2:
+        new_orders.append(old_tp2)  # No TP2 proposed, keep existing
+
+    return new_orders
+
+
+# Legacy wrapper for backward compatibility
 def set_take_profit(exchange, direction, amount, tp_price):
-    """Set TP on position (native TP/SL, not separate order)."""
-    try:
-        bybit_symbol = SYMBOL.replace("/", "").replace(":USDT", "")
-        exchange.private_post_v5_position_trading_stop({
-            "category": "linear",
-            "symbol": bybit_symbol,
-            "takeProfit": str(round(tp_price, 2)),
-            "tpTriggerBy": "MarkPrice",
-            "tpSize": str(float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))),
-            "positionIdx": 0,
-        })
-        tp_amount = float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))
-        log.info(f"🎯 TP1 set @ ${tp_price:,.2f} for {tp_amount} BTC ({TP1_CLOSE_PCT*100:.0f}%) (position TP/SL)")
-    except Exception as e:
-        log.warning(f"⚠️ Failed to set TP on position: {e}")
+    """Legacy single-TP wrapper. Places TP1 only."""
+    orders = set_take_profits(exchange, direction, amount, tp_price)
+    return orders
 
 
-def sync_take_profit_to_exchange(exchange, direction, amount, new_tp):
-    """Update the position take-profit on Bybit when agents propose a new TP."""
-    try:
-        bybit_symbol = SYMBOL.replace("/", "").replace(":USDT", "")
-        tp_size = float(exchange.amount_to_precision(SYMBOL, amount * TP1_CLOSE_PCT))
-        exchange.private_post_v5_position_trading_stop({
-            "category": "linear",
-            "symbol": bybit_symbol,
-            "takeProfit": str(round(new_tp, 2)),
-            "tpTriggerBy": "MarkPrice",
-            "tpSize": str(tp_size),
-            "positionIdx": 0,
-        })
-        log.info(f"🎯 Exchange TP synced to ${new_tp:,.2f} (position TP/SL)")
-    except Exception as e:
-        log.warning(f"⚠️ Failed to sync TP to exchange: {e}")
+def sync_take_profit_to_exchange(exchange, direction, amount, new_tp, tp1_hit=False):
+    """Legacy single-TP sync wrapper."""
+    if tp1_hit:
+        log.info(f"ℹ️ TP1 already hit — skipping TP sync (remaining position is trail-only)")
+        return
+    # This legacy path doesn't have access to active_trade, so just log
+    log.info(f"ℹ️ Use sync_take_profits() for multi-TP management")
 
 
 def sync_stop_loss_to_exchange(exchange, direction, amount, new_sl):
@@ -663,6 +805,36 @@ def sync_stop_loss_to_exchange(exchange, direction, amount, new_sl):
         log.warning(f"⚠️ Failed to sync SL to exchange: {e}")
 
 
+def set_native_trailing_stop(exchange, direction, entry_price, atr):
+    """Set Bybit's native trailing stop — trails continuously on Bybit's side.
+
+    trailingStop: distance from peak price (ATR_TRAIL_MULTIPLE × ATR)
+    activePrice: only activates after trade is in profit (entry ± 0.5×ATR)
+
+    This replaces our 4H polling-based trailing with real-time exchange trailing.
+    """
+    trail_distance = round(ATR_TRAIL_MULTIPLE * atr, 2)
+    # Activate trailing stop only after some profit (0.5 × ATR move in our favor)
+    activation_offset = round(0.5 * atr, 2)
+    if direction in ("SELL", "short"):
+        active_price = round(entry_price - activation_offset, 2)  # Short: activate below entry
+    else:
+        active_price = round(entry_price + activation_offset, 2)  # Long: activate above entry
+
+    try:
+        bybit_symbol = SYMBOL.replace("/", "").replace(":USDT", "")
+        exchange.private_post_v5_position_trading_stop({
+            "category": "linear",
+            "symbol": bybit_symbol,
+            "trailingStop": str(trail_distance),
+            "activePrice": str(active_price),
+            "positionIdx": 0,
+        })
+        log.info(f"📏 Native trailing stop set: distance=${trail_distance:,.0f} (ATR×{ATR_TRAIL_MULTIPLE}), activates @ ${active_price:,.0f}")
+    except Exception as e:
+        log.warning(f"⚠️ Failed to set native trailing stop: {e}")
+
+
 def manage_trailing_stop(exchange, positions, state):
     """Check and update trailing stop for existing positions."""
     for p in positions:
@@ -674,6 +846,43 @@ def manage_trailing_stop(exchange, positions, state):
         trade_info = state.get("active_trade", {})
         if not trade_info:
             continue
+
+        # --- TP1 hit detection ---
+        # If exchange position is smaller than our tracked amount, TP1 was filled
+        original_amount = trade_info.get("amount", contracts)
+        if not trade_info.get("tp1_hit") and contracts < original_amount * 0.9:
+            # Position shrank by >10% — TP1 partial close fired
+            pnl_on_closed = 0
+            closed_qty = original_amount - contracts
+            if side == "long":
+                tp1_price = trade_info.get("tp1", current)
+                pnl_on_closed = (tp1_price - entry) * closed_qty
+            else:
+                tp1_price = trade_info.get("tp1", current)
+                pnl_on_closed = (entry - tp1_price) * closed_qty
+            trade_info["tp1_hit"] = True
+            trade_info["tp1_fill_price"] = tp1_price
+            trade_info["tp1_closed_qty"] = closed_qty
+            trade_info["amount"] = contracts  # Update to remaining size
+            log.info(f"🎯 TP1 HIT! Closed {closed_qty:.3f} BTC @ ~${tp1_price:,.0f} (${pnl_on_closed:,.2f} realized)")
+            log.info(f"📊 Remaining: {contracts:.3f} BTC — TP2 + trailing stop for remainder")
+
+            # Remove filled TP1 from tp_orders tracking
+            tp_orders = trade_info.get("tp_orders", [])
+            trade_info["tp_orders"] = [o for o in tp_orders if o.get("level") != 1]
+
+            # Record partial close in closed_trades
+            state.setdefault("closed_trades", []).append({
+                "direction": trade_info.get("direction", side),
+                "entry": entry,
+                "exit": tp1_price,
+                "amount": closed_qty,
+                "pnl_pct": round(((tp1_price - entry) / entry * 100) if side == "long" else ((entry - tp1_price) / entry * 100), 4),
+                "exit_reason": "tp1_partial",
+                "opened_at": trade_info.get("opened_at", ""),
+                "closed_at": datetime.now(timezone.utc).isoformat(),
+            })
+            save_state(state)
 
         # Track max adverse excursion (worst unrealized P&L during trade)
         if side == "long":
@@ -691,6 +900,13 @@ def manage_trailing_stop(exchange, positions, state):
 
         atr = get_atr(exchange)
         trail_dist = ATR_TRAIL_MULTIPLE * atr
+        # Refresh native trailing stop if ATR changed significantly (>15%)
+        prev_atr = trade_info.get("atr_at_entry", atr)
+        if abs(atr - prev_atr) / max(prev_atr, 1) > 0.15:
+            log.info(f"📏 ATR shifted: ${prev_atr:,.0f} → ${atr:,.0f} — refreshing native trailing stop")
+            set_native_trailing_stop(exchange, side, entry, atr)
+            trade_info["atr_at_entry"] = atr
+
         opened_at = trade_info.get("opened_at", "")
 
         # Time-based exit: close if stale
@@ -702,6 +918,7 @@ def manage_trailing_stop(exchange, positions, state):
                 pnl_pct = ((current - entry) / entry) if side == "long" else ((entry - current) / entry)
                 if abs(pnl_pct) < 0.01:  # Less than 1% move
                     log.info(f"⏰ TIME EXIT: {bars_held:.0f} bars held, only {pnl_pct*100:.1f}% move. Closing.")
+                    cancel_tp_orders(exchange, trade_info.get("tp_orders", []))
                     close_position(exchange, p)
                     returns_pct = pnl_pct * 100
                     state["pending_reflection"] = {"returns_pct": returns_pct, "direction": side, "entry": entry, "exit": current}
@@ -719,6 +936,7 @@ def manage_trailing_stop(exchange, positions, state):
                 sync_stop_loss_to_exchange(exchange, "long", contracts, new_trail)
             if current <= trade_info.get("trailing_stop", 0):
                 log.info(f"🔔 TRAILING STOP HIT @ ${current:,.0f} (trail was ${trade_info['trailing_stop']:,.0f})")
+                cancel_tp_orders(exchange, trade_info.get("tp_orders", []))
                 close_position(exchange, p)
                 returns_pct = ((current - entry) / entry) * 100
                 state["pending_reflection"] = {"returns_pct": returns_pct, "direction": "long", "entry": entry, "exit": current}
@@ -733,6 +951,7 @@ def manage_trailing_stop(exchange, positions, state):
                 sync_stop_loss_to_exchange(exchange, "short", contracts, new_trail)
             if current >= trade_info.get("trailing_stop", float("inf")):
                 log.info(f"🔔 TRAILING STOP HIT @ ${current:,.0f} (trail was ${trade_info['trailing_stop']:,.0f})")
+                cancel_tp_orders(exchange, trade_info.get("tp_orders", []))
                 close_position(exchange, p)
                 returns_pct = ((entry - current) / entry) * 100
                 state["pending_reflection"] = {"returns_pct": returns_pct, "direction": "short", "entry": entry, "exit": current}
@@ -982,6 +1201,9 @@ def create_agents_graph(analysts_to_run=None):
     # Fallback to OpenRouter/Minimax M2.5 on Anthropic rate limits
     config["fallback_provider"] = "openrouter"
     config["fallback_model"] = "minimax/minimax-m2.5"
+    # Fund manager override — GPT-5.4 for superior financial reasoning (A/B test)
+    config["fund_manager_llm"] = "openai/gpt-5.4"
+    config["fund_manager_llm_provider"] = "openrouter"
 
     # Only include analysts that need fresh runs
     selected = analysts_to_run or ["market", "sentiment", "fundamentals", "news"]
@@ -1293,24 +1515,77 @@ def main():
     else:
         log.info("📊 No open positions")
         # Reconcile: clear stale active_trade if exchange has no position
-        if executor_state.get("active_trade"):
-            stale = executor_state["active_trade"]
-            log.warning(f"🔄 RECONCILE: Clearing stale active_trade (was {stale.get('side','')} @ ${stale.get('entry_price',0):,.0f}) — exchange has no position")
+        stale = executor_state.get("active_trade")
+        stale_committee = executor_state.get("positions", {}).get("committee")
+        # Use whichever has data (active_trade is authoritative, fall back to positions.committee)
+        stale_data = stale or stale_committee
+        if stale_data:
+            # Normalize field names: active_trade uses direction/entry, committee uses side/entry
+            stale_side = stale_data.get("direction", stale_data.get("side", "?"))
+            stale_entry = float(stale_data.get("entry", stale_data.get("entry_price", 0)))
+            stale_amount = float(stale_data.get("amount", stale_data.get("contracts", 0)))
+            log.warning(f"🔄 RECONCILE: Position closed externally (was {stale_side} {stale_amount:.3f} BTC @ ${stale_entry:,.0f})")
+
+            # Calculate PnL from last price
+            reconcile_price = None
+            try:
+                last_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+                reconcile_price = last_price
+                if stale_side.upper() in ("BUY", "LONG"):
+                    pnl_pct = ((last_price - stale_entry) / stale_entry * 100) if stale_entry > 0 else 0
+                else:
+                    pnl_pct = ((stale_entry - last_price) / stale_entry * 100) if stale_entry > 0 else 0
+                log.info(f"📊 Estimated P&L: {pnl_pct:+.2f}% (entry ${stale_entry:,.0f} → last ${last_price:,.0f})")
+
+                # Record to closed_trades for bookkeeping
+                executor_state.setdefault("closed_trades", []).append({
+                    "direction": stale_side,
+                    "entry": stale_entry,
+                    "exit": last_price,
+                    "amount": stale_amount,
+                    "pnl_pct": round(pnl_pct, 4),
+                    "exit_reason": "exchange_closed",
+                    "opened_at": stale_data.get("opened_at", ""),
+                    "closed_at": datetime.now(timezone.utc).isoformat(),
+                    "confidence": stale_data.get("confidence"),
+                    "tp1": stale_data.get("tp1"),
+                    "tp2": stale_data.get("tp2"),
+                    "stop_loss": stale_data.get("stop_loss"),
+                    "max_favorable_pct": stale_data.get("max_favorable_pct", 0),
+                    "max_drawdown_pct": stale_data.get("max_drawdown_pct", 0),
+                })
+                log.info(f"📝 Recorded closed trade: {stale_side} {stale_amount:.3f} BTC | P&L {pnl_pct:+.2f}%")
+
+                # Set pending reflection so agents can learn from it
+                executor_state["pending_reflection"] = {
+                    "returns_pct": pnl_pct,
+                    "direction": stale_side,
+                    "entry": stale_entry,
+                    "exit": last_price,
+                }
+            except Exception as e:
+                log.warning(f"Failed to calculate reconcile PnL: {e}")
+
             # Record outcome for learning — position was closed externally (SL/TP/liquidation)
-            ot_id = stale.get("outcome_tracker_id")
+            ot_id = stale_data.get("outcome_tracker_id")
             if ot_id is not None:
                 try:
-                    last_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+                    exit_price = reconcile_price if reconcile_price else float(exchange.fetch_ticker(SYMBOL)["last"])
                     outcome_tracker.record_outcome(
                         record_id=ot_id,
-                        exit_price=last_price,
+                        exit_price=exit_price,
                         exit_reason="exchange_closed",
-                        max_favorable_pct=stale.get("max_favorable_pct", 0),
-                        max_adverse_pct=stale.get("max_drawdown_pct", 0),
+                        max_favorable_pct=stale_data.get("max_favorable_pct", 0),
+                        max_adverse_pct=stale_data.get("max_drawdown_pct", 0),
                     )
                 except Exception as e:
                     log.warning(f"Failed to record reconcile outcome: {e}")
+
+            # Clear both active_trade AND positions.committee
             executor_state.pop("active_trade", None)
+            if executor_state.get("positions", {}).get("committee") is not None:
+                executor_state["positions"]["committee"] = None
+                log.info("🧹 Cleared positions.committee")
             save_state(executor_state)
 
     # Reverse reconcile: exchange has position but we lost active_trade (crash recovery)
@@ -1587,21 +1862,49 @@ def main():
             current_price = float(exchange.fetch_ticker(SYMBOL)["last"])
 
             # Check if agents proposed a new TP
-            proposed_tp = trade_params.get("take_profit_1")
-            if proposed_tp:
-                current_tp = active.get("tp1")
-                tp_valid = False
-                if direction == "BUY" and proposed_tp > entry:
-                    tp_valid = True
-                elif direction == "SELL" and proposed_tp < entry:
-                    tp_valid = True
-                if tp_valid and current_tp and proposed_tp != current_tp:
-                    log.info(f"🎯 Fund manager TP update: ${current_tp:,.2f} → ${proposed_tp:,.2f}")
-                    active["tp1"] = proposed_tp
-                    sync_take_profit_to_exchange(exchange, direction, amount, proposed_tp)
-                    record["tp_updated"] = proposed_tp
-                elif not tp_valid and proposed_tp:
-                    log.warning(f"⚠️ Ignoring invalid fund manager TP ${proposed_tp:,.2f} (wrong side of entry ${entry:,.2f} for {direction})")
+            proposed_tp1 = trade_params.get("take_profit_1")
+            proposed_tp2 = trade_params.get("take_profit_2")
+            tp_changed = False
+
+            if proposed_tp1:
+                current_tp1 = active.get("tp1")
+                tp1_valid = False
+                if direction == "BUY" and proposed_tp1 > entry:
+                    tp1_valid = True
+                elif direction == "SELL" and proposed_tp1 < entry:
+                    tp1_valid = True
+                if tp1_valid and (not current_tp1 or proposed_tp1 != current_tp1):
+                    log.info(f"🎯 Fund manager TP1 update: ${current_tp1:,.2f} → ${proposed_tp1:,.2f}")
+                    active["tp1"] = proposed_tp1
+                    record["tp_updated"] = proposed_tp1
+                    tp_changed = True
+                elif not tp1_valid and proposed_tp1:
+                    log.warning(f"⚠️ Ignoring invalid fund manager TP1 ${proposed_tp1:,.2f} (wrong side of entry ${entry:,.2f} for {direction})")
+
+            if proposed_tp2:
+                current_tp2 = active.get("tp2")
+                tp2_valid = False
+                if direction == "BUY" and proposed_tp2 > entry:
+                    tp2_valid = True
+                elif direction == "SELL" and proposed_tp2 < entry:
+                    tp2_valid = True
+                if tp2_valid and (not current_tp2 or proposed_tp2 != current_tp2):
+                    log.info(f"🎯 Fund manager TP2 update: ${current_tp2 or 0:,.2f} → ${proposed_tp2:,.2f}")
+                    active["tp2"] = proposed_tp2
+                    record["tp2_updated"] = proposed_tp2
+                    tp_changed = True
+                elif not tp2_valid and proposed_tp2:
+                    log.warning(f"⚠️ Ignoring invalid fund manager TP2 ${proposed_tp2:,.2f} (wrong side of entry ${entry:,.2f} for {direction})")
+
+            # Sync TP orders to exchange if any changed
+            if tp_changed:
+                new_tp_orders = sync_take_profits(
+                    exchange, direction, active.get("amount", amount),
+                    active,
+                    tp1_price=active.get("tp1"),
+                    tp2_price=active.get("tp2"),
+                )
+                active["tp_orders"] = new_tp_orders
 
             # Check if agents proposed a tighter SL
             proposed_sl = trade_params.get("stop_loss")
@@ -1839,11 +2142,13 @@ def main():
                         tp1 = fill_price - (TP1_R_MULTIPLE * risk_dist)
                     log.info(f"🔧 Auto TP1 at {TP1_R_MULTIPLE}R: ${tp1:,.0f}")
 
-                # Set TP1 on exchange (close 50%)
-                set_take_profit(exchange, new_direction, amount, tp1)
+                # Set TP orders on exchange (TP1: 50%, TP2: 50% if available)
+                tp2 = trade_params.get("take_profit_2")
+                tp_orders = set_take_profits(exchange, new_direction, amount, tp1, tp2)
 
-                # Initialize trailing stop tracking
+                # Initialize trailing stop — use Bybit's native trailing for real-time tracking
                 atr = get_atr(exchange)
+                set_native_trailing_stop(exchange, new_direction, fill_price, atr)
                 if new_direction == "BUY":
                     initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
                 else:
@@ -1855,7 +2160,9 @@ def main():
                     "amount": amount,
                     "stop_loss": stop_loss,
                     "tp1": tp1,
-                    "tp2": trade_params.get("take_profit_2"),
+                    "tp2": tp2,
+                    "tp_orders": tp_orders,
+                    "tp1_hit": False,
                     "trailing_stop": initial_trail,
                     "opened_at": datetime.now(timezone.utc).isoformat(),
                     "confidence": trade_params.get("confidence"),

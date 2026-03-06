@@ -1,5 +1,5 @@
 {
-  "last_run": "2026-03-06T08:19:38.094600+00:00",
+  "last_run": "2026-03-06T20:16:05.438059+00:00",
   "last_decision": "HOLD",
   "trades": [
     {
@@ -251,23 +251,61 @@
       "was_overridden": false,
       "transition": "HOLD",
       "sl_updated": 71500.0
+    },
+    {
+      "timestamp": "2026-03-06T12:14:12.653002+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 152726.08396102,
+      "params": {
+        "confidence": 7,
+        "stop_loss": 71500.0,
+        "take_profit_1": 69792.0,
+        "take_profit_2": 66000.0
+      },
+      "objective_score": 5.8,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "HOLD"
+    },
+    {
+      "timestamp": "2026-03-06T16:15:47.990095+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 153180.10746277,
+      "params": {
+        "confidence": 7,
+        "risk_pct": 0.0
+      },
+      "objective_score": -3.0,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "STAY_NEUTRAL"
+    },
+    {
+      "timestamp": "2026-03-06T20:16:05.438059+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 153180.10746277,
+      "params": {
+        "confidence": 7,
+        "risk_pct": 0.0,
+        "take_profit_1": 78000.0
+      },
+      "objective_score": -3.8,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "STAY_NEUTRAL"
     }
   ],
-  "active_trade": {
-    "direction": "SELL",
-    "entry": 71802.8,
-    "amount": 0.23,
-    "stop_loss": 74550.0,
-    "tp1": 69792.0,
-    "tp2": 65000.0,
-    "trailing_stop": 71500.0,
-    "opened_at": "2026-03-05T08:14:25.996775+00:00",
-    "confidence": 6,
-    "atr_at_entry": 3317.8142857142843,
-    "max_favorable_pct": 1.21
-  },
-  "last_decision_reasoning": "**Assessment:** Decision chain is coherent \u2014 analysts identified deteriorating 4h structure, trader built a disciplined thesis with defined invalidation, risk judge scored composite 2.83 (moderate) with no veto. Position is already open and profitable (+0.13%), trader is reaffirming not adding. The risk judge's \u26a0\ufe0f on position sizing is noted but not a hard fail \u2014 current allocation appears within the 1% equity risk rule given the tight $567/unit stop. Event risk (US-Iran) is the dominant factor ",
-  "last_decision_time": "2026-03-06T08:19:38.094600+00:00",
+  "last_decision_reasoning": "Decision chain is coherent \u2014 analysts flagged bearish macro with oversold extremes, Trader correctly refuses to override signals in either direction without confirmation, Risk Judge passes all hard limits and highlights unhedgeable 5/5 event risk from active US-Iran conflict. Staying flat with $153K equity idle is the right capital allocation when the dominant catalyst is a binary geopolitical event that gaps through stops. Conditional triggers at $71,665 (long) and $67,000 (short) on daily clos",
+  "last_decision_time": "2026-03-06T20:16:05.438059+00:00",
   "starting_equity": 153885.33,
   "closed_trades": [],
   "positions": {

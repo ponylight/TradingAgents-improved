@@ -104,3 +104,30 @@ def get_liquidation_info(
     Get liquidation activity summary and risk indicators.
     """
     return get_crypto_liquidations_summary(symbol)
+
+
+@tool
+def get_macro_signal_radar() -> str:
+    """
+    Get 7-signal macro radar with composite BUY/CASH verdict.
+    Signals: Fear & Greed, BTC Technical Trend (SMA50/200/VWAP/Mayer),
+    JPY Liquidity, QQQ vs XLP Macro Regime, BTC-QQQ Flow Structure,
+    Hash Rate momentum, Mining Cost floor.
+    ≥57% bullish = BUY, otherwise CASH.
+    IMPORTANT: This is a high-signal macro overlay. Weight it heavily in position decisions.
+    """
+    from tradingagents.dataflows.macro_radar import get_macro_radar_cached
+    result = get_macro_radar_cached()
+    return result["summary"]
+
+
+@tool
+def get_stablecoin_peg_health() -> str:
+    """
+    Monitor stablecoin peg health (USDT, USDC, DAI).
+    Depeg events signal systemic risk — if any stablecoin shows >0.5% deviation,
+    treat it as a WARNING for risk management.
+    """
+    from tradingagents.dataflows.macro_radar import get_stablecoin_health_cached
+    result = get_stablecoin_health_cached()
+    return f"Stablecoin Health: {result['overall']}\n{result['summary']}"

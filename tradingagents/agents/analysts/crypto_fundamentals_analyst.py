@@ -49,6 +49,18 @@ def create_crypto_fundamentals_analyst(llm):
         # Pre-fetch the data (deterministic, fast)
         fundamentals_report = get_onchain_fundamentals.invoke({})
         
+        # Pre-fetch macro radar (7-signal composite)
+        try:
+            from tradingagents.dataflows.macro_radar import get_macro_radar_cached, get_stablecoin_health_cached
+            macro = get_macro_radar_cached()
+            macro_summary = macro["summary"]
+            stablecoin = get_stablecoin_health_cached()
+            stablecoin_summary = f"Stablecoin Health: {stablecoin['overall']}\n{stablecoin['summary']}"
+        except Exception as e:
+            log.warning(f"Macro radar fetch failed: {e}")
+            macro_summary = "Macro radar unavailable"
+            stablecoin_summary = "Stablecoin data unavailable"
+        
         messages = [
             {
                 "role": "system",
@@ -75,7 +87,14 @@ Your job is to assess whether the network's fundamentals support or contradict t
 - Market cap vs volume: very high cap with low volume = potential overvaluation.
 - 30d/1y price changes: momentum context.
 
-### 4. Supply & Halving Cycle
+### 4. Macro Signal Radar (NEW — weight heavily)
+- 7-signal composite: Fear & Greed, BTC Technical (SMA50/200/VWAP), JPY Liquidity,
+  QQQ vs XLP regime, BTC-QQQ flow alignment, hash rate momentum, mining cost floor
+- BUY = ≥57% bullish, CASH = below threshold
+- Mayer Multiple: >2.4 overheated, <0.8 deeply undervalued
+- Stablecoin peg: any depeg >0.5% is a systemic risk warning
+
+### 5. Supply & Halving Cycle
 - Where are we in the 4-year cycle? Early post-halving (year 1-2) historically bullish. Late cycle (year 3-4) more volatile.
 - Supply mined %: approaching 21M cap increases scarcity narrative.
 
@@ -95,11 +114,13 @@ than no data at all.
 ## Output Format
 Provide a clear fundamentals assessment:
 1. **Data Quality**: Clean / Degraded (with specifics if degraded)
-2. Network Health score (Strong / Neutral / Weak) with key data points
-3. Adoption trend (Growing / Flat / Declining) with evidence
-4. Valuation assessment (Undervalued / Fair / Overvalued) relative to on-chain activity
-5. Cycle position and its historical implications
-6. Overall fundamentals verdict: BULLISH / NEUTRAL / BEARISH (lower confidence if data degraded)
+2. **Macro Radar**: BUY/CASH verdict + key signals (this is high-weight — if macro says CASH, bias bearish)
+3. Network Health score (Strong / Neutral / Weak) with key data points
+4. Adoption trend (Growing / Flat / Declining) with evidence
+5. Valuation assessment (Undervalued / Fair / Overvalued) relative to on-chain activity
+6. Cycle position and its historical implications
+7. Stablecoin peg status (flag any deviations)
+8. Overall fundamentals verdict: BULLISH / NEUTRAL / BEARISH (lower confidence if data degraded)
 
 Do NOT recommend trades. You report fundamentals only. Other agents decide trades.""",
             },
@@ -108,6 +129,14 @@ Do NOT recommend trades. You report fundamentals only. Other agents decide trade
                 "content": f"""Here is the current on-chain fundamentals data for Bitcoin:
 
 {fundamentals_report}
+
+---
+MACRO SIGNAL RADAR (7-signal composite — weight heavily):
+
+{macro_summary}
+
+---
+{stablecoin_summary}
 
 Provide your fundamentals analysis.""",
             },
