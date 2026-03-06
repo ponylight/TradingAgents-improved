@@ -1,10 +1,8 @@
 """
 LLM Fallback Wrapper — switches to backup provider on rate limit (429) errors.
 
-Usage:
-    primary = anthropic_client.get_llm()
-    fallback = openrouter_client.get_llm()
-    llm = FallbackLLM(primary, fallback, fallback_label="openrouter/minimax-m2.5")
+Wraps primary + fallback LLMs. On 429/rate-limit/overloaded from primary,
+transparently retries with fallback. Supports bind_tools for LangChain agents.
 """
 
 import logging
@@ -13,6 +11,7 @@ from typing import Any, List, Optional
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatResult
+from langchain_core.runnables import Runnable, RunnableConfig
 
 log = logging.getLogger("llm_fallback")
 
@@ -44,6 +43,10 @@ class FallbackLLM(BaseChatModel):
     def _llm_type(self) -> str:
         return "fallback"
 
+    @property
+    def _identifying_params(self):
+        return {"primary": str(self.primary), "fallback": self.fallback_label}
+
     def _generate(
         self,
         messages: List[BaseMessage],
@@ -71,3 +74,63 @@ class FallbackLLM(BaseChatModel):
                 log.warning(f"⚡ Rate limited on primary, falling back to {self.fallback_label}: {e}")
                 return await self.fallback._agenerate(messages, stop=stop, **kwargs)
             raise
+
+    def bind_tools(self, *args, **kwargs):
+        """Delegate bind_tools — returns a FallbackRunnable wrapping both bound results."""
+        primary_bound = self.primary.bind_tools(*args, **kwargs)
+        fallback_bound = self.fallback.bind_tools(*args, **kwargs)
+        return FallbackRunnable(
+            primary=primary_bound,
+            fallback=fallback_bound,
+            fallback_label=self.fallback_label,
+        )
+
+    def bind(self, *args, **kwargs):
+        """Delegate bind — returns a FallbackRunnable wrapping both bound results."""
+        primary_bound = self.primary.bind(*args, **kwargs)
+        fallback_bound = self.fallback.bind(*args, **kwargs)
+        return FallbackRunnable(
+            primary=primary_bound,
+            fallback=fallback_bound,
+            fallback_label=self.fallback_label,
+        )
+
+
+class FallbackRunnable(Runnable):
+    """Wraps two bound Runnables (e.g. from bind_tools) with rate-limit fallback."""
+
+    def __init__(self, primary, fallback, fallback_label="fallback"):
+        self._primary = primary
+        self._fallback = fallback
+        self._fallback_label = fallback_label
+
+    def invoke(self, input, config: Optional[RunnableConfig] = None, **kwargs):
+        try:
+            return self._primary.invoke(input, config=config, **kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                log.warning(f"⚡ Rate limited on primary, falling back to {self._fallback_label}: {e}")
+                return self._fallback.invoke(input, config=config, **kwargs)
+            raise
+
+    async def ainvoke(self, input, config: Optional[RunnableConfig] = None, **kwargs):
+        try:
+            return await self._primary.ainvoke(input, config=config, **kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                log.warning(f"⚡ Rate limited on primary, falling back to {self._fallback_label}: {e}")
+                return await self._fallback.ainvoke(input, config=config, **kwargs)
+            raise
+
+    def batch(self, inputs, config=None, **kwargs):
+        try:
+            return self._primary.batch(inputs, config=config, **kwargs)
+        except Exception as e:
+            if _is_rate_limit(e):
+                log.warning(f"⚡ Rate limited on primary, falling back to {self._fallback_label}: {e}")
+                return self._fallback.batch(inputs, config=config, **kwargs)
+            raise
+
+    # Pass through attributes to primary (for LangGraph compatibility)
+    def __getattr__(self, name):
+        return getattr(self._primary, name)
