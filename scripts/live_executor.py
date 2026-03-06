@@ -532,9 +532,10 @@ def get_combined_exposure(state: dict) -> dict:
     return result
 
 
-def can_open_green_lane(state: dict, equity: float) -> tuple:
+def can_open_green_lane(state: dict, equity: float, direction: str = None) -> tuple:
     """Check if a green lane position can be opened.
-    Rules: max 1 green lane, combined size <= 10%, combined leverage <= 20x.
+    Rules: max 1 green lane, combined size <= 10%, combined leverage <= 20x,
+           no opposing direction vs committee.
     Returns: (allowed: bool, reason: str)
     """
     positions = state.get("positions", {})
@@ -551,7 +552,19 @@ def can_open_green_lane(state: dict, equity: float) -> tuple:
         log.info(f"🚫 Cannot open green lane: {reason}")
         return False, reason
 
+    # Block directional conflict: green lane opposing committee position
     committee = positions.get("committee")
+    if committee and direction:
+        committee_side = committee.get("side", "").upper()
+        gl_side = direction.upper()
+        # Map BUY/SELL to LONG/SHORT for comparison
+        side_map = {"BUY": "LONG", "SELL": "SHORT", "LONG": "LONG", "SHORT": "SHORT"}
+        c_norm = side_map.get(committee_side, committee_side)
+        g_norm = side_map.get(gl_side, gl_side)
+        if c_norm and g_norm and c_norm != g_norm:
+            reason = f"Directional conflict: committee is {c_norm}, green lane wants {g_norm}"
+            log.info(f"🚫 Cannot open green lane: {reason}")
+            return False, reason
     committee_notional = (committee.get("size_pct", DEFAULT_ALLOC_PCT * 100) * 10) if committee else 0.0
     projected_leverage = (committee_notional + GREEN_LANE_SIZE_PCT * 10) / max(projected_size, 0.01)
     if projected_leverage > 20.0:
@@ -745,15 +758,20 @@ def run_reflection(ta, returns_pct):
     """Run reflection loop — agents learn from trade outcomes."""
     if ta.curr_state is None:
         log.debug("No agent state in memory for reflection — loading last state from disk")
-        # Try to load the last state from logs
-        import glob
-        state_files = sorted(glob.glob(str(PROJECT_ROOT / "eval_results" / "BTC_USDT" / "CryptoTradingAgents_logs" / "full_states_log_*.json")))
-        if state_files:
+        # Try to load the last state from logs (sorted by name = sorted by date)
+        state_dir = PROJECT_ROOT / "eval_results" / "BTC_USDT" / "CryptoTradingAgents_logs"
+        state_files = sorted(state_dir.glob("full_states_log_*.json")) if state_dir.exists() else []
+        if not state_files:
+            log.warning("⚠️ No state files found in %s — skipping reflection", state_dir)
+            return
+        try:
             with open(state_files[-1]) as f:
                 states = json.load(f)
+            if not states:
+                log.warning("⚠️ Last state file is empty — skipping reflection")
+                return
             last_date = sorted(states.keys())[-1]
             last_state = states[last_date]
-            # Reconstruct minimal state for reflection
             ta.curr_state = {
                 "market_report": last_state.get("market_report", ""),
                 "sentiment_report": last_state.get("sentiment_report", ""),
@@ -763,8 +781,8 @@ def run_reflection(ta, returns_pct):
                 "trader_investment_plan": last_state.get("trader_investment_decision", ""),
                 "risk_debate_state": last_state.get("risk_debate_state", {}),
             }
-        else:
-            log.warning("⚠️ No state files found — skipping reflection")
+        except (json.JSONDecodeError, KeyError, IndexError) as e:
+            log.warning(f"⚠️ Failed to parse state file {state_files[-1]}: {e} — skipping reflection")
             return
 
     log.info(f"🔄 Reflecting on trade outcome: {returns_pct:+.2f}%")

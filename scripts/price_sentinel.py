@@ -210,7 +210,7 @@ def check_green_lane_signal(state: dict = None) -> dict:
             exec_state = {}
 
         equity = exec_state.get("equity", 0.0)
-        allowed, reason = can_open_green_lane(exec_state, equity)
+        allowed, reason = can_open_green_lane(exec_state, equity, direction=signal.direction)
         if not allowed:
             log.info(f"Green lane: position gate blocked — {reason}")
             return state
