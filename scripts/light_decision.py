@@ -47,12 +47,14 @@ LOGS = PROJECT_ROOT / "logs"
 REALTIME_FILE = LOGS / "realtime_price.json"
 STATE_FILE = LOGS / "executor_state.json"
 LIGHT_LOG = LOGS / "light_decision.log"
+VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python3"
 
 # Only act if confidence is HIGH and move is significant
 MIN_CONFIDENCE = 8         # 1-10, only act on high conviction
 MIN_MOVE_PCT = 1.5         # Minimum % move from last decision price to consider
 MAX_LIGHT_TRADES_PER_DAY = 2  # Don't overtrade
 
+LOGS.mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -147,7 +149,7 @@ def run_light_evaluation(price_data: dict, reports: dict, state: dict) -> dict:
         entry = active.get("entry", 0)
         amount = active.get("amount", 0)
         trail = active.get("trailing_stop", 0)
-        pnl_pct = ((price - entry) / entry * 100) if direction == "BUY" else ((entry - price) / entry * 100)
+        pnl_pct = ((price - entry) / entry * 100) if direction == "BUY" and entry > 0 else (((entry - price) / entry * 100) if entry > 0 else 0)
         position_str = f"{direction} {amount:.3f} BTC @ ${entry:,.0f} | PnL: {pnl_pct:+.2f}% | Trail: ${trail:,.0f}"
 
     macro = get_macro_summary()
@@ -212,7 +214,7 @@ def parse_decision(raw: str) -> dict:
     for line in raw.split("\n"):
         line = line.strip()
         if line.startswith("ACTION:"):
-            result["action"] = line.split(":", 1)[1].strip()
+            result["action"] = line.split(":", 1)[1].strip().upper()
         elif line.startswith("CONFIDENCE:"):
             try:
                 result["confidence"] = int(line.split(":", 1)[1].strip())
@@ -223,7 +225,7 @@ def parse_decision(raw: str) -> dict:
     return result
 
 
-def should_act(decision: dict, state: dict) -> bool:
+def should_act(decision: dict, state: dict, price_data: dict) -> bool:
     """Determine if we should act on a light decision."""
     action = decision["action"]
     confidence = decision["confidence"]
@@ -233,6 +235,12 @@ def should_act(decision: dict, state: dict) -> bool:
 
     if confidence < MIN_CONFIDENCE:
         log.info(f"Light decision {action} rejected: confidence {confidence} < {MIN_CONFIDENCE}")
+        return False
+
+    # Check minimum price move from last decision
+    abs_change = abs(price_data.get("change_pct", 0))
+    if abs_change < MIN_MOVE_PCT and action in ("BUY", "SELL"):
+        log.info(f"Light decision {action} rejected: move {abs_change:.2f}% < {MIN_MOVE_PCT}% minimum")
         return False
 
     # Check daily trade limit
@@ -282,13 +290,15 @@ def main():
     decision = parse_decision(result.get("raw", ""))
     log.info(f"⚡ Decision: {decision['action']} (confidence={decision['confidence']}) — {decision['reason']}")
 
-    if should_act(decision, state):
+    if should_act(decision, state, price_data):
         action = decision["action"]
-        if action in ("BUY", "SELL"):
-            log.warning(f"🚨 LIGHT ENTRY: {action} — launching executor with override")
-            # Write light decision for executor to pick up
+        if action in ("BUY", "SELL", "CLOSE"):
+            label = "LIGHT ENTRY" if action in ("BUY", "SELL") else "LIGHT CLOSE"
+            log.warning(f"🚨 {label}: {action} — launching executor with override")
+            # Atomic write: write to temp then rename
             light_file = LOGS / "light_override.json"
-            light_file.write_text(json.dumps({
+            tmp_file = LOGS / ".light_override.tmp"
+            tmp_file.write_text(json.dumps({
                 "action": action,
                 "confidence": decision["confidence"],
                 "reason": decision["reason"],
@@ -296,26 +306,16 @@ def main():
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "source": "light_decision",
             }))
-            # Launch executor — it will read light_override.json
+            tmp_file.rename(light_file)
+
+            # Increment daily light trade count
+            today = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
+            state.setdefault("light_trades", {})[today] = state.get("light_trades", {}).get(today, 0) + 1
+            STATE_FILE.write_text(json.dumps(state, indent=2))
+
             import subprocess
             subprocess.Popen(
-                [str(Path(PROJECT_ROOT / ".venv" / "bin" / "python3")), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
-                cwd=str(PROJECT_ROOT),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-        elif action == "CLOSE":
-            log.warning(f"🚨 LIGHT CLOSE: {decision['reason']}")
-            light_file = LOGS / "light_override.json"
-            light_file.write_text(json.dumps({
-                "action": "CLOSE",
-                "reason": decision["reason"],
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "source": "light_decision",
-            }))
-            import subprocess
-            subprocess.Popen(
-                [str(Path(PROJECT_ROOT / ".venv" / "bin" / "python3")), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
+                [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
                 cwd=str(PROJECT_ROOT),
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,

@@ -36,9 +36,7 @@ ALERT_PCT = 0.02            # 2% move → log alert
 COOLDOWN_SECONDS = 3600     # 1 hour between executor launches
 REFERENCE_RESET_HOURS = 4   # Reset reference price every 4h (align with cron)
 
-# Trailing stop monitoring
-TRAIL_CHECK_INTERVAL = 5    # Check trail every 5 seconds when position open
-
+(PROJECT_ROOT / "logs").mkdir(parents=True, exist_ok=True)
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-8s  %(message)s",
@@ -76,9 +74,11 @@ def save_state(state: dict):
 
 
 def write_realtime(data: dict):
-    """Write real-time price data for light decision layer."""
+    """Write real-time price data for light decision layer (atomic)."""
     REALTIME_FILE.parent.mkdir(parents=True, exist_ok=True)
-    REALTIME_FILE.write_text(json.dumps(data))
+    tmp = REALTIME_FILE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(data))
+    tmp.rename(REALTIME_FILE)
 
 
 def launch_executor(reason: str):
