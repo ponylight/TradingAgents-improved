@@ -244,7 +244,6 @@ class CryptoTradingAgentsGraph:
         }
 
         analyst_nodes = {}
-        delete_nodes = {}
         tool_nodes = {}
 
         for analyst_type in selected_analysts:
@@ -252,7 +251,6 @@ class CryptoTradingAgentsGraph:
                 analyst_nodes[analyst_type] = analyst_creators[analyst_type](
                     self.quick_thinking_llm
                 )
-                delete_nodes[analyst_type] = create_msg_delete()
                 tool_nodes[analyst_type] = self.tool_nodes[analyst_type]
 
         # Create researcher and manager nodes
@@ -292,13 +290,13 @@ class CryptoTradingAgentsGraph:
         # Build workflow
         workflow = StateGraph(AgentState)
 
-        # Add analyst nodes
+        # Add analyst nodes (no per-branch Msg Clear — single cleanup after fan-in)
         for analyst_type, node in analyst_nodes.items():
             workflow.add_node(f"{analyst_type.capitalize()} Analyst", node)
-            workflow.add_node(
-                f"Msg Clear {analyst_type.capitalize()}", delete_nodes[analyst_type]
-            )
             workflow.add_node(f"tools_{analyst_type}", tool_nodes[analyst_type])
+
+        # Single post-fan-in cleanup node (avoids parallel RemoveMessage conflicts)
+        workflow.add_node("Analyst Cleanup", create_msg_delete())
 
         # Add other nodes
         workflow.add_node("Bull Researcher", bull_researcher_node)
@@ -311,36 +309,40 @@ class CryptoTradingAgentsGraph:
         workflow.add_node("Risk Judge", risk_manager_node)
         workflow.add_node("Portfolio Manager", fund_manager_node)
 
-        # Wire edges — analysts run in PARALLEL (fan-out from START, join before Bull)
-        clear_nodes = []
+        # Wire edges — analysts run in PARALLEL (fan-out from START, join before cleanup)
+        analyst_done_nodes = []
         for analyst_type in selected_analysts:
             current_analyst = f"{analyst_type.capitalize()} Analyst"
             current_tools = f"tools_{analyst_type}"
-            current_clear = f"Msg Clear {analyst_type.capitalize()}"
-            clear_nodes.append(current_clear)
+            done_node_name = f"Done {analyst_type.capitalize()}"
+            analyst_done_nodes.append(done_node_name)
+
+            # Lightweight pass-through node to signal analyst completion
+            workflow.add_node(done_node_name, lambda state: {})
 
             # Fan-out: START → each analyst in parallel
             workflow.add_edge(START, current_analyst)
 
             # Create dynamic conditional function for tool continuation
-            def make_should_continue(tools_name, clear_name):
+            def make_should_continue(tools_name, done_name):
                 def should_continue(state):
                     messages = state["messages"]
                     last_message = messages[-1]
                     if hasattr(last_message, "tool_calls") and last_message.tool_calls:
                         return tools_name
-                    return clear_name
+                    return done_name
                 return should_continue
 
             workflow.add_conditional_edges(
                 current_analyst,
-                make_should_continue(current_tools, current_clear),
-                [current_tools, current_clear],
+                make_should_continue(current_tools, done_node_name),
+                [current_tools, done_node_name],
             )
             workflow.add_edge(current_tools, current_analyst)
 
-        # Fan-in: ALL analysts must complete before Bull Researcher
-        workflow.add_edge(clear_nodes, "Bull Researcher")
+        # Fan-in: ALL analysts must complete → single cleanup → Bull Researcher
+        workflow.add_edge(analyst_done_nodes, "Analyst Cleanup")
+        workflow.add_edge("Analyst Cleanup", "Bull Researcher")
 
         # Research debate
         workflow.add_conditional_edges(
