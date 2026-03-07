@@ -311,14 +311,16 @@ class CryptoTradingAgentsGraph:
         workflow.add_node("Risk Judge", risk_manager_node)
         workflow.add_node("Portfolio Manager", fund_manager_node)
 
-        # Wire edges
-        first_analyst = selected_analysts[0]
-        workflow.add_edge(START, f"{first_analyst.capitalize()} Analyst")
-
-        for i, analyst_type in enumerate(selected_analysts):
+        # Wire edges — analysts run in PARALLEL (fan-out from START, join before Bull)
+        clear_nodes = []
+        for analyst_type in selected_analysts:
             current_analyst = f"{analyst_type.capitalize()} Analyst"
             current_tools = f"tools_{analyst_type}"
             current_clear = f"Msg Clear {analyst_type.capitalize()}"
+            clear_nodes.append(current_clear)
+
+            # Fan-out: START → each analyst in parallel
+            workflow.add_edge(START, current_analyst)
 
             # Create dynamic conditional function for tool continuation
             def make_should_continue(tools_name, clear_name):
@@ -337,11 +339,8 @@ class CryptoTradingAgentsGraph:
             )
             workflow.add_edge(current_tools, current_analyst)
 
-            if i < len(selected_analysts) - 1:
-                next_analyst = f"{selected_analysts[i+1].capitalize()} Analyst"
-                workflow.add_edge(current_clear, next_analyst)
-            else:
-                workflow.add_edge(current_clear, "Bull Researcher")
+        # Fan-in: ALL analysts must complete before Bull Researcher
+        workflow.add_edge(clear_nodes, "Bull Researcher")
 
         # Research debate
         workflow.add_conditional_edges(

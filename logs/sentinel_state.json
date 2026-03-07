@@ -1,11 +1,11 @@
 {
-  "last_check": "2026-03-06T22:45:05.297886+00:00",
-  "last_price": 68326.6,
-  "last_4h_close": 68091.2,
-  "last_change_pct": 0.35,
+  "last_check": "2026-03-07T03:45:04.382144+00:00",
+  "last_price": 68145.2,
+  "last_4h_close": 68075.5,
+  "last_change_pct": 0.1,
   "green_lane_last_trigger": null,
   "green_lane_triggers_today": 0,
-  "green_lane_today_date": "2026-03-06",
+  "green_lane_today_date": "2026-03-07",
   "last_candle_trigger_ts": 1772798400000,
   "last_trigger": "2026-03-06T16:00:06.316799+00:00",
   "trigger_reason": "3.09% candle variation, vol=2.6x"
