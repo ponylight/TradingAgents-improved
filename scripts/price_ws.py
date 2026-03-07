@@ -205,13 +205,12 @@ async def run_monitor():
                     "tick_count": tick_count,
                 })
 
-            # Alert threshold — also scan green lane
+            # Alert threshold
             if abs_change >= ALERT_PCT and tick_count % 60 == 0:
                 direction = "🟢 UP" if change_pct > 0 else "🔴 DOWN"
                 log.info(f"{direction} {change_pct*100:+.2f}% | ${price:,.2f} (ref ${reference_price:,.2f})")
-                state = run_green_lane_scan(state)
 
-            # Trigger threshold
+            # Trigger threshold — green lane first, then executor
             if abs_change >= TRIGGER_PCT:
                 since_last = now - last_trigger_time
                 if since_last >= COOLDOWN_SECONDS:
@@ -219,6 +218,9 @@ async def run_monitor():
                     reason = f"{change_pct*100:+.2f}% {direction} from ${reference_price:,.0f} → ${price:,.0f}"
                     log.warning(f"🚨 TRIGGER: {reason}")
 
+                    # Green lane scan first — if it finds a setup,
+                    # executor reads the override and skips full pipeline
+                    state = run_green_lane_scan(state)
                     launch_executor(reason)
                     last_trigger_time = now
                     reference_price = price  # Reset reference after trigger
