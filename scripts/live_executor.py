@@ -899,19 +899,26 @@ def _verify_and_repair_protection(exchange, executor_state, positions):
     atr = active.get("atr_at_entry", 0)
     repaired = False
 
+    # Use live exchange position size for all protection operations
+    live_amount = amount
+    if positions:
+        live_amount = abs(float(positions[0].get("contracts", 0))) or amount
+
     # 1. Retry failed protection placement
     if active.get("needs_protection_retry"):
         log.warning("🔧 PROTECTION RETRY: Previous protection placement failed — retrying")
+        all_ok = True
 
         tp_orders = active.get("tp_orders", [])
         if not tp_orders and tp1:
             try:
-                tp_orders = set_take_profits(exchange, direction, amount, tp1, tp2)
+                tp_orders = set_take_profits(exchange, direction, live_amount, tp1, tp2)
                 active["tp_orders"] = tp_orders
                 log.info(f"✅ Protection retry: TP orders placed ({len(tp_orders)} orders)")
                 repaired = True
             except Exception as e:
                 log.error(f"🚨 Protection retry FAILED for TP orders: {e}")
+                all_ok = False
 
         if atr > 0:
             try:
@@ -920,37 +927,85 @@ def _verify_and_repair_protection(exchange, executor_state, positions):
                 repaired = True
             except Exception as e:
                 log.error(f"🚨 Protection retry FAILED for trailing stop: {e}")
+                all_ok = False
 
         if stop_loss:
             try:
                 side = "long" if direction == "BUY" else "short"
-                sync_stop_loss_to_exchange(exchange, side, amount, stop_loss)
+                sync_stop_loss_to_exchange(exchange, side, live_amount, stop_loss)
                 log.info("✅ Protection retry: SL synced")
                 repaired = True
             except Exception as e:
                 log.error(f"🚨 Protection retry FAILED for SL: {e}")
+                all_ok = False
 
-        active["needs_protection_retry"] = False
+        # Only clear retry flag if ALL protection was placed successfully
+        if all_ok:
+            active["needs_protection_retry"] = False
+        else:
+            log.error("🚨 Protection still incomplete — will retry next cycle")
         save_state(executor_state)
 
-    # 2. Verify TP orders still exist on exchange
+    # 2. Verify TP orders still exist on exchange and repair if missing
     tp_orders = active.get("tp_orders", [])
+    tp1_hit = active.get("tp1_hit", False)
     if tp_orders:
         try:
+            # Fetch both active AND conditional (untriggered) orders
             open_orders = exchange.fetch_open_orders(SYMBOL)
-            open_order_ids = {o["id"] for o in open_orders}
+            # Also check conditional/stop orders via Bybit API
+            try:
+                bybit_symbol = SYMBOL.replace("/", "").replace(":USDT", "")
+                cond_resp = exchange.private_get_v5_order_realtime({
+                    "category": "linear", "symbol": bybit_symbol, "orderFilter": "StopOrder"
+                })
+                cond_orders = cond_resp.get("result", {}).get("list", [])
+                cond_ids = {o.get("orderId") for o in cond_orders}
+            except Exception:
+                cond_ids = set()
+
+            all_order_ids = {o["id"] for o in open_orders} | cond_ids
+            missing_tps = []
 
             for tp in tp_orders:
-                if tp["order_id"] not in open_order_ids:
-                    # TP order gone — might be filled (handled by TP1 detection) or expired
-                    # Only re-place if it's TP2 and TP1 hasn't hit, or if TP1 and not hit
+                if tp["order_id"] not in all_order_ids:
                     tp_level = tp.get("level", 0)
-                    tp1_hit = active.get("tp1_hit", False)
+                    if tp_level == 1 and tp1_hit:
+                        continue  # TP1 was filled, expected to be gone
+                    missing_tps.append(tp)
+                    log.warning(f"⚠️ TP{tp_level} order {tp['order_id'][:12]} missing from exchange")
 
-                    if tp_level == 1 and not tp1_hit:
-                        log.warning(f"⚠️ TP1 order {tp['order_id'][:12]} missing from exchange — may have been filled or expired")
-                    elif tp_level == 2:
-                        log.warning(f"⚠️ TP2 order {tp['order_id'][:12]} missing from exchange")
+            # Repair: re-place missing TP orders
+            if missing_tps:
+                log.warning(f"🔧 Re-placing {len(missing_tps)} missing TP orders")
+                new_tp_orders = [tp for tp in tp_orders if tp not in missing_tps]
+                for tp in missing_tps:
+                    tp_level = tp.get("level", 0)
+                    tp_price = tp1 if tp_level == 1 else tp2
+                    tp_amount = tp.get("amount", live_amount * (TP1_CLOSE_PCT if tp_level == 1 else (1 - TP1_CLOSE_PCT)))
+                    if tp_price and tp_amount > 0:
+                        try:
+                            dir_lower = direction.lower()
+                            is_short = dir_lower in ("sell", "short")
+                            close_side = "buy" if is_short else "sell"
+                            trigger_dir = 2 if is_short else 1
+                            order = exchange.create_order(
+                                SYMBOL, "market", close_side,
+                                float(exchange.amount_to_precision(SYMBOL, tp_amount)),
+                                params={
+                                    "reduceOnly": True,
+                                    "triggerPrice": str(round(tp_price, 2)),
+                                    "triggerBy": "MarkPrice",
+                                    "triggerDirection": trigger_dir,
+                                }
+                            )
+                            new_tp_orders.append({"level": tp_level, "order_id": order["id"], "price": tp_price, "amount": tp_amount})
+                            log.info(f"✅ TP{tp_level} re-placed @ ${tp_price:,.2f} (order {order['id'][:12]})")
+                            repaired = True
+                        except Exception as e:
+                            log.error(f"🚨 Failed to re-place TP{tp_level}: {e}")
+                active["tp_orders"] = new_tp_orders
+                save_state(executor_state)
         except Exception as e:
             log.debug(f"Could not verify TP orders: {e}")
 
