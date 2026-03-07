@@ -279,7 +279,8 @@ class CryptoTradingAgentsGraph:
         fm_model = self.config.get("fund_manager_llm")
         if fm_model:
             fm_provider = self.config.get("fund_manager_llm_provider", "openrouter")
-            log.info(f"🏦 Fund manager using dedicated LLM: {fm_model} via {fm_provider}")
+            import logging as _logging
+            _logging.getLogger(__name__).info(f"🏦 Fund manager using dedicated LLM: {fm_model} via {fm_provider}")
             from tradingagents.llm_clients.factory import create_llm_client
             fm_client = create_llm_client(fm_provider, fm_model)
             fund_manager_llm = fm_client.get_llm()
