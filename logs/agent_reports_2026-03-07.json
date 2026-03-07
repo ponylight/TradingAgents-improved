@@ -1,0 +1,14 @@
+{
+  "market": "# BTC/USDT Technical Analysis\n\n**Generated:** 2026-03-07 04:05 UTC | **Last Close:** $67,903.60\n\n---\n\n## \u26a0\ufe0f DATA QUALITY WARNING\n\nSeveral inconsistencies flagged:\n\n- **1h RSI vs Stoch conflict:** RSI reads 29.1 (oversold) but Stoch K/D at 79/81 (near overbought). These rarely diverge this far \u2014 suggests either stale Stoch data or a very rapid RSI drop that Stoch hasn't caught up with.\n- **1h ATR percentile = 0.0%:** Implausible. ATR of 452 is non-zero, so a 0th percentile means it's literally th",
+  "sentiment": "[CACHED REPORT \u2014 7.8h old]\n\nI'll call all three data sources simultaneously \u2014 funding rate, open interest, and Fear & Greed index.\n\nNow let me compute OI value and pull it all together.\n\n---\n\n## BTC/USDT Sentiment & Positioning Report\n**2026-03-07 07:05 AEST | Mark: $68,145 | Asset: BTC/USDT Perpetual (Bybit)**\n\n---\n\n### 1. Data Quality: \u2705 CLEAN\n- Funding rate: live, plausible values with full 8-interval history\n- Open Interest: live, 45.3K BTC ($3.09B) \u2014 reasonable for Bybit perps\n- Fear & Gree",
+  "news": "---\n\n# \ud83d\udd0d BTC/USDT Macro & News Report \u2014 March 7, 2026\n\n## 1. Macro Environment: Definitive Risk-Off\n\n| Indicator | Value | 5-Day Trend | Signal |\n|-----------|-------|-------------|--------|\n| **DXY** | 98.86 | Choppy (98.4\u219299.3\u219298.9) | Neutral \u2014 weak dollar but not collapsing |\n| **US 10Y** | 4.133% | Rising (+8.5bps this week) | Bearish \u2014 war premium pushing yields up |\n| **US 2Y** | 3.41% | Flat | Neutral \u2014 Fed expectations anchored |\n| **2s10s Spread** | +72bps | Steepening | Bearish \u2014 term ",
+  "final": "Process check passes. Risk Judge did not veto \u2014 scored event risk 5/5 which *supports* the NEUTRAL stance rather than opposing it. Trader's thesis is disciplined: bear macro dominates but entry timing is wrong, and chasing extended moves is what burned us before. The conditional triggers are well-structured with defined stops and clean R:R. No portfolio conflicts (flat book). Approved.\n\nFINAL TRANSACTION PROPOSAL: **NEUTRAL**\n\n```\n---FUND_DECISION---\nACTION: HOLD\nCONFIDENCE: 7\nSTOP_LOSS: N/A\nTAKE_PROFIT_1: N/A\nTAKE_PROFIT_2: N/A\nMARGIN_ALLOCATION: 0%\nREASON: Waiting for either (a) bounce to $69,000 pivot rejection or (b) 4h close below $67,720 on volume \u2014 expected within 24-48h. Event risk 5/5 (Iran escalation + weekend liquidity) independently justifies cash through the weekend.\n---END_FUND_DECISION---\n```",
+  "decision": "HOLD",
+  "parsed_params": {
+    "confidence": 7,
+    "risk_pct": 0.0,
+    "stop_loss": 69500.0,
+    "take_profit_1": 67720.0,
+    "take_profit_2": 64500.0
+  }
+}

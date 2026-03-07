@@ -463,9 +463,11 @@ def check_pending_limit_order(exchange, executor_state):
             else:
                 tp1 = fill_price - (TP1_R_MULTIPLE * risk_dist)
             log.info(f"\U0001f527 Auto TP1 at {TP1_R_MULTIPLE}R: ${tp1:,.0f}")
-        set_take_profit(exchange, direction, amount, tp1)
+        tp2 = pending.get("tp2")
+        tp_orders = set_take_profits(exchange, direction, amount, tp1, tp2)
         
         atr = get_atr(exchange)
+        set_native_trailing_stop(exchange, direction, fill_price, atr)
         if direction == "BUY":
             initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
         else:
@@ -477,7 +479,9 @@ def check_pending_limit_order(exchange, executor_state):
             "amount": amount,
             "stop_loss": stop_loss,
             "tp1": tp1,
-            "tp2": pending.get("tp2"),
+            "tp2": tp2,
+            "tp_orders": tp_orders,
+            "tp1_hit": False,
             "trailing_stop": initial_trail,
             "opened_at": datetime.now(timezone.utc).isoformat(),
             "confidence": pending.get("confidence"),
@@ -499,10 +503,14 @@ def check_pending_limit_order(exchange, executor_state):
             log.warning(f"\u26a0\ufe0f Partial fill on {status} order: {filled_qty:.3f} BTC @ ${fill_price:,.2f} — creating active_trade")
             
             atr = get_atr(exchange)
+            set_native_trailing_stop(exchange, direction, fill_price, atr)
             if direction == "BUY":
                 initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
             else:
                 initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
+            
+            tp2 = pending.get("tp2")
+            tp_orders = set_take_profits(exchange, direction, filled_qty, tp1, tp2) if tp1 else []
             
             executor_state["active_trade"] = {
                 "direction": direction,
@@ -510,7 +518,9 @@ def check_pending_limit_order(exchange, executor_state):
                 "amount": filled_qty,
                 "stop_loss": stop_loss,
                 "tp1": tp1,
-                "tp2": pending.get("tp2"),
+                "tp2": tp2,
+                "tp_orders": tp_orders,
+                "tp1_hit": False,
                 "trailing_stop": initial_trail,
                 "opened_at": datetime.now(timezone.utc).isoformat(),
                 "confidence": pending.get("confidence"),
@@ -518,11 +528,9 @@ def check_pending_limit_order(exchange, executor_state):
                 "from_limit_order": True,
                 "partial_fill": True,
             }
-            # Ensure SL/TP on exchange for the filled portion
+            # Ensure SL on exchange for the filled portion
             if stop_loss:
                 sync_stop_loss_to_exchange(exchange, direction.lower(), filled_qty, stop_loss)
-            if tp1:
-                set_take_profit(exchange, direction, filled_qty, tp1)
         else:
             log.info(f"\u274c Limit order {order_id} was {status} (no fills)")
         executor_state.pop("pending_limit_order", None)
@@ -1477,6 +1485,18 @@ def preflight_check(timeout=10):
 
 
 def main():
+    # Acquire exclusive lock — prevents sentinel + cron overlap
+    import fcntl
+    lock_file = Path(__file__).resolve().parent.parent / "logs" / ".executor.lock"
+    lock_fd = open(lock_file, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        log.warning("⏸️  Another executor instance is running — exiting")
+        lock_fd.close()
+        return
+    # Lock held for duration of main()
+
     log.info("=" * 60)
     log.info("🚀 TradingAgents Live Executor v2")
     log.info("=" * 60)

@@ -28,8 +28,8 @@ GREEN_LANE_LOG = PROJECT_ROOT / "logs" / "green_lane_signals.json"
 
 SYMBOL = "BTC/USDT:USDT"
 GL_SYMBOL = "BTC/USDT"  # Green lane scanner expects spot symbol format
-TRIGGER_THRESHOLD = 0.05  # 5% — wake agents
-COOLDOWN_MINUTES = 120    # Don't re-trigger within 2 hours
+TRIGGER_THRESHOLD = 0.03  # 3% — wake agents (was 5%, too slow)
+COOLDOWN_MINUTES = 60     # Don't re-trigger within 1 hour (was 2h)
 
 # Green Lane rate limits
 GL_COOLDOWN_HOURS = 4     # Minimum hours between green lane triggers
@@ -363,7 +363,24 @@ def main():
         state["trigger_reason"] = trigger_reason
         save_state(state)
 
+        # Check if executor is already running (e.g. cron or another sentinel trigger)
+        import fcntl
+        lock_file = PROJECT_ROOT / "logs" / ".executor.lock"
+        try:
+            lock_fd = open(lock_file, "w")
+            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except (IOError, OSError):
+            log.info("⏸️  Executor already running (lock held) — skipping trigger")
+            save_state(state)
+            return
+        finally:
+            try:
+                lock_fd.close()
+            except Exception:
+                pass
+
         # Run the full executor
+        log.info(f"🚨 SENTINEL TRIGGER: {trigger_reason} — launching executor")
         result = subprocess.run(
             [str(VENV_PYTHON), str(EXECUTOR)],
             capture_output=True, text=True, timeout=600,
