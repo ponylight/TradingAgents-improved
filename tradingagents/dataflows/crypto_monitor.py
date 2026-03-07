@@ -17,15 +17,13 @@ Rate limits:
 Cost: $0 (all free APIs)
 """
 
-import io
-import csv
-import math
+import re
 import time
-import zipfile
 import logging
+import threading
 import requests
-from datetime import datetime, timezone, timedelta
-from functools import lru_cache
+import urllib3.util.retry
+from datetime import datetime, timezone
 from typing import Optional
 
 log = logging.getLogger(__name__)
@@ -45,17 +43,12 @@ GDELT_QUERIES = {
     "financial_crisis": "(bank failure OR default OR currency crisis OR capital controls)",
 }
 
-# Mining/exchange hub countries — disruptions here directly impact crypto
-CRITICAL_REGIONS = {
+# Mining/exchange hub countries — ordered by crypto market impact
+CRITICAL_REGIONS = [
     "United States", "China", "Russia", "Kazakhstan", "Iran",
     "Canada", "Germany", "Singapore", "Japan", "South Korea",
     "United Arab Emirates", "Hong Kong",
-}
-
-# Goldstein scale: negative = conflict, positive = cooperation
-# Events with Goldstein < -5 are significant conflicts
-GOLDSTEIN_CONFLICT_THRESHOLD = -5.0
-GOLDSTEIN_SEVERE_THRESHOLD = -8.0
+]
 
 # RSS feeds for headline scanning
 RSS_FEEDS = [
@@ -63,29 +56,32 @@ RSS_FEEDS = [
     "https://www.aljazeera.com/xml/rss/all.xml",
 ]
 
-# Crypto-impact keywords with weights
-IMPACT_KEYWORDS = {
+# Crypto-impact keywords with weights — compiled regex for word-boundary matching
+_IMPACT_RULES = {
     # Direct crypto impact (weight 3)
-    "bitcoin": 3, "cryptocurrency": 3, "crypto": 3, "mining ban": 3,
-    "exchange hack": 3, "stablecoin": 3, "defi": 3, "cbdc": 3,
-    # Financial system (weight 2)
-    "sanctions": 2, "capital controls": 2, "bank run": 2, "default": 2,
-    "currency crisis": 2, "inflation": 2, "interest rate": 2,
-    "federal reserve": 2, "central bank": 2,
-    # Geopolitical (weight 1)
-    "war": 1, "military": 1, "nuclear": 1, "invasion": 1,
-    "missile": 1, "airstrike": 1, "conflict": 1, "escalation": 1,
-    "ceasefire": -1, "peace": -1, "agreement": -1, "de-escalation": -1,
+    r"\bbitcoin\b": 3, r"\bcryptocurrency\b": 3, r"\bcrypto\b": 3, r"\bmining ban\b": 3,
+    r"\bexchange hack\b": 3, r"\bstablecoin\b": 3, r"\bcbdc\b": 3,
+    # Financial contagion (weight 2)
+    r"\bsanctions\b": 2, r"\bcapital controls\b": 2, r"\bbank run\b": 2,
+    r"\bcurrency crisis\b": 2, r"\bsovereign default\b": 2,
+    # Geopolitical conflict (weight 1)
+    r"\bwar\b": 1, r"\bnuclear\b": 1, r"\binvasion\b": 1,
+    r"\bmissile\b": 1, r"\bairstrike\b": 1, r"\bescalation\b": 1,
+    # De-escalation (negative weight — reduces score)
+    r"\bceasefire\b": -1, r"\bpeace (?:deal|talks|treaty)\b": -1, r"\bde-escalation\b": -1,
 }
+IMPACT_KEYWORDS = {pattern: (re.compile(pattern, re.IGNORECASE), weight) for pattern, weight in _IMPACT_RULES.items()}
 
 # ─── Session with retry ──────────────────────────────────────────────────────
 
 _session = requests.Session()
 _adapter = requests.adapters.HTTPAdapter(
-    max_retries=requests.packages.urllib3.util.retry.Retry(
+    max_retries=urllib3.util.retry.Retry(
         total=2, backoff_factor=1.0, status_forcelist=[429, 500, 502, 503, 504]
     )
 )
+_gdelt_lock = threading.Lock()  # Serialize GDELT calls
+_cii_lock = threading.Lock()    # Single-flight CII computation
 _session.mount("https://", _adapter)
 _session.mount("http://", _adapter)
 _session.headers["User-Agent"] = "CryptoMonitor/1.0"
@@ -94,10 +90,12 @@ _session.headers["User-Agent"] = "CryptoMonitor/1.0"
 
 _cache = {}
 _CACHE_TTL = 1800  # 30 minutes
+_MAX_STALE_AGE = 7200  # 2 hours — refuse stale data beyond this
+_MAX_RESPONSE_BYTES = 512_000  # 500KB max response
 
 
 def _cached_get(url: str, params: dict = None, timeout: int = 15) -> Optional[str]:
-    """GET with TTL cache and rate limiting."""
+    """GET with TTL cache, rate limiting, and bounded stale fallback."""
     cache_key = f"{url}:{str(sorted(params.items()) if params else '')}"
     now = time.time()
 
@@ -107,15 +105,22 @@ def _cached_get(url: str, params: dict = None, timeout: int = 15) -> Optional[st
             return text
 
     try:
-        resp = _session.get(url, params=params, timeout=timeout)
+        resp = _session.get(url, params=params, timeout=timeout, stream=True)
         resp.raise_for_status()
-        _cache[cache_key] = (resp.text, now)
-        return resp.text
+        # Cap response size
+        content = resp.content[:_MAX_RESPONSE_BYTES]
+        text = content.decode(resp.encoding or "utf-8", errors="replace")
+        _cache[cache_key] = (text, now)
+        return text
     except Exception as e:
         log.warning(f"CryptoMonitor fetch failed {url}: {e}")
-        # Return stale cache if available
+        # Return stale cache only within max stale age
         if cache_key in _cache:
-            return _cache[cache_key][0]
+            text, ts = _cache[cache_key]
+            if now - ts < _MAX_STALE_AGE:
+                return text
+            else:
+                log.warning(f"Stale cache too old ({(now - ts)/60:.0f}min) — discarding")
         return None
 
 
@@ -128,22 +133,23 @@ def _gdelt_query(query: str, timespan: str = "24h", max_records: int = 10) -> li
     """Query GDELT Doc API for articles matching a query. Returns list of article dicts."""
     global _last_gdelt_call
 
-    # Rate limit: 1 request per GDELT_MIN_INTERVAL seconds
-    now = time.time()
-    wait = GDELT_MIN_INTERVAL - (now - _last_gdelt_call)
-    if wait > 0:
-        time.sleep(wait)
+    with _gdelt_lock:
+        # Rate limit: 1 request per GDELT_MIN_INTERVAL seconds (thread-safe)
+        now = time.time()
+        wait = GDELT_MIN_INTERVAL - (now - _last_gdelt_call)
+        if wait > 0:
+            time.sleep(wait)
 
-    params = {
-        "query": query,
-        "mode": "artlist",
-        "maxrecords": str(max_records),
-        "format": "json",
-        "timespan": timespan,
-    }
+        params = {
+            "query": query,
+            "mode": "artlist",
+            "maxrecords": str(max_records),
+            "format": "json",
+            "timespan": timespan,
+        }
 
-    text = _cached_get(GDELT_DOC_API, params, timeout=20)
-    _last_gdelt_call = time.time()
+        text = _cached_get(GDELT_DOC_API, params, timeout=20)
+        _last_gdelt_call = time.time()
 
     if not text:
         return []
@@ -156,16 +162,17 @@ def _gdelt_query(query: str, timespan: str = "24h", max_records: int = 10) -> li
         return []
 
 
-def get_gdelt_tone_scores() -> dict:
+def get_gdelt_event_coverage() -> dict:
     """
-    Query GDELT for each category and compute average tone.
-    Returns dict of category -> {count, avg_tone, sources}.
+    Query GDELT for each category and count article coverage.
+    NOTE: artlist mode does not return tone — this measures event VOLUME, not sentiment.
+    Returns dict of category -> {count, sources, status}.
     """
     results = {}
     for category, query in GDELT_QUERIES.items():
         articles = _gdelt_query(query, timespan="24h", max_records=20)
         if not articles:
-            results[category] = {"count": 0, "avg_tone": 0.0, "sources": []}
+            results[category] = {"count": 0, "status": "no_data", "sources": []}
             continue
 
         # GDELT articles don't include tone in artlist mode
@@ -178,7 +185,7 @@ def get_gdelt_tone_scores() -> dict:
 
         results[category] = {
             "count": len(articles),
-            "avg_tone": 0.0,  # artlist doesn't include tone
+            "status": "fresh",
             "sources": list(sources)[:5],
         }
 
@@ -222,15 +229,24 @@ def get_headline_scores() -> dict:
     if not all_headlines:
         return {"total_score": 0, "headline_count": 0, "top_headlines": [], "sentiment": "UNKNOWN"}
 
-    scored = []
+    # Deduplicate near-identical headlines across feeds
+    seen_titles = set()
+    unique_headlines = []
     for h in all_headlines:
+        normalized = h["title"].lower().strip()
+        if normalized not in seen_titles:
+            seen_titles.add(normalized)
+            unique_headlines.append(h)
+
+    scored = []
+    for h in unique_headlines:
         title_lower = h["title"].lower()
         score = 0
         matched = []
-        for keyword, weight in IMPACT_KEYWORDS.items():
-            if keyword in title_lower:
+        for pattern_str, (regex, weight) in IMPACT_KEYWORDS.items():
+            if regex.search(title_lower):
                 score += weight
-                matched.append(keyword)
+                matched.append(pattern_str)
         if score != 0:
             scored.append({**h, "score": score, "keywords": matched})
 
@@ -262,7 +278,8 @@ def get_mining_region_risk() -> dict:
     Check GDELT for disruptions in critical mining/exchange regions.
     Returns {risk_score, affected_regions, events}.
     """
-    region_query = " OR ".join(f'sourcecountry:"{r}"' for r in list(CRITICAL_REGIONS)[:5])
+    # Use top 6 most crypto-critical regions (GDELT query length limits)
+    region_query = " OR ".join(f'sourcecountry:"{r}"' for r in CRITICAL_REGIONS[:6])
     conflict_query = f"({region_query}) (conflict OR sanctions OR ban OR crisis)"
 
     articles = _gdelt_query(conflict_query, timespan="48h", max_records=15)
@@ -306,8 +323,8 @@ def compute_cii() -> dict:
     """
     log.info("CryptoMonitor: computing CII...")
 
-    # Component 1: GDELT tone scores
-    gdelt = get_gdelt_tone_scores()
+    # Component 1: GDELT event coverage (volume, not tone)
+    gdelt = get_gdelt_event_coverage()
     gdelt_score = 0
     for cat, data in gdelt.items():
         count = data["count"]
@@ -349,7 +366,18 @@ def compute_cii() -> dict:
         crypto_impact = "NEUTRAL"
     else:
         level = "LOW"
-        crypto_impact = "BULLISH"
+        crypto_impact = "NEUTRAL"  # Low risk ≠ bullish, just not a headwind
+
+    # Data quality: track which components succeeded
+    gdelt_ok = any(v.get("status") == "fresh" for v in gdelt.values())
+    headlines_ok = headlines["headline_count"] > 0
+    components_available = sum([gdelt_ok, headlines_ok, mining["article_count"] >= 0])
+    if components_available >= 2:
+        data_quality = "good"
+    elif components_available == 1:
+        data_quality = "partial"
+    else:
+        data_quality = "degraded"
 
     # Gather top events for context
     top_events = []
@@ -367,6 +395,7 @@ def compute_cii() -> dict:
         "cii_score": cii,
         "level": level,
         "crypto_impact": crypto_impact,
+        "data_quality": data_quality,
         "top_events": top_events[:5],
         "components": {
             "gdelt_score": round(gdelt_score, 1),
@@ -397,16 +426,22 @@ _CII_CACHE_TTL = 1800  # 30 min
 
 
 def get_crisis_impact_index(ttl: int = None) -> dict:
-    """Get CII with caching. Default TTL 30 min."""
+    """Get CII with caching and single-flight dedup. Default TTL 30 min."""
     cache_ttl = ttl or _CII_CACHE_TTL
     now = time.time()
     if _cii_cache["result"] and (now - _cii_cache["ts"]) < cache_ttl:
         return _cii_cache["result"]
 
-    result = compute_cii()
-    _cii_cache["result"] = result
-    _cii_cache["ts"] = now
-    return result
+    with _cii_lock:
+        # Double-check after acquiring lock (another thread may have refreshed)
+        now = time.time()
+        if _cii_cache["result"] and (now - _cii_cache["ts"]) < cache_ttl:
+            return _cii_cache["result"]
+
+        result = compute_cii()
+        _cii_cache["result"] = result
+        _cii_cache["ts"] = now
+        return result
 
 
 # ─── CLI test ─────────────────────────────────────────────────────────────────

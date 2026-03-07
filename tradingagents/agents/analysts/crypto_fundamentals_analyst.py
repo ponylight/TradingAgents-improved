@@ -65,8 +65,9 @@ def create_crypto_fundamentals_analyst(llm):
         try:
             from tradingagents.dataflows.crypto_monitor import get_crisis_impact_index
             cii = get_crisis_impact_index()
+            quality = cii.get('data_quality', 'unknown')
             cii_summary = (
-                f"Crisis Impact Index: {cii['cii_score']}/100 ({cii['level']}) — {cii['crypto_impact']}\n"
+                f"Crisis Impact Index (heuristic): {cii['cii_score']}/100 ({cii['level']}) — {cii['crypto_impact']} [data: {quality}]\n"
                 f"Components: GDELT={cii['components']['gdelt_score']:.0f} Headlines={cii['components']['headline_score']:.0f} Mining={cii['components']['mining_region_score']:.0f}"
             )
             if cii.get("top_events"):
