@@ -1201,9 +1201,9 @@ def create_agents_graph(analysts_to_run=None):
     # Fallback to OpenRouter/Minimax M2.5 on Anthropic rate limits
     config["fallback_provider"] = "openrouter"
     config["fallback_model"] = "minimax/minimax-m2.5"
-    # Fund manager override — GPT-5.4 for superior financial reasoning (A/B test)
-    config["fund_manager_llm"] = "openai/gpt-5.4"
-    config["fund_manager_llm_provider"] = "openrouter"
+    # Fund manager override — uncomment to A/B test GPT-5.4
+    # config["fund_manager_llm"] = "openai/gpt-5.4"
+    # config["fund_manager_llm_provider"] = "openrouter"
 
     # Only include analysts that need fresh runs
     selected = analysts_to_run or ["market", "sentiment", "fundamentals", "news"]
