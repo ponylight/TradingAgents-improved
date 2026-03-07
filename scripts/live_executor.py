@@ -2513,37 +2513,10 @@ def main():
             # Apply any REDUCE adjustments
             alloc_pct = risk_mgr.get_adjusted_allocation(alloc_pct, risk_actions)
 
-            # === SENTIMENT EXTREME GATE ===
-            # Require higher confidence when Fear & Greed is at extremes to avoid
-            # going AGAINST extreme sentiment (historically dangerous).
-            # Going WITH the extreme (BUY in fear, SELL in greed) is always fine.
-            fg_value = fetch_fear_greed_value()
-            if fg_value is not None:
-                confidence = trade_params.get("confidence", 5) or 5
-                gate_blocked = False
-                if fg_value <= 15 and new_direction == "SELL":
-                    # Extreme Fear: shorting INTO panic historically burns traders
-                    if confidence < 8:
-                        log.warning(
-                            f"⚠️ SENTIMENT GATE: SELL blocked — F&G={fg_value} (Extreme Fear) "
-                            f"requires confidence ≥ 8 (got {confidence})"
-                        )
-                        gate_blocked = True
-                elif fg_value >= 85 and new_direction == "BUY":
-                    # Extreme Greed: buying into euphoria historically burns traders
-                    if confidence < 8:
-                        log.warning(
-                            f"⚠️ SENTIMENT GATE: BUY blocked — F&G={fg_value} (Extreme Greed) "
-                            f"requires confidence ≥ 8 (got {confidence})"
-                        )
-                        gate_blocked = True
-                if gate_blocked:
-                    record["transition"] = "SENTIMENT_GATE_BLOCKED"
-                    record["sentiment_gate"] = {"fg": fg_value, "confidence": confidence, "direction": new_direction}
-                    executor_state["trades"] = executor_state.get("trades", [])
-                    executor_state["trades"].append(record)
-                    save_state(executor_state)
-                    return
+            # === SENTIMENT EXTREME GATE === (REMOVED)
+            # F&G is a lagging indicator and extremes can persist for months.
+            # The multi-agent pipeline should make its own assessment.
+            # F&G data is still available to agents via CII for informational use.
 
             # Respect agent's entry price — only open if market is at or better than proposed entry
             agent_entry = trade_params.get("entry_price")
