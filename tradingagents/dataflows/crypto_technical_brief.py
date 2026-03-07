@@ -9,11 +9,14 @@ Adapted from AlpacaTradingAgent for crypto/ccxt.
 """
 
 from __future__ import annotations
+import logging
 import warnings
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
+
+_log = logging.getLogger("crypto_technical_brief")
 
 from .ta_schema import (
     AVWAPLevel, Direction, KeyLevel, MarketStructure, MomentumState,
@@ -237,6 +240,23 @@ def detect_trend(df):
     av=float(df["adx_14"].iloc[-1]) if not pd.isna(df["adx_14"].iloc[-1]) else 0.0
     at="very_strong" if av>40 else "strong" if av>25 else "weak"
     sd=((c-s200)/s200)*100 if s200>0 else 0.0
+
+    # === Indicator Reconciliation ===
+    # EMA/SMA scoring can conflict with structural signals (higher_highs, higher_lows, ema_slope).
+    # When they conflict, override to NEUTRAL to avoid false directional bias.
+    if d == Direction.BEARISH and hh and hl and es > 0.5:
+        _log.warning(
+            f"⚠️ TREND RECONCILIATION: EMA/SMA scored BEARISH but structure is bullish "
+            f"(higher_highs=True, higher_lows=True, ema_slope={es:.2f}) — overriding to NEUTRAL"
+        )
+        d = Direction.NEUTRAL
+    elif d == Direction.BULLISH and not hh and not hl and es < -0.5:
+        _log.warning(
+            f"⚠️ TREND RECONCILIATION: EMA/SMA scored BULLISH but structure is bearish "
+            f"(higher_highs=False, higher_lows=False, ema_slope={es:.2f}) — overriding to NEUTRAL"
+        )
+        d = Direction.NEUTRAL
+
     return TrendState(direction=d,strength=st,ema_slope=round(es,4),higher_highs=hh,higher_lows=hl,
                      adx=round(av,2),trend_strength_adx=at,sma_200=round(s200,2),sma_200_dist=round(sd,2))
 

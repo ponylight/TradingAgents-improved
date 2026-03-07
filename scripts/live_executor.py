@@ -636,6 +636,20 @@ def close_position(exchange, position, fraction=1.0):
     return order
 
 
+def fetch_fear_greed_value() -> int | None:
+    """Fetch current Fear & Greed Index value (0-100). Returns None on failure."""
+    try:
+        import requests
+        resp = requests.get("https://api.alternative.me/fng/?limit=1", timeout=8)
+        data = resp.json()
+        value = int(data["data"][0]["value"])
+        log.debug(f"Fear & Greed fetched: {value}")
+        return value
+    except Exception as e:
+        log.warning(f"Fear & Greed fetch failed: {e}")
+        return None
+
+
 def open_position(exchange, direction, equity, alloc_pct, stop_loss=None, risk_multiplier=1.0):
     """Open position sized by 1% risk target and daily ATR. Leverage auto-derived."""
     ticker = exchange.fetch_ticker(SYMBOL)
@@ -1572,6 +1586,25 @@ def run_agents(ta, trade_date, portfolio_context=None, analysts_to_run=None, ana
                     ta._cached_reports = {}
                 ta._cached_reports[report_field] = cached_report
                 log.info(f"\U0001f4be Injected cached {cached_analyst} report")
+
+        # === STALE CACHE WARNING ===
+        # Warn if the cached report significantly exceeds its configured TTL.
+        # Don't block — just alert so operators can take action.
+        try:
+            cache_entry = analyst_scheduler._cache.get(cached_analyst, {})
+            last_run_str = cache_entry.get("last_run")
+            if last_run_str:
+                last_dt = datetime.fromisoformat(last_run_str)
+                age_hours = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
+                ttl_hours = analyst_scheduler.schedule.get(cached_analyst, 24)
+                stale_threshold = ttl_hours * 1.5
+                if age_hours > stale_threshold:
+                    log.warning(
+                        f"⚠️ STALE CACHE: {cached_analyst} report is {age_hours:.1f}h old "
+                        f"(TTL: {ttl_hours}h, threshold: {stale_threshold:.1f}h) — consider refreshing"
+                    )
+        except Exception as _e:
+            log.debug(f"Stale cache check failed for {cached_analyst}: {_e}")
     
     # Run pipeline with retry logic — LLM timeouts, API errors, parsing failures
     MAX_RETRIES = 2
@@ -2433,6 +2466,38 @@ def main():
             
             # Apply any REDUCE adjustments
             alloc_pct = risk_mgr.get_adjusted_allocation(alloc_pct, risk_actions)
+
+            # === SENTIMENT EXTREME GATE ===
+            # Require higher confidence when Fear & Greed is at extremes to avoid
+            # going AGAINST extreme sentiment (historically dangerous).
+            # Going WITH the extreme (BUY in fear, SELL in greed) is always fine.
+            fg_value = fetch_fear_greed_value()
+            if fg_value is not None:
+                confidence = trade_params.get("confidence", 5) or 5
+                gate_blocked = False
+                if fg_value <= 15 and new_direction == "SELL":
+                    # Extreme Fear: shorting INTO panic historically burns traders
+                    if confidence < 8:
+                        log.warning(
+                            f"⚠️ SENTIMENT GATE: SELL blocked — F&G={fg_value} (Extreme Fear) "
+                            f"requires confidence ≥ 8 (got {confidence})"
+                        )
+                        gate_blocked = True
+                elif fg_value >= 85 and new_direction == "BUY":
+                    # Extreme Greed: buying into euphoria historically burns traders
+                    if confidence < 8:
+                        log.warning(
+                            f"⚠️ SENTIMENT GATE: BUY blocked — F&G={fg_value} (Extreme Greed) "
+                            f"requires confidence ≥ 8 (got {confidence})"
+                        )
+                        gate_blocked = True
+                if gate_blocked:
+                    record["transition"] = "SENTIMENT_GATE_BLOCKED"
+                    record["sentiment_gate"] = {"fg": fg_value, "confidence": confidence, "direction": new_direction}
+                    executor_state["trades"] = executor_state.get("trades", [])
+                    executor_state["trades"].append(record)
+                    save_state(executor_state)
+                    return
 
             # Respect agent's entry price — only open if market is at or better than proposed entry
             agent_entry = trade_params.get("entry_price")

@@ -112,9 +112,17 @@ Each HOLD is a capital allocation decision — own it with the same rigor as a t
 ## Risk Judge's Assessment
 {risk_decision[:2000]}
 
-## Required Output
+## Required Output — Mandatory Sections
 
-Brief assessment (3-5 sentences max), then:
+Your response MUST include ALL three of the following before the structured block:
+
+**1. INDEPENDENT OBSERVATION** (required): State at least ONE insight or concern NOT mentioned by any upstream agent (researchers, trader, risk judge). This must be your own analysis — not a restatement of what the trader said. Examples: macro calendar risk, exchange-specific liquidity, funding carry cost at current rate, order book depth at the proposed entry, correlation with equities, weekend/holiday liquidity risk, etc.
+
+**2. ORDERBOOK / LIQUIDITY CHECK** (required): Cross-check the trader's proposed entry price against current market conditions. Is there sufficient liquidity to fill the proposed size? Are there large walls nearby that could cause slippage? State your finding explicitly (e.g. "Entry at $X is well-supported with $Y in bids within 0.5%" or "Thin book at proposed entry — slippage risk").
+
+**3. EXPLICIT AGREEMENT / DISAGREEMENT** (required): Clearly state: "I AGREE with the trader's thesis because [reason]" OR "I DISAGREE with the trader's thesis because [reason]". Do NOT just summarize the trader's view — you must take a position. Vague or noncommittal statements are not acceptable.
+
+After these three sections, provide your brief overall assessment (2-3 sentences), then:
 
 {trading_ctx["final_format"]}
 

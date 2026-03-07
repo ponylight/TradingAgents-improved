@@ -234,11 +234,23 @@ def get_crypto_funding_rate(
             return f"No funding rate data for {symbol}"
         
         lines = [f"# Funding Rate History for {symbol} ({exchange_id})\n"]
+        lines.append("## Funding Rate Reference Scale")
+        lines.append("  Normal:              -0.01% to +0.01%  (typical neutral market)")
+        lines.append("  Elevated:            ±0.01% to ±0.03%  (directional bias, watch for reversal)")
+        lines.append("  Extreme/Squeeze:     beyond ±0.03%     (squeeze potential — longs/shorts overextended)")
+        lines.append("NOTE: A rate like -0.0042% is NORMAL, not 'significant negative'. Real squeezes require -0.03%+.\n")
         for fr in funding_rates[-20:]:  # Last 20 entries
             timestamp = datetime.fromtimestamp(fr['timestamp'] / 1000).strftime('%Y-%m-%d %H:%M')
             rate = fr.get('fundingRate', 'N/A')
             if isinstance(rate, (int, float)):
-                rate = f"{rate:.6f} ({rate * 100:.4f}%)"
+                rate_pct = rate * 100
+                if abs(rate_pct) > 0.03:
+                    regime = "EXTREME"
+                elif abs(rate_pct) > 0.01:
+                    regime = "ELEVATED"
+                else:
+                    regime = "normal"
+                rate = f"{rate:.6f} ({rate_pct:.4f}%) [{regime}]"
             lines.append(f"{timestamp}: {rate}")
         
         return "\n".join(lines)
