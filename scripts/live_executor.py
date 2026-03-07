@@ -464,15 +464,25 @@ def check_pending_limit_order(exchange, executor_state):
                 tp1 = fill_price - (TP1_R_MULTIPLE * risk_dist)
             log.info(f"\U0001f527 Auto TP1 at {TP1_R_MULTIPLE}R: ${tp1:,.0f}")
         tp2 = pending.get("tp2")
-        tp_orders = set_take_profits(exchange, direction, amount, tp1, tp2)
-        
+        # Place protection orders — wrapped individually so partial failure is logged
+        tp_orders = []
+        try:
+            tp_orders = set_take_profits(exchange, direction, amount, tp1, tp2)
+        except Exception as e:
+            log.error(f"⚠️ FILL HANDLER: set_take_profits failed — position unprotected! {e}")
+
         atr = get_atr(exchange)
-        set_native_trailing_stop(exchange, direction, fill_price, atr)
+        try:
+            set_native_trailing_stop(exchange, direction, fill_price, atr)
+        except Exception as e:
+            log.error(f"⚠️ FILL HANDLER: set_native_trailing_stop failed: {e}")
+
         if direction == "BUY":
             initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
         else:
             initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
-        
+
+        # Persist active_trade AFTER protection orders are placed (even if some failed)
         executor_state["active_trade"] = {
             "direction": direction,
             "entry": fill_price,
@@ -503,15 +513,23 @@ def check_pending_limit_order(exchange, executor_state):
             log.warning(f"\u26a0\ufe0f Partial fill on {status} order: {filled_qty:.3f} BTC @ ${fill_price:,.2f} — creating active_trade")
             
             atr = get_atr(exchange)
-            set_native_trailing_stop(exchange, direction, fill_price, atr)
+            try:
+                set_native_trailing_stop(exchange, direction, fill_price, atr)
+            except Exception as e:
+                log.error(f"⚠️ PARTIAL FILL: set_native_trailing_stop failed: {e}")
+
             if direction == "BUY":
                 initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
             else:
                 initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
-            
+
             tp2 = pending.get("tp2")
-            tp_orders = set_take_profits(exchange, direction, filled_qty, tp1, tp2) if tp1 else []
-            
+            tp_orders = []
+            try:
+                tp_orders = set_take_profits(exchange, direction, filled_qty, tp1, tp2) if tp1 else []
+            except Exception as e:
+                log.error(f"⚠️ PARTIAL FILL: set_take_profits failed — position unprotected! {e}")
+
             executor_state["active_trade"] = {
                 "direction": direction,
                 "entry": fill_price,
@@ -530,7 +548,10 @@ def check_pending_limit_order(exchange, executor_state):
             }
             # Ensure SL on exchange for the filled portion
             if stop_loss:
-                sync_stop_loss_to_exchange(exchange, direction.lower(), filled_qty, stop_loss)
+                try:
+                    sync_stop_loss_to_exchange(exchange, direction.lower(), filled_qty, stop_loss)
+                except Exception as e:
+                    log.error(f"⚠️ PARTIAL FILL: sync_stop_loss failed: {e}")
         else:
             log.info(f"\u274c Limit order {order_id} was {status} (no fills)")
         executor_state.pop("pending_limit_order", None)
@@ -839,8 +860,10 @@ def set_native_trailing_stop(exchange, direction, entry_price, atr):
             "positionIdx": 0,
         })
         log.info(f"📏 Native trailing stop set: distance=${trail_distance:,.0f} (ATR×{ATR_TRAIL_MULTIPLE}), activates @ ${active_price:,.0f}")
+        return True
     except Exception as e:
-        log.warning(f"⚠️ Failed to set native trailing stop: {e}")
+        log.error(f"🚨 Native trailing stop FAILED — position may be unprotected! {e}")
+        return False
 
 
 def manage_trailing_stop(exchange, positions, state):
@@ -912,8 +935,8 @@ def manage_trailing_stop(exchange, positions, state):
         prev_atr = trade_info.get("atr_at_entry", atr)
         if abs(atr - prev_atr) / max(prev_atr, 1) > 0.15:
             log.info(f"📏 ATR shifted: ${prev_atr:,.0f} → ${atr:,.0f} — refreshing native trailing stop")
-            set_native_trailing_stop(exchange, side, entry, atr)
-            trade_info["atr_at_entry"] = atr
+            if set_native_trailing_stop(exchange, side, entry, atr):
+                trade_info["atr_at_entry"] = atr
 
         opened_at = trade_info.get("opened_at", "")
 
@@ -1488,6 +1511,7 @@ def main():
     # Acquire exclusive lock — prevents sentinel + cron overlap
     import fcntl
     lock_file = Path(__file__).resolve().parent.parent / "logs" / ".executor.lock"
+    lock_file.parent.mkdir(parents=True, exist_ok=True)  # ensure logs/ exists
     lock_fd = open(lock_file, "w")
     try:
         fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -1495,7 +1519,7 @@ def main():
         log.warning("⏸️  Another executor instance is running — exiting")
         lock_fd.close()
         return
-    # Lock held for duration of main()
+    # Lock held for duration of main() — released on process exit or explicit close
 
     log.info("=" * 60)
     log.info("🚀 TradingAgents Live Executor v2")
@@ -2175,7 +2199,8 @@ def main():
 
                 # Initialize trailing stop — use Bybit's native trailing for real-time tracking
                 atr = get_atr(exchange)
-                set_native_trailing_stop(exchange, new_direction, fill_price, atr)
+                if not set_native_trailing_stop(exchange, new_direction, fill_price, atr):
+                    log.error("🚨 Native trailing stop failed on trade entry — local stop only!")
                 if new_direction == "BUY":
                     initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
                 else:

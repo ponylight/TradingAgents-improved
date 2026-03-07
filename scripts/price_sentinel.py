@@ -363,23 +363,9 @@ def main():
         state["trigger_reason"] = trigger_reason
         save_state(state)
 
-        # Check if executor is already running (e.g. cron or another sentinel trigger)
-        import fcntl
-        lock_file = PROJECT_ROOT / "logs" / ".executor.lock"
-        try:
-            lock_fd = open(lock_file, "w")
-            fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except (IOError, OSError):
-            log.info("⏸️  Executor already running (lock held) — skipping trigger")
-            save_state(state)
-            return
-        finally:
-            try:
-                lock_fd.close()
-            except Exception:
-                pass
-
-        # Run the full executor
+        # Run the full executor — executor itself holds the fcntl lock and will
+        # exit immediately if already running. No sentinel-side pre-check needed
+        # (avoids TOCTOU race between lock probe and subprocess start).
         log.info(f"🚨 SENTINEL TRIGGER: {trigger_reason} — launching executor")
         result = subprocess.run(
             [str(VENV_PYTHON), str(EXECUTOR)],
