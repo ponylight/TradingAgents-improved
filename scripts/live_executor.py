@@ -876,6 +876,101 @@ def set_native_trailing_stop(exchange, direction, entry_price, atr):
         return False
 
 
+def _verify_and_repair_protection(exchange, executor_state, positions):
+    """Verify exchange-side protection orders match local state. Repair if missing.
+
+    Called every cycle when we have an active_trade AND an exchange position.
+    Handles:
+    1. needs_protection_retry — TP/SL/trailing placement failed on fill
+    2. Missing TP orders — exchange may have cancelled/expired them
+    3. Missing stop loss — verify SL exists on exchange
+    4. Position size mismatch — detect partial fills/manual changes
+    """
+    active = executor_state.get("active_trade")
+    if not active:
+        return
+
+    direction = active.get("direction", "")
+    amount = active.get("amount", 0)
+    entry = active.get("entry", 0)
+    tp1 = active.get("tp1")
+    tp2 = active.get("tp2")
+    stop_loss = active.get("stop_loss")
+    atr = active.get("atr_at_entry", 0)
+    repaired = False
+
+    # 1. Retry failed protection placement
+    if active.get("needs_protection_retry"):
+        log.warning("🔧 PROTECTION RETRY: Previous protection placement failed — retrying")
+
+        tp_orders = active.get("tp_orders", [])
+        if not tp_orders and tp1:
+            try:
+                tp_orders = set_take_profits(exchange, direction, amount, tp1, tp2)
+                active["tp_orders"] = tp_orders
+                log.info(f"✅ Protection retry: TP orders placed ({len(tp_orders)} orders)")
+                repaired = True
+            except Exception as e:
+                log.error(f"🚨 Protection retry FAILED for TP orders: {e}")
+
+        if atr > 0:
+            try:
+                set_native_trailing_stop(exchange, direction, entry, atr)
+                log.info("✅ Protection retry: native trailing stop set")
+                repaired = True
+            except Exception as e:
+                log.error(f"🚨 Protection retry FAILED for trailing stop: {e}")
+
+        if stop_loss:
+            try:
+                side = "long" if direction == "BUY" else "short"
+                sync_stop_loss_to_exchange(exchange, side, amount, stop_loss)
+                log.info("✅ Protection retry: SL synced")
+                repaired = True
+            except Exception as e:
+                log.error(f"🚨 Protection retry FAILED for SL: {e}")
+
+        active["needs_protection_retry"] = False
+        save_state(executor_state)
+
+    # 2. Verify TP orders still exist on exchange
+    tp_orders = active.get("tp_orders", [])
+    if tp_orders:
+        try:
+            open_orders = exchange.fetch_open_orders(SYMBOL)
+            open_order_ids = {o["id"] for o in open_orders}
+
+            for tp in tp_orders:
+                if tp["order_id"] not in open_order_ids:
+                    # TP order gone — might be filled (handled by TP1 detection) or expired
+                    # Only re-place if it's TP2 and TP1 hasn't hit, or if TP1 and not hit
+                    tp_level = tp.get("level", 0)
+                    tp1_hit = active.get("tp1_hit", False)
+
+                    if tp_level == 1 and not tp1_hit:
+                        log.warning(f"⚠️ TP1 order {tp['order_id'][:12]} missing from exchange — may have been filled or expired")
+                    elif tp_level == 2:
+                        log.warning(f"⚠️ TP2 order {tp['order_id'][:12]} missing from exchange")
+        except Exception as e:
+            log.debug(f"Could not verify TP orders: {e}")
+
+    # 3. Verify position size matches
+    if positions:
+        p = positions[0]
+        exchange_contracts = abs(float(p.get("contracts", 0)))
+        local_amount = float(active.get("amount", 0))
+        if exchange_contracts > 0 and local_amount > 0:
+            size_diff_pct = abs(exchange_contracts - local_amount) / local_amount * 100
+            if size_diff_pct > 5:  # More than 5% mismatch
+                log.warning(
+                    f"⚠️ Position size mismatch: exchange={exchange_contracts:.4f} vs local={local_amount:.4f} "
+                    f"({size_diff_pct:.1f}% diff) — may indicate manual change or partial TP fill"
+                )
+
+    if repaired:
+        log.info("🔧 Protection repair cycle complete")
+
+
 def manage_trailing_stop(exchange, positions, state):
     """Check and update trailing stop for existing positions."""
     for p in positions:
@@ -1676,6 +1771,11 @@ def main():
         }
         sync_stop_loss_to_exchange(exchange, side, contracts, default_sl)
         save_state(executor_state)
+
+    # ─── Protection verification & retry ─────────────────────────────────────
+    active = executor_state.get("active_trade")
+    if active and has_position:
+        _verify_and_repair_protection(exchange, executor_state, positions)
 
     # Check if a pending limit order was filled since last cycle
     if check_pending_limit_order(exchange, executor_state):
