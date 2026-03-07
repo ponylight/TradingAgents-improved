@@ -466,16 +466,19 @@ def check_pending_limit_order(exchange, executor_state):
         tp2 = pending.get("tp2")
         # Place protection orders — wrapped individually so partial failure is logged
         tp_orders = []
+        protection_failed = False
         try:
             tp_orders = set_take_profits(exchange, direction, amount, tp1, tp2)
         except Exception as e:
-            log.error(f"⚠️ FILL HANDLER: set_take_profits failed — position unprotected! {e}")
+            log.error(f"🚨 FILL HANDLER: set_take_profits failed — position unprotected! {e}")
+            protection_failed = True
 
         atr = get_atr(exchange)
         try:
             set_native_trailing_stop(exchange, direction, fill_price, atr)
         except Exception as e:
-            log.error(f"⚠️ FILL HANDLER: set_native_trailing_stop failed: {e}")
+            log.error(f"🚨 FILL HANDLER: set_native_trailing_stop failed: {e}")
+            protection_failed = True
 
         if direction == "BUY":
             initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
@@ -497,6 +500,7 @@ def check_pending_limit_order(exchange, executor_state):
             "confidence": pending.get("confidence"),
             "atr_at_entry": atr,
             "from_limit_order": True,
+            "needs_protection_retry": protection_failed,
         }
         executor_state.pop("pending_limit_order", None)
         save_state(executor_state)
@@ -513,10 +517,12 @@ def check_pending_limit_order(exchange, executor_state):
             log.warning(f"\u26a0\ufe0f Partial fill on {status} order: {filled_qty:.3f} BTC @ ${fill_price:,.2f} — creating active_trade")
             
             atr = get_atr(exchange)
+            protection_failed = False
             try:
                 set_native_trailing_stop(exchange, direction, fill_price, atr)
             except Exception as e:
-                log.error(f"⚠️ PARTIAL FILL: set_native_trailing_stop failed: {e}")
+                log.error(f"🚨 PARTIAL FILL: set_native_trailing_stop failed: {e}")
+                protection_failed = True
 
             if direction == "BUY":
                 initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
@@ -528,7 +534,8 @@ def check_pending_limit_order(exchange, executor_state):
             try:
                 tp_orders = set_take_profits(exchange, direction, filled_qty, tp1, tp2) if tp1 else []
             except Exception as e:
-                log.error(f"⚠️ PARTIAL FILL: set_take_profits failed — position unprotected! {e}")
+                log.error(f"🚨 PARTIAL FILL: set_take_profits failed — position unprotected! {e}")
+                protection_failed = True
 
             executor_state["active_trade"] = {
                 "direction": direction,
@@ -545,13 +552,16 @@ def check_pending_limit_order(exchange, executor_state):
                 "atr_at_entry": atr,
                 "from_limit_order": True,
                 "partial_fill": True,
+                "needs_protection_retry": protection_failed,
             }
             # Ensure SL on exchange for the filled portion
             if stop_loss:
                 try:
                     sync_stop_loss_to_exchange(exchange, direction.lower(), filled_qty, stop_loss)
                 except Exception as e:
-                    log.error(f"⚠️ PARTIAL FILL: sync_stop_loss failed: {e}")
+                    log.error(f"🚨 PARTIAL FILL: sync_stop_loss failed: {e}")
+                    protection_failed = True
+                    executor_state["active_trade"]["needs_protection_retry"] = True
         else:
             log.info(f"\u274c Limit order {order_id} was {status} (no fills)")
         executor_state.pop("pending_limit_order", None)

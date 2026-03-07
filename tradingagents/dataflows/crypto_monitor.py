@@ -92,6 +92,7 @@ _cache = {}
 _CACHE_TTL = 1800  # 30 minutes
 _MAX_STALE_AGE = 7200  # 2 hours — refuse stale data beyond this
 _MAX_RESPONSE_BYTES = 512_000  # 500KB max response
+_MAX_CACHE_ENTRIES = 50  # evict oldest when exceeded
 
 
 def _cached_get(url: str, params: dict = None, timeout: int = 15) -> Optional[str]:
@@ -107,10 +108,22 @@ def _cached_get(url: str, params: dict = None, timeout: int = 15) -> Optional[st
     try:
         resp = _session.get(url, params=params, timeout=timeout, stream=True)
         resp.raise_for_status()
-        # Cap response size
-        content = resp.content[:_MAX_RESPONSE_BYTES]
-        text = content.decode(resp.encoding or "utf-8", errors="replace")
+        # Stream with size cap to avoid OOM on malicious/broken endpoints
+        chunks = []
+        total = 0
+        for chunk in resp.iter_content(chunk_size=8192):
+            total += len(chunk)
+            if total > _MAX_RESPONSE_BYTES:
+                log.warning(f"Response exceeded {_MAX_RESPONSE_BYTES} bytes — truncated: {url}")
+                break
+            chunks.append(chunk)
+        raw = b"".join(chunks)
+        text = raw.decode(resp.encoding or "utf-8", errors="replace")
         _cache[cache_key] = (text, now)
+        # Evict oldest entries if cache too large
+        if len(_cache) > _MAX_CACHE_ENTRIES:
+            oldest_key = min(_cache, key=lambda k: _cache[k][1])
+            del _cache[oldest_key]
         return text
     except Exception as e:
         log.warning(f"CryptoMonitor fetch failed {url}: {e}")
@@ -366,10 +379,11 @@ def compute_cii() -> dict:
         level = "LOW"
         crypto_impact = "NEUTRAL"  # Low risk ≠ bullish, just not a headwind
 
-    # Data quality: track which components succeeded
+    # Data quality: track which components actually returned data
     gdelt_ok = any(v.get("status") == "fresh" for v in gdelt.values())
     headlines_ok = headlines["headline_count"] > 0
-    components_available = sum([gdelt_ok, headlines_ok, mining["article_count"] >= 0])
+    mining_ok = mining["article_count"] > 0
+    components_available = sum([gdelt_ok, headlines_ok, mining_ok])
     if components_available >= 2:
         data_quality = "good"
     elif components_available == 1:
