@@ -15,6 +15,7 @@ import os
 import sys
 import json
 import re
+import signal
 import time
 import logging
 from datetime import datetime, timezone, timedelta
@@ -67,6 +68,31 @@ STATE_FILE = LOG_DIR / "executor_state.json"
 
 # Module-level singletons
 outcome_tracker = OutcomeTracker()
+
+# === GRACEFUL SHUTDOWN ===
+_shutdown_requested = False
+_shutdown_state = {}  # Stash partial state for emergency save
+
+
+def _signal_handler(signum, frame):
+    """Handle SIGTERM/SIGINT — log, save state, exit cleanly."""
+    global _shutdown_requested
+    sig_name = signal.Signals(signum).name
+    log.warning(f"⚡ Signal {sig_name} received — initiating graceful shutdown")
+    _shutdown_requested = True
+
+    # Try to save whatever state we have
+    if _shutdown_state.get("executor_state"):
+        try:
+            state = _shutdown_state["executor_state"]
+            state["_shutdown_signal"] = sig_name
+            state["_shutdown_at"] = datetime.now(timezone.utc).isoformat()
+            save_state(state)
+            log.info(f"💾 Emergency state saved on {sig_name}")
+        except Exception as e:
+            log.error(f"❌ Failed to save state on shutdown: {e}")
+
+    sys.exit(128 + signum)
 risk_mgr = RiskManager({
     "max_position_pct": MAX_ALLOC_PCT,
     "max_leverage": 20,
@@ -208,6 +234,19 @@ def check_circuit_breaker(equity):
 
 # === SIGNAL PARSING ===
 
+def _safe_float(s: str) -> float | None:
+    """Safely convert a string to float, returning None on failure."""
+    if not s:
+        return None
+    cleaned = s.replace(",", "").replace("$", "").strip()
+    if not cleaned:
+        return None
+    try:
+        return float(cleaned)
+    except (ValueError, TypeError):
+        return None
+
+
 def parse_trade_params(full_decision: str) -> dict:
     """Extract structured trade params. Tries ---TRADE_PLAN--- block first, falls back to regex."""
     params = {}
@@ -270,7 +309,9 @@ def parse_trade_params(full_decision: str) -> dict:
     for pattern in sl_patterns:
         m = re.search(pattern, text)
         if m:
-            params["stop_loss"] = float(m.group(1).replace(",", ""))
+            val = _safe_float(m.group(1))
+            if val is not None:
+                params["stop_loss"] = val
             break
 
     tp_patterns = [
@@ -281,7 +322,9 @@ def parse_trade_params(full_decision: str) -> dict:
     for pattern in tp_patterns:
         m = re.search(pattern, text)
         if m:
-            params["take_profit_1"] = float(m.group(1).replace(",", ""))
+            val = _safe_float(m.group(1))
+            if val is not None:
+                params["take_profit_1"] = val
             break
 
     tp2_patterns = [
@@ -291,7 +334,9 @@ def parse_trade_params(full_decision: str) -> dict:
     for pattern in tp2_patterns:
         m = re.search(pattern, text)
         if m:
-            params["take_profit_2"] = float(m.group(1).replace(",", ""))
+            val = _safe_float(m.group(1))
+            if val is not None:
+                params["take_profit_2"] = val
             break
 
     conf_patterns = [
@@ -315,7 +360,9 @@ def parse_trade_params(full_decision: str) -> dict:
     for pattern in entry_patterns:
         m = re.search(pattern, text)
         if m:
-            params["entry_price"] = float(m.group(1).replace(",", ""))
+            val = _safe_float(m.group(1))
+            if val is not None:
+                params["entry_price"] = val
             break
 
     # Detect if entry is limit or market
@@ -1526,8 +1573,29 @@ def run_agents(ta, trade_date, portfolio_context=None, analysts_to_run=None, ana
                 ta._cached_reports[report_field] = cached_report
                 log.info(f"\U0001f4be Injected cached {cached_analyst} report")
     
-    agent_state, decision = ta.propagate(SPOT_SYMBOL, trade_date)
-    
+    # Run pipeline with retry logic — LLM timeouts, API errors, parsing failures
+    MAX_RETRIES = 2
+    last_error = None
+    agent_state = None
+    decision = None
+    for attempt in range(MAX_RETRIES + 1):
+        if _shutdown_requested:
+            raise RuntimeError("Shutdown requested — aborting agent pipeline")
+        try:
+            if attempt > 0:
+                log.warning(f"🔄 Retry {attempt}/{MAX_RETRIES}: restarting agent pipeline...")
+                time.sleep(5)  # Brief cooldown before retry
+            agent_state, decision = ta.propagate(SPOT_SYMBOL, trade_date)
+            break  # Success
+        except Exception as e:
+            last_error = e
+            last_node = getattr(ta, '_last_completed_node', 'unknown')
+            log.error(f"❌ Agent pipeline failed (attempt {attempt + 1}/{MAX_RETRIES + 1}) "
+                      f"after node '{last_node}': {type(e).__name__}: {e}")
+            if attempt == MAX_RETRIES:
+                log.error(f"🛑 All {MAX_RETRIES + 1} attempts failed — aborting")
+                raise
+
     # Cache fresh reports from analysts that ran
     for analyst in analysts_to_run:
         report_field = {
@@ -1669,6 +1737,10 @@ def preflight_check(timeout=10):
 
 
 def main():
+    # Register signal handlers for graceful shutdown
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
+
     # Acquire exclusive lock — prevents sentinel + cron overlap
     import fcntl
     lock_file = Path(__file__).resolve().parent.parent / "logs" / ".executor.lock"
@@ -1705,6 +1777,7 @@ def main():
         return
 
     executor_state = load_state()
+    _shutdown_state["executor_state"] = executor_state  # Stash for signal handler
 
     if check_daily_loss_limit(executor_state, equity) >= DAILY_LOSS_LIMIT:
         return

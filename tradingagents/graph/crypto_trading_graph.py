@@ -4,10 +4,14 @@ Uses crypto-specific analysts instead of stock-focused ones.
 """
 
 import os
+import time as _time
+import logging as _logging
 from pathlib import Path
 import json
 from datetime import date
 from typing import Dict, Any, Tuple, List, Optional
+
+_graph_log = _logging.getLogger("executor.graph")
 
 from langgraph.prebuilt import ToolNode
 
@@ -411,17 +415,35 @@ class CryptoTradingAgentsGraph:
                 init_agent_state[field] = report
         args = self.propagator.get_graph_args()
 
-        if self.debug:
-            trace = []
-            for chunk in self.graph.stream(init_agent_state, **args):
-                if len(chunk["messages"]) == 0:
-                    pass
-                else:
-                    chunk["messages"][-1].pretty_print()
-                    trace.append(chunk)
-            final_state = trace[-1]
-        else:
-            final_state = self.graph.invoke(init_agent_state, **args)
+        # Use stream(updates) for node-level monitoring + stream(values) for full state
+        self._last_completed_node = None
+        self._node_timings = {}
+        node_start = _time.monotonic()
+        final_state = None
+
+        for mode, chunk in self.graph.stream(
+            init_agent_state, stream_mode=["updates", "values"], **args
+        ):
+            if mode == "updates":
+                # chunk is {node_name: state_update}
+                for node_name in chunk:
+                    elapsed = _time.monotonic() - node_start
+                    self._last_completed_node = node_name
+                    self._node_timings[node_name] = elapsed
+                    _graph_log.info(f"✅ Node '{node_name}' completed ({elapsed:.1f}s)")
+                    node_start = _time.monotonic()
+
+                    if self.debug:
+                        update = chunk[node_name]
+                        if isinstance(update, dict) and update.get("messages"):
+                            update["messages"][-1].pretty_print()
+
+            elif mode == "values":
+                # chunk is the full accumulated state after each node
+                final_state = chunk
+
+        if final_state is None:
+            raise RuntimeError("Graph stream produced no output — pipeline may be misconfigured")
 
         self.curr_state = final_state
         self._log_state(trade_date, final_state)
