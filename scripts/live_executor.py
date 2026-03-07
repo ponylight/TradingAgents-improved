@@ -15,6 +15,7 @@ import os
 import sys
 import json
 import re
+import time
 import logging
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
@@ -1967,11 +1968,15 @@ def main():
 
     # ─── Check for light layer / green lane overrides ───────────────────
     override_decision = None
-    for override_name in ("light_override.json", "green_lane_override.json"):
+    for override_name in ("green_lane_override.json", "light_override.json"):  # Green lane takes precedence
         override_file = LOG_DIR / override_name
         if override_file.exists():
             try:
                 ov = json.loads(override_file.read_text())
+                if "action" not in ov or "timestamp" not in ov:
+                    log.warning(f"Malformed override {override_name} — quarantining")
+                    override_file.rename(override_file.with_suffix(f".bad.{int(time.time())}.json"))
+                    continue
                 ov_age = (datetime.now(timezone.utc) - datetime.fromisoformat(ov["timestamp"])).total_seconds()
                 if ov_age < 600:  # Valid if < 10 min old
                     override_decision = ov
@@ -1983,6 +1988,10 @@ def main():
                     override_file.unlink()
             except Exception as e:
                 log.warning(f"Failed to read {override_name}: {e}")
+                try:
+                    override_file.rename(override_file.with_suffix(f".bad.{int(time.time())}.json"))
+                except Exception:
+                    pass
 
     if override_decision and override_decision["action"] in ("BUY", "SELL", "LONG", "SHORT"):
         action = override_decision["action"]

@@ -22,6 +22,8 @@ from pathlib import Path
 
 import ccxt.pro as ccxtpro
 
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
 # Green lane scanner (optional — ws keeps running if unavailable)
 _GREEN_LANE_OK = False
 try:
@@ -30,8 +32,6 @@ try:
     _GREEN_LANE_OK = True
 except Exception as _e:
     pass
-
-PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_FILE = PROJECT_ROOT / "logs" / "ws_state.json"
 REALTIME_FILE = PROJECT_ROOT / "logs" / "realtime_price.json"  # Shared with light layer
 EXECUTOR = PROJECT_ROOT / "scripts" / "live_executor.py"
@@ -130,7 +130,7 @@ def run_green_lane_scan(state: dict) -> dict:
             "source": "ws_green_lane",
         }))
         tmp.rename(gl_file)
-        launch_executor(f"Green Lane {signal.direction.upper()} q={signal.quality_score}")
+        # Don't launch executor here — caller handles it to avoid double-launch
     except Exception as e:
         log.error(f"Green lane scan error: {e}")
     return state

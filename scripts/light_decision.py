@@ -200,8 +200,13 @@ REASON: [one line]
             },
             timeout=60,
         )
+        resp.raise_for_status()
         data = resp.json()
-        content = data["choices"][0]["message"]["content"]
+        choices = data.get("choices", [])
+        if not choices or not choices[0].get("message", {}).get("content"):
+            log.warning(f"LLM returned empty response: {json.dumps(data)[:200]}")
+            return {}
+        content = choices[0]["message"]["content"]
         return {"raw": content, "price": price, "timestamp": datetime.now(timezone.utc).isoformat()}
     except Exception as e:
         log.error(f"LLM call failed: {e}")
@@ -233,13 +238,17 @@ def should_act(decision: dict, state: dict, price_data: dict) -> bool:
     if action == "HOLD":
         return False
 
+    # CLOSE is always allowed — never block emergency exits
+    if action == "CLOSE":
+        return True
+
     if confidence < MIN_CONFIDENCE:
         log.info(f"Light decision {action} rejected: confidence {confidence} < {MIN_CONFIDENCE}")
         return False
 
     # Check minimum price move from last decision
     abs_change = abs(price_data.get("change_pct", 0))
-    if abs_change < MIN_MOVE_PCT and action in ("BUY", "SELL"):
+    if abs_change < MIN_MOVE_PCT:
         log.info(f"Light decision {action} rejected: move {abs_change:.2f}% < {MIN_MOVE_PCT}% minimum")
         return False
 
@@ -345,10 +354,21 @@ def main():
             }))
             tmp_file.rename(light_file)
 
-            # Increment daily light trade count
+            # Increment daily light trade count (merge-patch: re-read, update key, atomic write)
+            import fcntl
             today = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
-            state.setdefault("light_trades", {})[today] = state.get("light_trades", {}).get(today, 0) + 1
-            STATE_FILE.write_text(json.dumps(state, indent=2))
+            try:
+                lock_fd = open(STATE_FILE.with_suffix(".lock"), "w")
+                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                fresh_state = load_json(STATE_FILE)
+                fresh_state.setdefault("light_trades", {})[today] = fresh_state.get("light_trades", {}).get(today, 0) + 1
+                tmp = STATE_FILE.with_suffix(".tmp")
+                tmp.write_text(json.dumps(fresh_state, indent=2))
+                tmp.rename(STATE_FILE)
+                fcntl.flock(lock_fd, fcntl.LOCK_UN)
+                lock_fd.close()
+            except Exception as e:
+                log.warning(f"Failed to update light trade count: {e}")
 
             import subprocess
             subprocess.Popen(
