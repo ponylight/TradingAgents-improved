@@ -415,32 +415,46 @@ class CryptoTradingAgentsGraph:
                 init_agent_state[field] = report
         args = self.propagator.get_graph_args()
 
-        # Use stream(updates) for node-level monitoring + stream(values) for full state
+        # Use stream(updates) for node-level monitoring + stream(values) for full state.
+        # Fall back to graph.invoke() if the stream API is unavailable or incompatible.
         self._last_completed_node = None
         self._node_timings = {}
         node_start = _time.monotonic()
         final_state = None
 
-        for mode, chunk in self.graph.stream(
-            init_agent_state, stream_mode=["updates", "values"], **args
-        ):
-            if mode == "updates":
-                # chunk is {node_name: state_update}
-                for node_name in chunk:
-                    elapsed = _time.monotonic() - node_start
-                    self._last_completed_node = node_name
-                    self._node_timings[node_name] = elapsed
-                    _graph_log.info(f"✅ Node '{node_name}' completed ({elapsed:.1f}s)")
-                    node_start = _time.monotonic()
+        try:
+            for mode, chunk in self.graph.stream(
+                init_agent_state, stream_mode=["updates", "values"], **args
+            ):
+                if mode == "updates":
+                    # chunk is {node_name: state_update}
+                    for node_name in chunk:
+                        elapsed = _time.monotonic() - node_start
+                        self._last_completed_node = node_name
+                        self._node_timings[node_name] = elapsed
+                        _graph_log.info(f"✅ Node '{node_name}' completed ({elapsed:.1f}s)")
+                        node_start = _time.monotonic()
 
-                    if self.debug:
-                        update = chunk[node_name]
-                        if isinstance(update, dict) and update.get("messages"):
-                            update["messages"][-1].pretty_print()
+                        if self.debug:
+                            update = chunk[node_name]
+                            if isinstance(update, dict) and update.get("messages"):
+                                update["messages"][-1].pretty_print()
 
-            elif mode == "values":
-                # chunk is the full accumulated state after each node
-                final_state = chunk
+                elif mode == "values":
+                    # chunk is the full accumulated state after each node
+                    final_state = chunk
+
+        except (TypeError, ValueError) as _stream_err:
+            # LangGraph stream API may change between versions — fall back to invoke()
+            _graph_log.warning(
+                f"⚠️ Stream mode failed ({type(_stream_err).__name__}: {_stream_err}), "
+                "falling back to invoke()"
+            )
+            final_state = self.graph.invoke(init_agent_state, **args)
+            # No per-node granularity in fallback — mark the last node as the graph itself
+            elapsed = _time.monotonic() - node_start
+            self._last_completed_node = "invoke_fallback"
+            self._node_timings["invoke_fallback"] = elapsed
 
         if final_state is None:
             raise RuntimeError("Graph stream produced no output — pipeline may be misconfigured")

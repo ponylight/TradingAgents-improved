@@ -75,24 +75,21 @@ _shutdown_state = {}  # Stash partial state for emergency save
 
 
 def _signal_handler(signum, frame):
-    """Handle SIGTERM/SIGINT — log, save state, exit cleanly."""
+    """Handle SIGTERM/SIGINT — ONLY set flag and log. No I/O inside signal handlers.
+
+    Writing files or calling sys.exit() inside a signal handler is dangerous — the
+    signal may fire mid-write and corrupt the state file, or interrupt another syscall
+    in an unrecoverable way.  The main loop polls _shutdown_requested at safe
+    checkpoints and performs the actual save + exit there.
+    """
     global _shutdown_requested
     sig_name = signal.Signals(signum).name
-    log.warning(f"⚡ Signal {sig_name} received — initiating graceful shutdown")
+    # Use low-level write — avoids re-entering the logging machinery (which may hold locks)
+    import sys as _sys
+    _sys.stderr.write(f"\n⚡ Signal {sig_name} received — shutdown flag set\n")
+    _sys.stderr.flush()
     _shutdown_requested = True
-
-    # Try to save whatever state we have
-    if _shutdown_state.get("executor_state"):
-        try:
-            state = _shutdown_state["executor_state"]
-            state["_shutdown_signal"] = sig_name
-            state["_shutdown_at"] = datetime.now(timezone.utc).isoformat()
-            save_state(state)
-            log.info(f"💾 Emergency state saved on {sig_name}")
-        except Exception as e:
-            log.error(f"❌ Failed to save state on shutdown: {e}")
-
-    sys.exit(128 + signum)
+    # Do NOT call save_state() or sys.exit() here.
 risk_mgr = RiskManager({
     "max_position_pct": MAX_ALLOC_PCT,
     "max_leverage": 20,
@@ -636,15 +633,51 @@ def close_position(exchange, position, fraction=1.0):
     return order
 
 
+_fear_greed_cache: dict = {"value": None, "fetched_at": None}  # 5-min in-process cache
+
+
 def fetch_fear_greed_value() -> int | None:
-    """Fetch current Fear & Greed Index value (0-100). Returns None on failure."""
+    """Fetch current Fear & Greed Index value (0-100).
+
+    Returns cached value if fetched within the last 5 minutes to reduce
+    external API load.  Returns None (and logs WARNING) on any failure.
+    """
+    import requests
+
+    # Return cached value if fresh (< 5 minutes old)
+    cache_ttl = 300  # seconds
+    cached_at = _fear_greed_cache.get("fetched_at")
+    if cached_at is not None:
+        age = (datetime.now(timezone.utc) - cached_at).total_seconds()
+        if age < cache_ttl and _fear_greed_cache["value"] is not None:
+            log.debug(f"Fear & Greed (cached, {age:.0f}s old): {_fear_greed_cache['value']}")
+            return _fear_greed_cache["value"]
+
     try:
-        import requests
         resp = requests.get("https://api.alternative.me/fng/?limit=1", timeout=8)
+        resp.raise_for_status()  # Raise on 4xx / 5xx HTTP errors
+
         data = resp.json()
-        value = int(data["data"][0]["value"])
+
+        # Validate expected JSON shape before indexing
+        if not isinstance(data, dict) or "data" not in data:
+            log.warning(f"Fear & Greed: unexpected JSON shape (missing 'data' key): {str(data)[:200]}")
+            return None
+        entries = data["data"]
+        if not isinstance(entries, list) or len(entries) == 0:
+            log.warning(f"Fear & Greed: 'data' list is empty or not a list")
+            return None
+        entry = entries[0]
+        if "value" not in entry:
+            log.warning(f"Fear & Greed: missing 'value' in first entry: {entry}")
+            return None
+
+        value = int(entry["value"])
+        _fear_greed_cache["value"] = value
+        _fear_greed_cache["fetched_at"] = datetime.now(timezone.utc)
         log.debug(f"Fear & Greed fetched: {value}")
         return value
+
     except Exception as e:
         log.warning(f"Fear & Greed fetch failed: {e}")
         return None
@@ -1595,6 +1628,11 @@ def run_agents(ta, trade_date, portfolio_context=None, analysts_to_run=None, ana
             last_run_str = cache_entry.get("last_run")
             if last_run_str:
                 last_dt = datetime.fromisoformat(last_run_str)
+                # fromisoformat() may return a naive datetime (no tzinfo) if the stored
+                # string has no timezone suffix.  Subtracting from an aware datetime
+                # raises TypeError.  Assume UTC for naive timestamps.
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
                 age_hours = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
                 ttl_hours = analyst_scheduler.schedule.get(cached_analyst, 24)
                 stale_threshold = ttl_hours * 1.5
@@ -2127,6 +2165,14 @@ def main():
         trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         decision, trade_params, reports = run_agents(ta, trade_date, portfolio_ctx, analysts_to_run=analysts_to_run, analysts_to_cache=analysts_to_cache, analyst_scheduler=analyst_scheduler)
 
+    # === SHUTDOWN CHECKPOINT (post agent pipeline) ===
+    if _shutdown_requested:
+        log.warning("🛑 Shutdown requested — saving state and exiting after agent pipeline")
+        executor_state["_shutdown_signal"] = "post_pipeline"
+        executor_state["_shutdown_at"] = datetime.now(timezone.utc).isoformat()
+        save_state(executor_state)
+        sys.exit(0)
+
     # === OBJECTIVE SCORING GUARDRAIL ===
     try:
         from tradingagents.dataflows.crypto_technical_brief import build_crypto_technical_brief
@@ -2533,6 +2579,14 @@ def main():
                     return
                 else:
                     log.info(f"\u2705 Price ${current:,.0f} favorable vs agent entry ${agent_entry:,.0f} \u2014 proceeding")
+
+            # === SHUTDOWN CHECKPOINT (before opening new position) ===
+            if _shutdown_requested:
+                log.warning("🛑 Shutdown requested — saving state and exiting before opening position")
+                executor_state["_shutdown_signal"] = "pre_open_position"
+                executor_state["_shutdown_at"] = datetime.now(timezone.utc).isoformat()
+                save_state(executor_state)
+                sys.exit(0)
 
             result = open_position(exchange, new_direction, equity, alloc_pct, stop_loss, risk_multiplier=risk_multiplier)
 
