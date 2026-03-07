@@ -131,3 +131,24 @@ def get_stablecoin_peg_health() -> str:
     from tradingagents.dataflows.macro_radar import get_stablecoin_health_cached
     result = get_stablecoin_health_cached()
     return f"Stablecoin Health: {result['overall']}\n{result['summary']}"
+
+
+def get_crisis_impact_index() -> str:
+    """
+    Get the CryptoMonitor Crisis Impact Index (CII) — geopolitical risk score 0-100.
+    Sources: GDELT global events, BBC/Al Jazeera headlines, mining region disruption tracking.
+    Levels: LOW (<20), MODERATE (20-39), ELEVATED (40-59), HIGH (60-79), SEVERE (80+).
+    Use this to assess geopolitical risk impact on crypto markets.
+    """
+    from tradingagents.dataflows.crypto_monitor import get_crisis_impact_index as _get_cii
+    result = _get_cii()
+    lines = [
+        f"Crisis Impact Index: {result['cii_score']}/100 ({result['level']})",
+        f"Crypto Impact: {result['crypto_impact']}",
+        f"Components: GDELT={result['components']['gdelt_score']:.0f} Headlines={result['components']['headline_score']:.0f} Mining={result['components']['mining_region_score']:.0f}",
+    ]
+    if result.get("top_events"):
+        lines.append("Top Events:")
+        for e in result["top_events"]:
+            lines.append(f"  - {e}")
+    return "\n".join(lines)

@@ -36,6 +36,7 @@ from tradingagents.agents.utils.crypto_tools import (
     get_liquidation_info,
     get_macro_signal_radar,
     get_stablecoin_peg_health,
+    get_crisis_impact_index,
 )
 
 # Macro tools
@@ -211,6 +212,7 @@ class CryptoTradingAgentsGraph:
                 get_onchain_fundamentals,
                 get_macro_signal_radar,
                 get_stablecoin_peg_health,
+                get_crisis_impact_index,
             ]),
             "news": ToolNode([
                 get_news,

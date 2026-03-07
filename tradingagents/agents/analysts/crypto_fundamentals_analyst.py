@@ -60,6 +60,20 @@ def create_crypto_fundamentals_analyst(llm):
             log.warning(f"Macro radar fetch failed: {e}")
             macro_summary = "Macro radar unavailable"
             stablecoin_summary = "Stablecoin data unavailable"
+
+        # Pre-fetch CryptoMonitor CII (geopolitical risk)
+        try:
+            from tradingagents.dataflows.crypto_monitor import get_crisis_impact_index
+            cii = get_crisis_impact_index()
+            cii_summary = (
+                f"Crisis Impact Index: {cii['cii_score']}/100 ({cii['level']}) — {cii['crypto_impact']}\n"
+                f"Components: GDELT={cii['components']['gdelt_score']:.0f} Headlines={cii['components']['headline_score']:.0f} Mining={cii['components']['mining_region_score']:.0f}"
+            )
+            if cii.get("top_events"):
+                cii_summary += "\nTop Events: " + "; ".join(cii["top_events"][:3])
+        except Exception as e:
+            log.warning(f"CryptoMonitor CII fetch failed: {e}")
+            cii_summary = "Geopolitical risk data unavailable"
         
         messages = [
             {
@@ -137,6 +151,11 @@ MACRO SIGNAL RADAR (7-signal composite — weight heavily):
 
 ---
 {stablecoin_summary}
+
+---
+GEOPOLITICAL RISK (CryptoMonitor CII):
+
+{cii_summary}
 
 Provide your fundamentals analysis.""",
             },
