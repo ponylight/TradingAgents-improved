@@ -15,12 +15,21 @@ import json
 import time
 import logging
 import subprocess
-import signal
+import signal  # noqa: E402 — used for graceful shutdown
 import sys
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
 import ccxt.pro as ccxtpro
+
+# Green lane scanner (optional — ws keeps running if unavailable)
+_GREEN_LANE_OK = False
+try:
+    sys.path.insert(0, str(PROJECT_ROOT))
+    from tradingagents.graph.green_lane import check_green_lane, format_green_lane_alert
+    _GREEN_LANE_OK = True
+except Exception as _e:
+    pass
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 STATE_FILE = PROJECT_ROOT / "logs" / "ws_state.json"
@@ -79,6 +88,52 @@ def write_realtime(data: dict):
     tmp = REALTIME_FILE.with_suffix(".tmp")
     tmp.write_text(json.dumps(data))
     tmp.rename(REALTIME_FILE)
+
+
+GL_COOLDOWN_SECONDS = 14400  # 4h between green lane scans
+GL_MIN_QUALITY = 7
+
+def run_green_lane_scan(state: dict) -> dict:
+    """Run green lane scanner. Returns updated state."""
+    if not _GREEN_LANE_OK:
+        return state
+    now = time.time()
+    last_gl = state.get("last_gl_scan", 0)
+    if now - last_gl < GL_COOLDOWN_SECONDS:
+        return state
+
+    log.info("🟢 Running green lane scan...")
+    try:
+        signal = check_green_lane("BTC/USDT", min_quality=GL_MIN_QUALITY)
+        state["last_gl_scan"] = now
+        if signal is None:
+            log.info("Green lane: no qualifying setup")
+            return state
+
+        log.warning(
+            f"🟢 GREEN LANE SIGNAL: {signal.direction.upper()} "
+            f"q={signal.quality_score} entry=${signal.entry_price:,.2f} "
+            f"sl=${signal.stop_loss:,.2f}"
+        )
+        # Write signal for executor
+        gl_file = PROJECT_ROOT / "logs" / "green_lane_override.json"
+        tmp = gl_file.with_suffix(".tmp")
+        tmp.write_text(json.dumps({
+            "action": signal.direction.upper(),
+            "entry": signal.entry_price,
+            "stop_loss": signal.stop_loss,
+            "tp1": signal.tp1,
+            "tp2": signal.tp2,
+            "quality": signal.quality_score,
+            "reasoning": signal.reasoning,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "source": "ws_green_lane",
+        }))
+        tmp.rename(gl_file)
+        launch_executor(f"Green Lane {signal.direction.upper()} q={signal.quality_score}")
+    except Exception as e:
+        log.error(f"Green lane scan error: {e}")
+    return state
 
 
 def launch_executor(reason: str):
@@ -150,10 +205,11 @@ async def run_monitor():
                     "tick_count": tick_count,
                 })
 
-            # Alert threshold
+            # Alert threshold — also scan green lane
             if abs_change >= ALERT_PCT and tick_count % 60 == 0:
                 direction = "🟢 UP" if change_pct > 0 else "🔴 DOWN"
                 log.info(f"{direction} {change_pct*100:+.2f}% | ${price:,.2f} (ref ${reference_price:,.2f})")
+                state = run_green_lane_scan(state)
 
             # Trigger threshold
             if abs_change >= TRIGGER_PCT:

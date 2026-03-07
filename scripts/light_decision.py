@@ -253,6 +253,27 @@ def should_act(decision: dict, state: dict, price_data: dict) -> bool:
     return True
 
 
+def check_green_lane_setup() -> dict | None:
+    """Run green lane scanner, return signal dict if triggered."""
+    try:
+        from tradingagents.graph.green_lane import check_green_lane
+        signal = check_green_lane("BTC/USDT", min_quality=7)
+        if signal:
+            log.info(f"🟢 Green lane: {signal.direction.upper()} q={signal.quality_score} entry=${signal.entry_price:,.2f}")
+            return {
+                "action": signal.direction.upper(),
+                "entry": signal.entry_price,
+                "stop_loss": signal.stop_loss,
+                "tp1": signal.tp1,
+                "tp2": signal.tp2,
+                "quality": signal.quality_score,
+                "reasoning": signal.reasoning,
+            }
+    except Exception as e:
+        log.debug(f"Green lane scan skipped: {e}")
+    return None
+
+
 def main():
     log.info("=" * 40)
     log.info("⚡ Light Decision Layer")
@@ -280,6 +301,22 @@ def main():
 
     if not reports:
         log.warning("No cached reports — skipping evaluation")
+        return
+
+    # Check green lane setup (deterministic, no LLM cost)
+    gl_signal = check_green_lane_setup()
+    if gl_signal:
+        # Green lane found — write override and launch executor directly (no LLM needed)
+        log.warning(f"🟢 GREEN LANE TRIGGER: {gl_signal['action']} q={gl_signal['quality']}")
+        gl_file = LOGS / "green_lane_override.json"
+        tmp = LOGS / ".green_lane_override.tmp"
+        tmp.write_text(json.dumps({**gl_signal, "timestamp": datetime.now(timezone.utc).isoformat(), "source": "light_green_lane"}))
+        tmp.rename(gl_file)
+        import subprocess
+        subprocess.Popen(
+            [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
+            cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        )
         return
 
     # Run evaluation

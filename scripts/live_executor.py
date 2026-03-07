@@ -1965,9 +1965,52 @@ def main():
                 break
         portfolio_ctx["consecutive_same_direction"] = count
 
-    # Run agents for new signal
-    trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    decision, trade_params, reports = run_agents(ta, trade_date, portfolio_ctx, analysts_to_run=analysts_to_run, analysts_to_cache=analysts_to_cache, analyst_scheduler=analyst_scheduler)
+    # ─── Check for light layer / green lane overrides ───────────────────
+    override_decision = None
+    for override_name in ("light_override.json", "green_lane_override.json"):
+        override_file = LOG_DIR / override_name
+        if override_file.exists():
+            try:
+                ov = json.loads(override_file.read_text())
+                ov_age = (datetime.now(timezone.utc) - datetime.fromisoformat(ov["timestamp"])).total_seconds()
+                if ov_age < 600:  # Valid if < 10 min old
+                    override_decision = ov
+                    log.info(f"📥 Override from {ov.get('source', override_name)}: {ov['action']} (age={ov_age:.0f}s)")
+                    override_file.unlink()  # Consume it
+                    break
+                else:
+                    log.info(f"Stale override {override_name} ({ov_age:.0f}s old) — ignoring")
+                    override_file.unlink()
+            except Exception as e:
+                log.warning(f"Failed to read {override_name}: {e}")
+
+    if override_decision and override_decision["action"] in ("BUY", "SELL", "LONG", "SHORT"):
+        action = override_decision["action"]
+        # Normalize: LONG→BUY, SHORT→SELL
+        if action == "LONG":
+            action = "BUY"
+        elif action == "SHORT":
+            action = "SELL"
+        decision = action
+        trade_params = {
+            "confidence": override_decision.get("confidence", override_decision.get("quality", 8)),
+            "stop_loss": override_decision.get("stop_loss"),
+            "take_profit_1": override_decision.get("tp1"),
+            "take_profit_2": override_decision.get("tp2"),
+        }
+        reports = {"override_source": override_decision.get("source", "unknown"),
+                   "override_reason": override_decision.get("reason", override_decision.get("reasoning", ""))}
+        log.warning(f"⚡ OVERRIDE DECISION: {decision} from {reports['override_source']}")
+    elif override_decision and override_decision["action"] == "CLOSE":
+        decision = "CLOSE"
+        trade_params = {}
+        reports = {"override_source": override_decision.get("source", "unknown"),
+                   "override_reason": override_decision.get("reason", "")}
+        log.warning(f"⚡ OVERRIDE CLOSE from {reports['override_source']}: {reports['override_reason']}")
+    else:
+        # Run agents for new signal (full pipeline)
+        trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        decision, trade_params, reports = run_agents(ta, trade_date, portfolio_ctx, analysts_to_run=analysts_to_run, analysts_to_cache=analysts_to_cache, analyst_scheduler=analyst_scheduler)
 
     # === OBJECTIVE SCORING GUARDRAIL ===
     try:
