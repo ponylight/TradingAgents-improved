@@ -194,21 +194,19 @@ def get_gdelt_event_coverage() -> dict:
 
 # ─── RSS Headline Scanning ───────────────────────────────────────────────────
 
-def _parse_rss(xml_text: str) -> list:
-    """Parse RSS XML and return list of {title, link, pubDate}."""
-    import xml.etree.ElementTree as ET
+def _parse_rss(content: str) -> list:
+    """Parse RSS/Atom feed using feedparser (handles edge cases, encoding, namespaces)."""
+    import feedparser
     items = []
     try:
-        root = ET.fromstring(xml_text)
-        for item in root.findall(".//item"):
-            title_el = item.find("title")
-            link_el = item.find("link")
-            date_el = item.find("pubDate")
-            if title_el is not None and title_el.text:
+        feed = feedparser.parse(content)
+        for entry in feed.entries:
+            title = entry.get("title", "").strip()
+            if title:
                 items.append({
-                    "title": title_el.text.strip(),
-                    "link": link_el.text.strip() if link_el is not None and link_el.text else "",
-                    "pubDate": date_el.text.strip() if date_el is not None and date_el.text else "",
+                    "title": title,
+                    "link": entry.get("link", ""),
+                    "pubDate": entry.get("published", entry.get("updated", "")),
                 })
     except Exception as e:
         log.debug(f"RSS parse error: {e}")
@@ -442,6 +440,50 @@ def get_crisis_impact_index(ttl: int = None) -> dict:
         _cii_cache["result"] = result
         _cii_cache["ts"] = now
         return result
+
+
+# ─── Background refresh ──────────────────────────────────────────────────────
+
+_bg_thread = None
+_bg_running = False
+
+
+def _background_refresh_loop(interval: int = 1800):
+    """Background thread that keeps CII cache warm."""
+    global _bg_running
+    _bg_running = True
+    log.info(f"CryptoMonitor: background refresh started (interval={interval}s)")
+    while _bg_running:
+        try:
+            get_crisis_impact_index()
+        except Exception as e:
+            log.warning(f"CryptoMonitor background refresh failed: {e}")
+        # Sleep in small increments so we can stop quickly
+        for _ in range(interval):
+            if not _bg_running:
+                break
+            time.sleep(1)
+    log.info("CryptoMonitor: background refresh stopped")
+
+
+def start_background_refresh(interval: int = 1800):
+    """Start background CII refresh thread. Safe to call multiple times."""
+    global _bg_thread
+    if _bg_thread and _bg_thread.is_alive():
+        return  # Already running
+    _bg_thread = threading.Thread(
+        target=_background_refresh_loop,
+        args=(interval,),
+        daemon=True,
+        name="CryptoMonitor-bg",
+    )
+    _bg_thread.start()
+
+
+def stop_background_refresh():
+    """Stop background refresh thread."""
+    global _bg_running
+    _bg_running = False
 
 
 # ─── CLI test ─────────────────────────────────────────────────────────────────

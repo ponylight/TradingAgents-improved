@@ -1505,6 +1505,13 @@ def main():
         log.error("🛑 Aborting: Bybit API unreachable. Check VPN connection.")
         return
 
+    # Start CryptoMonitor background refresh (warms CII cache during LLM calls)
+    try:
+        from tradingagents.dataflows.crypto_monitor import start_background_refresh
+        start_background_refresh(interval=1800)
+    except Exception as e:
+        log.warning(f"CryptoMonitor background start failed: {e}")
+
     exchange = get_exchange()
     equity = get_equity(exchange)
     log.info(f"💰 Equity: ${equity:,.2f}")
