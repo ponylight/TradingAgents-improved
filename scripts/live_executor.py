@@ -2260,17 +2260,17 @@ def main():
         current_pos = positions[0]["side"].upper()  # "LONG" or "SHORT"
     
     # Normalize decision to trading mode
-    signal = decision.upper()
-    if signal == "BUY":
-        signal = "LONG"
-    elif signal == "SELL":
-        signal = "SHORT"
-    elif signal == "HOLD":
-        signal = "NEUTRAL" if not has_position else current_pos
+    trade_signal = decision.upper()
+    if trade_signal == "BUY":
+        trade_signal = "LONG"
+    elif trade_signal == "SELL":
+        trade_signal = "SHORT"
+    elif trade_signal == "HOLD":
+        trade_signal = "NEUTRAL" if not has_position else current_pos
 
-    transition = get_position_transition(current_pos, signal)
+    transition = get_position_transition(current_pos, trade_signal)
     action = transition["action"]
-    log.info(f"📋 Position transition: {current_pos} + {signal} → {action} ({transition['description']})")
+    log.info(f"📋 Position transition: {current_pos} + {trade_signal} → {action} ({transition['description']})")
     record["transition"] = action
 
     if action in ("HOLD", "STAY_NEUTRAL"):
@@ -2517,6 +2517,28 @@ def main():
             # F&G is a lagging indicator and extremes can persist for months.
             # The multi-agent pipeline should make its own assessment.
             # F&G data is still available to agents via CII for informational use.
+
+            # === SENTIMENT EXTREME OBSERVABILITY (WARNING-ONLY — does NOT block) ===
+            try:
+                fg_value = fetch_fear_greed_value()
+                if fg_value is not None:
+                    _sentiment_extreme = False
+                    if fg_value <= 15 and new_direction == "SELL":
+                        log.warning(
+                            f"⚠️ SENTIMENT NOTE: {new_direction} at F&G={fg_value} (extreme fear) "
+                            f"— proceeding but logging for review"
+                        )
+                        _sentiment_extreme = True
+                    elif fg_value >= 85 and new_direction == "BUY":
+                        log.warning(
+                            f"⚠️ SENTIMENT NOTE: {new_direction} at F&G={fg_value} (extreme greed) "
+                            f"— proceeding but logging for review"
+                        )
+                        _sentiment_extreme = True
+                    if _sentiment_extreme:
+                        record["sentiment_extreme"] = {"fg": fg_value, "direction": new_direction}
+            except Exception as _fg_err:
+                log.debug(f"Sentiment observability check failed (non-blocking): {_fg_err}")
 
             # Respect agent's entry price — only open if market is at or better than proposed entry
             agent_entry = trade_params.get("entry_price")

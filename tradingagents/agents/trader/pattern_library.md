@@ -31,8 +31,6 @@ Reference these patterns when analyzing market conditions. Only flag a pattern i
 
 ---
 
----
-
 ## 2. VCP Breakout Long (缩量整理突破做多)
 **Source**: Mark Minervini (2× US Trading Championship winner: +155% in first, +334.8% in 2021; worst year ever: +128%)
 **Type**: Trend-continuation long after volatility contraction consolidation

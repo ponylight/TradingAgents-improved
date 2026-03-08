@@ -413,7 +413,7 @@ class CryptoTradingAgentsGraph:
         if hasattr(self, "_cached_reports"):
             for field, report in self._cached_reports.items():
                 init_agent_state[field] = report
-        args = self.propagator.get_graph_args()
+        args = dict(self.propagator.get_graph_args())  # defensive copy
         # Override stream_mode from args — we need dual mode for node monitoring
         args.pop("stream_mode", None)
 
