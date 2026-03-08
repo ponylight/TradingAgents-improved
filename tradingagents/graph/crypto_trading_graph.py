@@ -414,6 +414,8 @@ class CryptoTradingAgentsGraph:
             for field, report in self._cached_reports.items():
                 init_agent_state[field] = report
         args = self.propagator.get_graph_args()
+        # Override stream_mode from args — we need dual mode for node monitoring
+        args.pop("stream_mode", None)
 
         # Use stream(updates) for node-level monitoring + stream(values) for full state.
         # Fall back to graph.invoke() if the stream API is unavailable or incompatible.
