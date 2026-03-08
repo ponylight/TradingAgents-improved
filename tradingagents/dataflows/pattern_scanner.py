@@ -187,13 +187,18 @@ def detect_vcp_breakout(df: pd.DataFrame) -> Dict[str, Any]:
     pullbacks = []
     in_pullback = False
     pb_start = 0
-    for i in range(-30, 0):
-        if close[i] < close[i-1] and not in_pullback:
+    # Use positive indices to avoid empty-slice bug at boundaries
+    base_idx = len(close) - 30
+    for j in range(base_idx, len(close)):
+        i_prev = j - 1
+        if close[j] < close[i_prev] and not in_pullback:
             in_pullback = True
-            pb_start = close[i-1]
-        elif close[i] > close[i-1] and in_pullback:
+            pb_start = close[i_prev]
+        elif close[j] > close[i_prev] and in_pullback:
             in_pullback = False
-            pb_depth = (pb_start - min(close[max(-30, i-5):i+1])) / pb_start if pb_start > 0 else 0
+            seg_start = max(base_idx, j - 5)
+            seg = close[seg_start:j + 1]
+            pb_depth = (pb_start - min(seg)) / pb_start if pb_start > 0 and len(seg) > 0 else 0
             pullbacks.append(pb_depth)
 
     if len(pullbacks) >= 2 and all(pullbacks[i] > pullbacks[i+1] for i in range(len(pullbacks)-1)):
@@ -353,9 +358,9 @@ def detect_hh_hl_reversal(df: pd.DataFrame) -> Dict[str, Any]:
     if df is None or len(df) < 60:
         return result
 
-    close = df["close"].values
-    high = df["high"].values
-    low = df["low"].values
+    close = df["close"].values[-60:]
+    high = df["high"].values[-60:]
+    low = df["low"].values[-60:]
 
     # Find swing points in last 60 candles
     swing_highs = []
@@ -665,11 +670,22 @@ def detect_qullamaggie_breakout(df: pd.DataFrame) -> Dict[str, Any]:
 # ========== MASTER SCANNER ==========
 
 
+_SCAN_CACHE: Dict[str, Any] = {"result": None, "ts": 0}
+MAX_SCAN_OUTPUT = 3000  # Cap output size for prompt safety
+
+
 def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
     """
     Run all pattern detectors against current market data.
     Returns a formatted report for agent consumption.
+    Results cached for 5 minutes to avoid redundant API calls.
     """
+    import time as _time
+    now = _time.time()
+    cache_key = symbol
+    if _SCAN_CACHE.get("key") == cache_key and _SCAN_CACHE["result"] and (now - _SCAN_CACHE["ts"]) < 300:
+        return _SCAN_CACHE["result"]
+
     log.info(f"🔍 Running pattern scan for {symbol}")
 
     # Fetch data
@@ -756,5 +772,14 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
     lines.append(f"Inactive: {', '.join(r['pattern'] for r in not_detected)}")
 
     report = "\n".join(lines)
+    if len(report) > MAX_SCAN_OUTPUT:
+        report = report[:MAX_SCAN_OUTPUT] + "\n... (truncated)"
+
     log.info(f"Pattern scan complete: {len(detected)} signals detected")
+
+    # Cache the result
+    _SCAN_CACHE["result"] = report
+    _SCAN_CACHE["ts"] = _time.time()
+    _SCAN_CACHE["key"] = symbol
+
     return report

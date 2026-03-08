@@ -1917,6 +1917,10 @@ def main():
     cold_streak, risk_multiplier = get_cold_streak(executor_state)
     save_state(executor_state)  # Persist cooldown_until if newly set
 
+    # Re-check cooldown — get_cold_streak may have just triggered it this cycle
+    if check_cooldown_active(executor_state):
+        return
+
     positions = get_positions(exchange)
     has_position = len(positions) > 0
 

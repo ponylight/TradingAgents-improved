@@ -110,25 +110,6 @@ def _segment_histogram(histogram: pd.Series) -> List[Dict[str, Any]]:
     return segments
 
 
-def _find_price_peaks(close: pd.Series, segments: List[Dict], sign: str) -> List[Tuple[int, float]]:
-    """Find price peaks (for positive segments) or troughs (for negative segments)."""
-    results = []
-    for seg in segments:
-        if seg["sign"] != sign:
-            continue
-        seg_slice = close.iloc[seg["start_idx"]:seg["end_idx"] + 1]
-        if sign == "positive":
-            peak_idx = seg_slice.idxmax() if hasattr(seg_slice.idxmax(), '__int__') else seg_slice.values.argmax() + seg["start_idx"]
-            # Use iloc-safe approach
-            pos = int(np.argmax(seg_slice.values))
-            actual_idx = seg["start_idx"] + pos
-            results.append((actual_idx, float(close.iloc[actual_idx])))
-        else:
-            pos = int(np.argmin(seg_slice.values))
-            actual_idx = seg["start_idx"] + pos
-            results.append((actual_idx, float(close.iloc[actual_idx])))
-    return results
-
 
 def detect_triple_divergence(
     df: pd.DataFrame,
