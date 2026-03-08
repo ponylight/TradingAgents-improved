@@ -15,6 +15,7 @@ from tradingagents.dataflows.ccxt_crypto import (
     get_crypto_liquidations_summary,
 )
 from tradingagents.dataflows.macd_divergence import check_macd_divergence_for_symbol
+from tradingagents.dataflows.pattern_scanner import scan_all_patterns
 
 
 @tool
@@ -147,6 +148,19 @@ def check_macd_divergence(
     Returns BEARISH_DIVERGENCE, BULLISH_DIVERGENCE, or NONE with confidence score.
     """
     return check_macd_divergence_for_symbol(symbol, timeframe)
+
+
+@tool
+def run_pattern_scan(
+    symbol: Annotated[str, "trading pair e.g. BTC/USDT"] = "BTC/USDT",
+) -> str:
+    """
+    Run all pattern detectors against current market data.
+    Checks 10+ verified trader strategies (Kyle Williams, Minervini, Hong Inki,
+    BNF, 半木夏, 比特皇, Sykes, Bonde, Qullamaggie) and returns structured signals
+    with confidence scores. Call this FIRST before making any trade decision.
+    """
+    return scan_all_patterns(symbol)
 
 
 def get_crisis_impact_index() -> str:

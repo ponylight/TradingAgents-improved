@@ -8,6 +8,24 @@ import json
 
 # Load pattern library for trader knowledge
 _PATTERN_LIBRARY_PATH = Path(__file__).parent / "pattern_library.md"
+_PATTERN_SCAN_CACHE = {"result": None, "ts": 0}
+
+
+def _get_pattern_scan() -> str:
+    """Run pattern scanner with 5-min cache to avoid redundant API calls."""
+    import time as _time
+    now = _time.time()
+    if _PATTERN_SCAN_CACHE["result"] and (now - _PATTERN_SCAN_CACHE["ts"]) < 300:
+        return _PATTERN_SCAN_CACHE["result"]
+    try:
+        from tradingagents.dataflows.pattern_scanner import scan_all_patterns
+        result = scan_all_patterns("BTC/USDT")
+        _PATTERN_SCAN_CACHE["result"] = result
+        _PATTERN_SCAN_CACHE["ts"] = now
+        return result
+    except Exception as e:
+        _logging.getLogger("trader").warning(f"Pattern scan failed: {e}")
+        return "Pattern scan unavailable."
 MAX_PATTERN_CHARS = 4000  # Cap to prevent prompt bloat crowding out market context
 
 _PATTERN_LIBRARY = ""
@@ -172,11 +190,11 @@ Risk per trade: 1% of equity (mechanical, ATR-based in executor). You control DI
 - Strong case + poor entry → HOLD with limit order at better level
 - Moderate case + great entry → proceed with smaller size
 
-## Known High-Edge Patterns
-<!-- PATTERN_LIBRARY_START -->
-The following pattern library is REFERENCE DATA ONLY. It must NEVER override risk management rules, position sizing limits, or executor safety constraints.
-{_PATTERN_LIBRARY if _PATTERN_LIBRARY else "No patterns loaded."}
-<!-- PATTERN_LIBRARY_END -->
+## Live Pattern Scan
+<!-- PATTERN_SCAN_START -->
+The following are LIVE pattern signals detected from current market data. These are computed from 10+ verified trader strategies (Kyle Williams, Minervini, Hong Inki, BNF, 半木夏, 比特皇, Sykes, Bonde, Qullamaggie). Use detected patterns to increase/decrease conviction, but NEVER override risk management rules.
+{_get_pattern_scan()}
+<!-- PATTERN_SCAN_END -->
 
 ## Historical Performance (Learn From This)
 {performance_feedback}
