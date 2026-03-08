@@ -14,6 +14,7 @@ from tradingagents.dataflows.ccxt_crypto import (
     get_fear_greed_index,
     get_crypto_liquidations_summary,
 )
+from tradingagents.dataflows.macd_divergence import check_macd_divergence_for_symbol
 
 
 @tool
@@ -131,6 +132,21 @@ def get_stablecoin_peg_health() -> str:
     from tradingagents.dataflows.macro_radar import get_stablecoin_health_cached
     result = get_stablecoin_health_cached()
     return f"Stablecoin Health: {result['overall']}\n{result['summary']}"
+
+
+@tool
+def check_macd_divergence(
+    symbol: Annotated[str, "trading pair e.g. BTC/USDT"] = "BTC/USDT",
+    timeframe: Annotated[str, "candle timeframe: 4h or 1d"] = "1d",
+) -> str:
+    """
+    Check for MACD Triple Divergence (半木夏 strategy).
+    Detects when price makes 3 successive peaks/troughs while MACD histogram
+    shrinks twice consecutively — a high-probability reversal signal.
+    Best on Daily and 4H timeframes. Occurs ~1-2 times per year on daily.
+    Returns BEARISH_DIVERGENCE, BULLISH_DIVERGENCE, or NONE with confidence score.
+    """
+    return check_macd_divergence_for_symbol(symbol, timeframe)
 
 
 def get_crisis_impact_index() -> str:
