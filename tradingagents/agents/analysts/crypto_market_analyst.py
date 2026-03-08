@@ -22,7 +22,7 @@ def create_crypto_market_analyst(llm):
     from tradingagents.dataflows.crypto_technical_brief import build_crypto_technical_brief
 
     # MACD Triple Divergence detector (半木夏 strategy)
-    from tradingagents.agents.utils.crypto_tools import check_macd_divergence
+    from tradingagents.agents.utils.crypto_tools import check_macd_divergence, run_pattern_scan
 
     # Backtest tools — lets the analyst validate hypotheses with real data
     from tradingagents.agents.utils.backtest_tools import backtest_strategy, compare_strategies
@@ -37,7 +37,7 @@ def create_crypto_market_analyst(llm):
         """Compare multiple strategies side-by-side on the same data."""
         return compare_strategies(strategies, symbol, days)
 
-    tools = [run_backtest, compare_strats, check_macd_divergence]
+    tools = [run_backtest, compare_strats, check_macd_divergence, run_pattern_scan]
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
     def analyst_node(state) -> dict:
