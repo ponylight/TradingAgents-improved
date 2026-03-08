@@ -214,18 +214,28 @@ def get_cold_streak(executor_state):
             break
 
     if streak >= COLD_STREAK_THRESHOLD:
-        # Set mandatory cooldown if not already active
+        # Only trigger NEW cooldown if we haven't already cooled down for this streak.
+        # Track via last_cooldown_trade_count to prevent perma-lock loop:
+        # after cooldown expires, streak is still 3+ (no new trades), so without
+        # this guard it would immediately re-trigger.
+        trade_count = len(executor_state.get("trades", []))
+        last_trigger = executor_state.get("last_cooldown_trade_count", -1)
         cooldown_until = executor_state.get("cooldown_until")
+
         already_cooling = False
         if cooldown_until:
             try:
-                already_cooling = datetime.fromisoformat(cooldown_until) > datetime.now(timezone.utc)
+                resume_at_dt = datetime.fromisoformat(cooldown_until)
+                if resume_at_dt.tzinfo is None:
+                    resume_at_dt = resume_at_dt.replace(tzinfo=timezone.utc)
+                already_cooling = resume_at_dt > datetime.now(timezone.utc)
             except (ValueError, TypeError):
                 pass
 
-        if not already_cooling:
+        if not already_cooling and trade_count != last_trigger:
             resume_at = datetime.now(timezone.utc) + timedelta(hours=COLD_STREAK_COOLDOWN_HOURS)
             executor_state["cooldown_until"] = resume_at.isoformat()
+            executor_state["last_cooldown_trade_count"] = trade_count
             log.error(f"🛑 MANDATORY REST: {streak} consecutive losses — cooldown until {resume_at:%Y-%m-%d %H:%M} UTC")
 
         log.warning(f"🥶 COLD STREAK: {streak} consecutive losses — risk halved to {RISK_PER_TRADE * COLD_STREAK_RISK_MULT * 100:.1f}%")
@@ -248,6 +258,8 @@ def check_cooldown_active(executor_state):
         return False
     try:
         resume_at = datetime.fromisoformat(cooldown_until)
+        if resume_at.tzinfo is None:
+            resume_at = resume_at.replace(tzinfo=timezone.utc)
     except (ValueError, TypeError):
         return False
 

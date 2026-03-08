@@ -59,6 +59,12 @@ def _fetch_ohlcv(symbol: str, timeframe: str, days: int) -> Optional[pd.DataFram
         for col in ["open", "high", "low", "close", "volume"]:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce")
+
+        # Ensure ascending date order — some sources return descending
+        if "date" in df.columns:
+            df["date"] = pd.to_datetime(df["date"], errors="coerce")
+            df = df.sort_values("date").reset_index(drop=True)
+
         return df
     except Exception as e:
         log.warning(f"Failed to fetch OHLCV: {e}")
@@ -698,22 +704,22 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
 
     current_price = float(df_daily["close"].values[-1])
 
-    # Run all detectors
+    # Run all detectors — each isolated so one failure doesn't kill the scan
     results = []
 
-    # 1. Buying Climax
-    results.append(detect_buying_climax(df_daily, fg_value))
+    def _safe_detect(name: str, fn, *args, **kwargs) -> None:
+        try:
+            results.append(fn(*args, **kwargs))
+        except Exception as e:
+            log.warning(f"Pattern detector '{name}' failed: {e}")
+            results.append({"pattern": name, "detected": False, "confidence": 0, "details": f"Error: {e}"})
 
-    # 2. VCP Breakout
-    results.append(detect_vcp_breakout(df_daily))
+    _safe_detect("buying_climax_short", detect_buying_climax, df_daily, fg_value)
+    _safe_detect("vcp_breakout", detect_vcp_breakout, df_daily)
+    _safe_detect("new_high_breakout", detect_new_high_breakout, df_daily)
+    _safe_detect("bnf_contrarian", detect_bnf_contrarian, df_daily)
 
-    # 3. New High Breakout
-    results.append(detect_new_high_breakout(df_daily))
-
-    # 4. BNF Contrarian
-    results.append(detect_bnf_contrarian(df_daily))
-
-    # 5. MACD Triple Divergence (use existing module)
+    # 5. MACD Triple Divergence
     try:
         from tradingagents.dataflows.macd_divergence import detect_triple_divergence
         macd_daily = detect_triple_divergence(df_daily, lookback=180)
@@ -732,23 +738,14 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
                 "confidence": macd_4h["confidence"],
                 "details": macd_4h["description"],
             })
-    except ImportError:
-        pass
+    except Exception as e:
+        log.warning(f"MACD divergence detector failed: {e}")
 
-    # 6. HH+HL Reversal
-    results.append(detect_hh_hl_reversal(df_daily))
-
-    # 7. Volume Exhaustion
-    results.append(detect_volume_exhaustion(df_daily))
-
-    # 8. Sykes Stage
-    results.append(detect_sykes_stage(df_daily, fg_value))
-
-    # 9. Bonde Home Run
-    results.append(detect_bonde_home_run(df_daily))
-
-    # 10. Qullamaggie Breakout
-    results.append(detect_qullamaggie_breakout(df_daily))
+    _safe_detect("hh_hl_reversal", detect_hh_hl_reversal, df_daily)
+    _safe_detect("volume_exhaustion", detect_volume_exhaustion, df_daily)
+    _safe_detect("sykes_stage", detect_sykes_stage, df_daily, fg_value)
+    _safe_detect("bonde_home_run", detect_bonde_home_run, df_daily)
+    _safe_detect("qullamaggie_breakout", detect_qullamaggie_breakout, df_daily)
 
     # Format report
     detected = [r for r in results if r.get("detected")]
