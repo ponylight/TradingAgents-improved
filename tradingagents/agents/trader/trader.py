@@ -1,8 +1,15 @@
 import functools
+from pathlib import Path
 from tradingagents.agents.utils.report_context import get_agent_context
 from tradingagents.agents.utils.trading_context import build_trading_context
 import time
 import json
+
+# Load pattern library for trader knowledge
+_PATTERN_LIBRARY_PATH = Path(__file__).parent / "pattern_library.md"
+_PATTERN_LIBRARY = ""
+if _PATTERN_LIBRARY_PATH.exists():
+    _PATTERN_LIBRARY = _PATTERN_LIBRARY_PATH.read_text().strip()
 
 
 def create_trader(llm, memory):
@@ -148,6 +155,9 @@ Risk per trade: 1% of equity (mechanical, ATR-based in executor). You control DI
 - Conviction < 5 → HOLD (insufficient edge)
 - Strong case + poor entry → HOLD with limit order at better level
 - Moderate case + great entry → proceed with smaller size
+
+## Known High-Edge Patterns
+{_PATTERN_LIBRARY if _PATTERN_LIBRARY else "No patterns loaded."}
 
 ## Historical Performance (Learn From This)
 {performance_feedback}
