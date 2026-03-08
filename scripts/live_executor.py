@@ -57,6 +57,10 @@ PEAK_EQUITY = _load_peak_equity()
 DAILY_LOSS_LIMIT = 0.02       # 2% daily loss limit — lock out after this
 COLD_STREAK_THRESHOLD = 3     # After 3 consecutive losses, halve risk
 COLD_STREAK_RISK_MULT = 0.5   # Multiply risk by this during cold streak
+COLD_STREAK_COOLDOWN_HOURS = 24  # Mandatory rest after 3 consecutive stop-losses
+# Progressive risk after consecutive stops (比特皇 style):
+# After 1st stop: base risk, after 2nd stop: base * 1.07, after 3rd: COOLDOWN
+COLD_STREAK_RISK_PROGRESSION = {1: 1.0, 2: 1.07}
 TP1_R_MULTIPLE = 1.5          # TP1 at 1.5R
 TP1_CLOSE_PCT = 0.5           # Close 50% at TP1
 ATR_TRAIL_MULTIPLE = 2.0      # Trail remaining with 2×ATR
@@ -192,7 +196,13 @@ def check_daily_loss_limit(executor_state, equity):
 
 
 def get_cold_streak(executor_state):
-    """Count consecutive losses. Returns streak count and risk multiplier."""
+    """Count consecutive losses. Returns streak count and risk multiplier.
+
+    Progressive risk (比特皇 style):
+      - 1 consecutive loss: base risk (1×)
+      - 2 consecutive losses: base risk × 1.07
+      - 3+ consecutive losses: trigger mandatory cooldown, risk halved as secondary guard
+    """
     trades = executor_state.get("trades", [])
     streak = 0
     for t in reversed(trades):
@@ -202,11 +212,56 @@ def get_cold_streak(executor_state):
             streak += 1
         else:
             break
-    
+
     if streak >= COLD_STREAK_THRESHOLD:
+        # Set mandatory cooldown if not already active
+        cooldown_until = executor_state.get("cooldown_until")
+        already_cooling = False
+        if cooldown_until:
+            try:
+                already_cooling = datetime.fromisoformat(cooldown_until) > datetime.now(timezone.utc)
+            except (ValueError, TypeError):
+                pass
+
+        if not already_cooling:
+            resume_at = datetime.now(timezone.utc) + timedelta(hours=COLD_STREAK_COOLDOWN_HOURS)
+            executor_state["cooldown_until"] = resume_at.isoformat()
+            log.error(f"🛑 MANDATORY REST: {streak} consecutive losses — cooldown until {resume_at:%Y-%m-%d %H:%M} UTC")
+
         log.warning(f"🥶 COLD STREAK: {streak} consecutive losses — risk halved to {RISK_PER_TRADE * COLD_STREAK_RISK_MULT * 100:.1f}%")
         return streak, COLD_STREAK_RISK_MULT
+
+    # Progressive risk for shorter streaks
+    if streak in COLD_STREAK_RISK_PROGRESSION:
+        mult = COLD_STREAK_RISK_PROGRESSION[streak]
+        if mult != 1.0:
+            log.info(f"📉 {streak} consecutive loss(es) — risk adjusted to {RISK_PER_TRADE * mult * 100:.2f}%")
+        return streak, mult
+
     return streak, 1.0
+
+
+def check_cooldown_active(executor_state):
+    """Check if mandatory cooldown is active. Returns True if trading should be skipped."""
+    cooldown_until = executor_state.get("cooldown_until")
+    if not cooldown_until:
+        return False
+    try:
+        resume_at = datetime.fromisoformat(cooldown_until)
+    except (ValueError, TypeError):
+        return False
+
+    now = datetime.now(timezone.utc)
+    if now < resume_at:
+        remaining = resume_at - now
+        hours_left = remaining.total_seconds() / 3600
+        log.warning(f"⏸️ COOLDOWN ACTIVE: Skipping cycle, resuming at {resume_at:%Y-%m-%d %H:%M} UTC ({hours_left:.1f}h remaining)")
+        return True
+
+    # Cooldown expired — clear it and reset
+    log.info(f"✅ Cooldown expired — resuming trading, risk reset to base")
+    executor_state.pop("cooldown_until", None)
+    return False
 
 
 def check_circuit_breaker(equity):
@@ -1850,11 +1905,17 @@ def main():
     executor_state = load_state()
     _shutdown_state["executor_state"] = executor_state  # Stash for signal handler
 
+    # Check mandatory cooldown FIRST — skip entire cycle if active
+    if check_cooldown_active(executor_state):
+        save_state(executor_state)  # Persist any cooldown_until cleanup
+        return
+
     if check_daily_loss_limit(executor_state, equity) >= DAILY_LOSS_LIMIT:
         return
 
-    # Check cold streak — adjusts risk if on losing run
+    # Check cold streak — adjusts risk if on losing run (may also trigger cooldown)
     cold_streak, risk_multiplier = get_cold_streak(executor_state)
+    save_state(executor_state)  # Persist cooldown_until if newly set
 
     positions = get_positions(exchange)
     has_position = len(positions) > 0
