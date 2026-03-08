@@ -1,0 +1,24 @@
+[
+  {
+    "id": 0,
+    "timestamp": "2026-03-07T20:18:59.976671+00:00",
+    "decision": "SELL",
+    "confidence": 7,
+    "entry_price": 67225.9,
+    "stop_loss": 68400.0,
+    "take_profit": 66050.0,
+    "objective_score": -3.9,
+    "objective_signal": "NEUTRAL",
+    "was_overridden": false,
+    "override_reason": "",
+    "validation_warnings": [],
+    "outcome": null,
+    "exit_price": null,
+    "return_pct": null,
+    "max_favorable_pct": null,
+    "max_adverse_pct": null,
+    "exit_reason": null,
+    "evaluated_at": null,
+    "held_hours": null
+  }
+]

@@ -1,5 +1,5 @@
 {
-  "last_run": "2026-03-07T04:14:17.770678+00:00",
+  "last_run": "2026-03-08T04:14:53.504838+00:00",
   "last_decision": "HOLD",
   "trades": [
     {
@@ -321,14 +321,151 @@
       "validation_warnings": null,
       "was_overridden": false,
       "transition": "STAY_NEUTRAL"
+    },
+    {
+      "timestamp": "2026-03-07T08:15:06.785665+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 153180.10746277,
+      "params": {
+        "confidence": 6,
+        "risk_pct": 0.0,
+        "stop_loss": 69500.0,
+        "take_profit_1": 65500.0,
+        "take_profit_2": 64000.0
+      },
+      "objective_score": -5.2,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "STAY_NEUTRAL"
+    },
+    {
+      "timestamp": "2026-03-07T12:14:22.393227+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 153180.10746277,
+      "params": {
+        "confidence": 8,
+        "risk_pct": 0.0,
+        "stop_loss": 68100.0,
+        "take_profit_1": 64000.0,
+        "take_profit_2": 58000.0
+      },
+      "objective_score": -5.9,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "STAY_NEUTRAL"
+    },
+    {
+      "timestamp": "2026-03-07T20:18:57.941892+00:00",
+      "decision": "SELL",
+      "original_decision": null,
+      "equity": 153180.10746277,
+      "params": {
+        "confidence": 7,
+        "stop_loss": 68400.0,
+        "take_profit_1": 66050.0,
+        "take_profit_2": 64200.0,
+        "risk_pct": 0.06
+      },
+      "objective_score": -3.9,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "OPEN_SHORT",
+      "action": "opened_sell",
+      "price": 67225.9,
+      "stop_loss": 68400.0,
+      "tp1": 66050.0,
+      "amount": 1.304,
+      "alloc_pct": 0.06
+    },
+    {
+      "timestamp": "2026-03-08T00:15:27.131771+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 153128.60212452,
+      "params": {
+        "confidence": 7,
+        "stop_loss": 68214.0,
+        "take_profit_1": 64500.0,
+        "take_profit_2": 62000.0
+      },
+      "objective_score": -2.6,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "HOLD",
+      "tp_updated": 64500.0,
+      "tp2_updated": 62000.0,
+      "sl_updated": 68214.0
+    },
+    {
+      "timestamp": "2026-03-08T04:14:53.504838+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 153128.60212452,
+      "params": {
+        "confidence": 7,
+        "risk_pct": 0.12,
+        "stop_loss": 68214.0,
+        "take_profit_1": 64500.0,
+        "take_profit_2": 62000.0
+      },
+      "objective_score": -3.0,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "HOLD"
     }
   ],
-  "last_decision_reasoning": "Process check passes. Risk Judge did not veto \u2014 scored event risk 5/5 which *supports* the NEUTRAL stance rather than opposing it. Trader's thesis is disciplined: bear macro dominates but entry timing is wrong, and chasing extended moves is what burned us before. The conditional triggers are well-structured with defined stops and clean R:R. No portfolio conflicts (flat book). Approved.\n\nFINAL TRANSACTION PROPOSAL: **NEUTRAL**\n\n```\n---FUND_DECISION---\nACTION: HOLD\nCONFIDENCE: 7\nSTOP_LOSS: N/A\nTAK",
-  "last_decision_time": "2026-03-07T04:14:17.770678+00:00",
+  "last_decision_reasoning": "## Fund Manager Review\n\n**1. INDEPENDENT OBSERVATION**: Sunday night into Monday Asian session is historically the thinnest liquidity window of the week for BTC perpetuals on Bybit. Our stop at $68,214 sits ~1.9% above current price \u2014 tight enough that a weekend liquidity gap or short squeeze wick could tag it before continuation lower. I'd note that with CPI ~3 days out, market makers tend to pull bids/asks ahead of the print, further thinning the book. The position is small enough (0.57x) that",
+  "last_decision_time": "2026-03-08T04:14:53.504838+00:00",
   "starting_equity": 153885.33,
   "closed_trades": [],
   "positions": {
-    "committee": null,
+    "committee": {
+      "side": "short",
+      "entry": 67225.9,
+      "stop_loss": 68214.0
+    },
     "green_lane": null
+  },
+  "active_trade": {
+    "direction": "SELL",
+    "entry": 67225.9,
+    "amount": 1.304,
+    "stop_loss": 68214.0,
+    "tp1": 64500.0,
+    "tp2": 62000.0,
+    "tp_orders": [
+      {
+        "level": 1,
+        "order_id": "19ed5a59-2c61-4e47-b89f-8144e19765cb",
+        "price": 64500.0,
+        "amount": 0.652
+      },
+      {
+        "level": 2,
+        "order_id": "20702830-608b-4042-93ab-31c64283f7ec",
+        "price": 62000.0,
+        "amount": 0.652
+      }
+    ],
+    "tp1_hit": false,
+    "trailing_stop": 68214.0,
+    "opened_at": "2026-03-07T20:18:59.976365+00:00",
+    "confidence": 7,
+    "atr_at_entry": 3580.557142857142,
+    "outcome_tracker_id": 0,
+    "max_drawdown_pct": -0.22,
+    "max_favorable_pct": 0.36
   }
 }
