@@ -2457,12 +2457,34 @@ def main():
             proposed_tp2 = trade_params.get("take_profit_2")
             tp_changed = False
 
-            # ═══ TP1 IS IMMUTABLE ═══
-            # TP1 exists to de-risk: take 50% off the table, pay for the trade.
-            # Once set at entry, it NEVER moves. Agents cannot override this.
-            if proposed_tp1 and proposed_tp1 != active.get("tp1"):
-                log.info(f"🔒 TP1 LOCKED: Ignoring agent proposal ${proposed_tp1:,.2f} "
-                         f"(immutable at ${active.get('tp1', 0):,.2f} since entry)")
+            # ═══ TP1: TIGHTEN ONLY ═══
+            # TP1 de-risks the trade: take 50% off. It can move CLOSER to entry
+            # (tighter target when price goes against us) but NEVER further away.
+            # SHORT: tighter = higher TP1. LONG: tighter = lower TP1.
+            if proposed_tp1:
+                current_tp1 = active.get("tp1")
+                tp1_valid = False
+                if direction == "BUY" and proposed_tp1 > entry:
+                    tp1_valid = True
+                elif direction == "SELL" and proposed_tp1 < entry:
+                    tp1_valid = True
+
+                if tp1_valid and current_tp1:
+                    # Check direction: only allow tightening (closer to entry)
+                    if direction == "SELL" and proposed_tp1 < current_tp1:
+                        log.info(f"🔒 TP1 tighten-only: Blocked ${current_tp1:,.2f} → ${proposed_tp1:,.2f} "
+                                 f"(further from entry for SHORT)")
+                        tp1_valid = False
+                    elif direction == "BUY" and proposed_tp1 > current_tp1:
+                        log.info(f"🔒 TP1 tighten-only: Blocked ${current_tp1:,.2f} → ${proposed_tp1:,.2f} "
+                                 f"(further from entry for LONG)")
+                        tp1_valid = False
+
+                if tp1_valid and (not current_tp1 or proposed_tp1 != current_tp1):
+                    log.info(f"🎯 TP1 tightened: ${current_tp1 or 0:,.2f} → ${proposed_tp1:,.2f}")
+                    active["tp1"] = proposed_tp1
+                    record["tp_updated"] = proposed_tp1
+                    tp_changed = True
 
             # ═══ TP2 IS ADJUSTABLE (with guards) ═══
             # TP2 is the runner — agents can adjust it based on market conditions.
