@@ -2405,31 +2405,62 @@ def main():
             if proposed_tp1:
                 current_tp1 = active.get("tp1")
                 tp1_valid = False
+                tp1_ratcheted = False
                 if direction == "BUY" and proposed_tp1 > entry:
                     tp1_valid = True
                 elif direction == "SELL" and proposed_tp1 < entry:
                     tp1_valid = True
+                # TP Ratchet Rule: once price has moved favorably (MFE > 0.5%),
+                # TPs can only move CLOSER to current price, never further away.
+                # SHORT: proposed must be >= current (can't go lower/further)
+                # LONG:  proposed must be <= current (can't go higher/further)
+                if tp1_valid and current_tp1:
+                    mfe = active.get("max_favorable_pct", 0)
+                    if mfe > 0.5:
+                        tp_moving_further = (
+                            (direction == "SELL" and proposed_tp1 < current_tp1) or
+                            (direction == "BUY" and proposed_tp1 > current_tp1)
+                        )
+                        if tp_moving_further:
+                            log.warning(f"🔒 TP1 RATCHET: Blocked move further from price "
+                                        f"${current_tp1:,.2f} → ${proposed_tp1:,.2f} (MFE {mfe:.1f}%)")
+                            tp1_valid = False
+                            tp1_ratcheted = True
                 if tp1_valid and (not current_tp1 or proposed_tp1 != current_tp1):
-                    log.info(f"🎯 Fund manager TP1 update: ${current_tp1:,.2f} → ${proposed_tp1:,.2f}")
+                    log.info(f"🎯 Fund manager TP1 update: ${current_tp1 or 0:,.2f} → ${proposed_tp1:,.2f}")
                     active["tp1"] = proposed_tp1
                     record["tp_updated"] = proposed_tp1
                     tp_changed = True
-                elif not tp1_valid and proposed_tp1:
+                elif not tp1_valid and not tp1_ratcheted and proposed_tp1:
                     log.warning(f"⚠️ Ignoring invalid fund manager TP1 ${proposed_tp1:,.2f} (wrong side of entry ${entry:,.2f} for {direction})")
 
             if proposed_tp2:
                 current_tp2 = active.get("tp2")
                 tp2_valid = False
+                tp2_ratcheted = False
                 if direction == "BUY" and proposed_tp2 > entry:
                     tp2_valid = True
                 elif direction == "SELL" and proposed_tp2 < entry:
                     tp2_valid = True
+                # TP Ratchet Rule for TP2
+                if tp2_valid and current_tp2:
+                    mfe = active.get("max_favorable_pct", 0)
+                    if mfe > 0.5:
+                        tp_moving_further = (
+                            (direction == "SELL" and proposed_tp2 < current_tp2) or
+                            (direction == "BUY" and proposed_tp2 > current_tp2)
+                        )
+                        if tp_moving_further:
+                            log.warning(f"🔒 TP2 RATCHET: Blocked move further from price "
+                                        f"${current_tp2:,.2f} → ${proposed_tp2:,.2f} (MFE {mfe:.1f}%)")
+                            tp2_valid = False
+                            tp2_ratcheted = True
                 if tp2_valid and (not current_tp2 or proposed_tp2 != current_tp2):
                     log.info(f"🎯 Fund manager TP2 update: ${current_tp2 or 0:,.2f} → ${proposed_tp2:,.2f}")
                     active["tp2"] = proposed_tp2
                     record["tp2_updated"] = proposed_tp2
                     tp_changed = True
-                elif not tp2_valid and proposed_tp2:
+                elif not tp2_valid and not tp2_ratcheted and proposed_tp2:
                     log.warning(f"⚠️ Ignoring invalid fund manager TP2 ${proposed_tp2:,.2f} (wrong side of entry ${entry:,.2f} for {direction})")
 
             # Sync TP orders to exchange if any changed
