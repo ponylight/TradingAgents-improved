@@ -167,6 +167,51 @@ def get_atr(exchange, period=14, timeframe="1d"):
     return sum(trs[-period:]) / period
 
 
+def update_mfe_from_candles(exchange, trade_info):
+    """Update max favorable excursion using actual candle highs/lows since entry.
+    
+    The executor only runs every 4H, so spot-price MFE misses intra-candle wicks.
+    This fetches 4H candles since entry and computes MFE from actual extremes.
+    """
+    opened_at = trade_info.get("opened_at", "")
+    entry = trade_info.get("entry", 0)
+    direction = trade_info.get("direction", "")
+    if not opened_at or not entry or not direction:
+        return
+
+    try:
+        opened_dt = datetime.fromisoformat(opened_at)
+        if opened_dt.tzinfo is None:
+            opened_dt = opened_dt.replace(tzinfo=timezone.utc)
+        # Fetch one candle before entry to cover partial candle containing entry
+        since_ms = int((opened_dt - timedelta(hours=4)).timestamp() * 1000)
+        # Dynamic limit based on trade age (4H candles)
+        hours_since = (datetime.now(timezone.utc) - opened_dt).total_seconds() / 3600
+        limit = max(10, min(200, int(hours_since / 4) + 2))
+        candles = exchange.fetch_ohlcv(SYMBOL, "4h", since=since_ms, limit=limit)
+        if not candles:
+            return
+
+        side_lower = direction.lower()
+        if side_lower in ("sell", "short"):
+            # For shorts, best favorable = lowest low
+            best_price = min(c[3] for c in candles)  # c[3] = low
+            favorable_pct = ((entry - best_price) / entry) * 100
+        else:
+            # For longs, best favorable = highest high
+            best_price = max(c[2] for c in candles)  # c[2] = high
+            favorable_pct = ((best_price - entry) / entry) * 100
+
+        prev_mfe = trade_info.get("max_favorable_pct", 0)
+        if favorable_pct > prev_mfe:
+            trade_info["max_favorable_pct"] = round(favorable_pct, 2)
+            trade_info["mfe_price"] = best_price
+            log.info(f"📊 MFE updated from candles: {prev_mfe:.2f}% → {favorable_pct:.2f}% "
+                     f"(best price ${best_price:,.0f})")
+    except Exception as e:
+        log.warning(f"⚠️ Failed to update MFE from candles: {e}")
+
+
 def check_daily_loss_limit(executor_state, equity):
     """Check if daily losses exceed limit. Returns True if locked out."""
     from zoneinfo import ZoneInfo
@@ -605,6 +650,8 @@ def check_pending_limit_order(exchange, executor_state):
             "stop_loss": stop_loss,
             "tp1": tp1,
             "tp2": tp2,
+            "initial_tp1": tp1,  # Immutable: for TP hard cap
+            "initial_tp2": tp2,  # Immutable: for TP hard cap
             "tp_orders": tp_orders,
             "tp1_hit": False,
             "trailing_stop": initial_trail,
@@ -1231,6 +1278,9 @@ def manage_trailing_stop(exchange, positions, state):
         if not trade_info:
             continue
 
+        # Update MFE from actual candle data (catches intra-candle wicks)
+        update_mfe_from_candles(exchange, trade_info)
+
         # --- TP1 hit detection ---
         # If exchange position is smaller than our tracked amount, TP1 was filled
         original_amount = trade_info.get("amount", contracts)
@@ -1450,6 +1500,8 @@ def open_green_lane_position(state: dict, signal, equity: float) -> dict:
         "stop_loss": signal.stop_loss,
         "tp1": signal.tp1,
         "tp2": signal.tp2,
+        "initial_tp1": signal.tp1,
+        "initial_tp2": signal.tp2,
         "tp1_hit": False,
         "tp2_hit": False,
         "trail_stop": None,
@@ -2148,13 +2200,16 @@ def main():
                     else:
                         initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
                     
+                    tp2 = pending.get("params", {}).get("take_profit_2")
                     executor_state["active_trade"] = {
                         "direction": pe_dir,
                         "entry": fill_price,
                         "amount": amount,
                         "stop_loss": stop_loss,
                         "tp1": tp1,
-                        "tp2": pending.get("params", {}).get("take_profit_2"),
+                        "tp2": tp2,
+                        "initial_tp1": tp1,
+                        "initial_tp2": tp2,
                         "trailing_stop": initial_trail,
                         "opened_at": datetime.now(timezone.utc).isoformat(),
                         "confidence": pending.get("params", {}).get("confidence"),
@@ -2401,6 +2456,27 @@ def main():
             proposed_tp1 = trade_params.get("take_profit_1")
             proposed_tp2 = trade_params.get("take_profit_2")
             tp_changed = False
+
+            # HARD CAP: TPs cannot move beyond 2x the initial distance from entry.
+            # This is a deterministic guard — no LLM can override it.
+            initial_tp1 = active.get("initial_tp1")  # Set at entry, never changes
+            initial_tp2 = active.get("initial_tp2")
+            if proposed_tp1 and initial_tp1 and entry > 0:
+                initial_dist = abs(entry - initial_tp1)
+                proposed_dist = abs(entry - proposed_tp1)
+                if proposed_dist > 2.0 * initial_dist:
+                    capped_tp1 = entry - 2.0 * initial_dist if direction == "SELL" else entry + 2.0 * initial_dist
+                    log.warning(f"🚫 TP1 HARD CAP: ${proposed_tp1:,.0f} exceeds 2× initial distance "
+                                f"(initial ${initial_tp1:,.0f}, max ${capped_tp1:,.0f}). Capping.")
+                    proposed_tp1 = round(capped_tp1, 2)
+            if proposed_tp2 and initial_tp2 and entry > 0:
+                initial_dist = abs(entry - initial_tp2)
+                proposed_dist = abs(entry - proposed_tp2)
+                if proposed_dist > 2.0 * initial_dist:
+                    capped_tp2 = entry - 2.0 * initial_dist if direction == "SELL" else entry + 2.0 * initial_dist
+                    log.warning(f"🚫 TP2 HARD CAP: ${proposed_tp2:,.0f} exceeds 2× initial distance "
+                                f"(initial ${initial_tp2:,.0f}, max ${capped_tp2:,.0f}). Capping.")
+                    proposed_tp2 = round(capped_tp2, 2)
 
             # TP Ratchet: compute retracement from MFE.
             # Only lock TPs when price has given back >50% of the favorable move.
@@ -2778,6 +2854,8 @@ def main():
                     "stop_loss": stop_loss,
                     "tp1": tp1,
                     "tp2": tp2,
+                    "initial_tp1": tp1,  # Immutable: for TP hard cap
+                    "initial_tp2": tp2,  # Immutable: for TP hard cap
                     "tp_orders": tp_orders,
                     "tp1_hit": False,
                     "trailing_stop": initial_trail,
