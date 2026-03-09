@@ -2452,102 +2452,72 @@ def main():
             amount = active.get("amount", 0)
             current_price = float(exchange.fetch_ticker(SYMBOL)["last"])
 
-            # Check if agents proposed a new TP
+            # Check if agents proposed new TPs
             proposed_tp1 = trade_params.get("take_profit_1")
             proposed_tp2 = trade_params.get("take_profit_2")
             tp_changed = False
 
-            # HARD CAP: TPs cannot move beyond 2x the initial distance from entry.
-            # This is a deterministic guard — no LLM can override it.
-            initial_tp1 = active.get("initial_tp1")  # Set at entry, never changes
-            initial_tp2 = active.get("initial_tp2")
-            if proposed_tp1 and initial_tp1 and entry > 0:
-                initial_dist = abs(entry - initial_tp1)
-                proposed_dist = abs(entry - proposed_tp1)
-                if proposed_dist > 2.0 * initial_dist:
-                    capped_tp1 = entry - 2.0 * initial_dist if direction == "SELL" else entry + 2.0 * initial_dist
-                    log.warning(f"🚫 TP1 HARD CAP: ${proposed_tp1:,.0f} exceeds 2× initial distance "
-                                f"(initial ${initial_tp1:,.0f}, max ${capped_tp1:,.0f}). Capping.")
-                    proposed_tp1 = round(capped_tp1, 2)
-            if proposed_tp2 and initial_tp2 and entry > 0:
-                initial_dist = abs(entry - initial_tp2)
-                proposed_dist = abs(entry - proposed_tp2)
-                if proposed_dist > 2.0 * initial_dist:
-                    capped_tp2 = entry - 2.0 * initial_dist if direction == "SELL" else entry + 2.0 * initial_dist
-                    log.warning(f"🚫 TP2 HARD CAP: ${proposed_tp2:,.0f} exceeds 2× initial distance "
-                                f"(initial ${initial_tp2:,.0f}, max ${capped_tp2:,.0f}). Capping.")
-                    proposed_tp2 = round(capped_tp2, 2)
+            # ═══ TP1 IS IMMUTABLE ═══
+            # TP1 exists to de-risk: take 50% off the table, pay for the trade.
+            # Once set at entry, it NEVER moves. Agents cannot override this.
+            if proposed_tp1 and proposed_tp1 != active.get("tp1"):
+                log.info(f"🔒 TP1 LOCKED: Ignoring agent proposal ${proposed_tp1:,.2f} "
+                         f"(immutable at ${active.get('tp1', 0):,.2f} since entry)")
 
-            # TP Ratchet: compute retracement from MFE.
-            # Only lock TPs when price has given back >50% of the favorable move.
-            # If move is still running (retracement < 50%), agents can extend TPs.
-            mfe = float(active.get("max_favorable_pct") or 0.0)
-            ratchet_active = False
-            if mfe > 0.5 and entry > 0:
-                if direction == "SELL":
-                    current_favorable_pct = ((entry - current_price) / entry) * 100
-                else:
-                    current_favorable_pct = ((current_price - entry) / entry) * 100
-                cf = max(0.0, current_favorable_pct)
-                retracement = min(1.0, max(0.0, 1.0 - cf / mfe)) if mfe > 0 else 0
-                ratchet_active = retracement > 0.5  # Given back >50% of gains
-                if ratchet_active:
-                    log.info(f"🔒 TP ratchet active: MFE {mfe:.1f}%, current {current_favorable_pct:.1f}%, "
-                             f"retracement {retracement:.0%}")
-
-            if proposed_tp1:
-                current_tp1 = active.get("tp1")
-                tp1_valid = False
-                tp1_ratcheted = False
-                if direction == "BUY" and proposed_tp1 > entry:
-                    tp1_valid = True
-                elif direction == "SELL" and proposed_tp1 < entry:
-                    tp1_valid = True
-                # Ratchet: block TP moves further from price only when retracing
-                if tp1_valid and current_tp1 and ratchet_active:
-                    tp_moving_further = (
-                        (direction == "SELL" and proposed_tp1 < current_tp1) or
-                        (direction == "BUY" and proposed_tp1 > current_tp1)
-                    )
-                    if tp_moving_further:
-                        log.warning(f"🔒 TP1 RATCHET: Blocked move further "
-                                    f"${current_tp1:,.2f} → ${proposed_tp1:,.2f} (MFE {mfe:.1f}%, retracing)")
-                        tp1_valid = False
-                        tp1_ratcheted = True
-                if tp1_valid and (not current_tp1 or proposed_tp1 != current_tp1):
-                    log.info(f"🎯 Fund manager TP1 update: ${current_tp1 or 0:,.2f} → ${proposed_tp1:,.2f}")
-                    active["tp1"] = proposed_tp1
-                    record["tp_updated"] = proposed_tp1
-                    tp_changed = True
-                elif not tp1_valid and not tp1_ratcheted and proposed_tp1:
-                    log.warning(f"⚠️ Ignoring invalid fund manager TP1 ${proposed_tp1:,.2f} (wrong side of entry ${entry:,.2f} for {direction})")
-
+            # ═══ TP2 IS ADJUSTABLE (with guards) ═══
+            # TP2 is the runner — agents can adjust it based on market conditions.
+            # Guards: hard cap at 2x initial distance, ratchet when retracing.
             if proposed_tp2:
                 current_tp2 = active.get("tp2")
                 tp2_valid = False
                 tp2_ratcheted = False
+
+                # Basic side validation
                 if direction == "BUY" and proposed_tp2 > entry:
                     tp2_valid = True
                 elif direction == "SELL" and proposed_tp2 < entry:
                     tp2_valid = True
-                # Ratchet for TP2
-                if tp2_valid and current_tp2 and ratchet_active:
-                    tp_moving_further = (
-                        (direction == "SELL" and proposed_tp2 < current_tp2) or
-                        (direction == "BUY" and proposed_tp2 > current_tp2)
-                    )
-                    if tp_moving_further:
-                        log.warning(f"🔒 TP2 RATCHET: Blocked move further "
-                                    f"${current_tp2:,.2f} → ${proposed_tp2:,.2f} (MFE {mfe:.1f}%, retracing)")
-                        tp2_valid = False
-                        tp2_ratcheted = True
+
+                # Hard cap: 2x initial distance max
+                initial_tp2 = active.get("initial_tp2")
+                if tp2_valid and initial_tp2 and entry > 0:
+                    initial_dist = abs(entry - initial_tp2)
+                    proposed_dist = abs(entry - proposed_tp2)
+                    if proposed_dist > 2.0 * initial_dist:
+                        capped = entry - 2.0 * initial_dist if direction == "SELL" else entry + 2.0 * initial_dist
+                        log.warning(f"🚫 TP2 HARD CAP: ${proposed_tp2:,.0f} exceeds 2× initial distance "
+                                    f"(initial ${initial_tp2:,.0f}, max ${capped:,.0f}). Capping.")
+                        proposed_tp2 = round(capped, 2)
+
+                # Ratchet: block further moves when price is retracing from MFE
+                mfe = float(active.get("max_favorable_pct") or 0.0)
+                if tp2_valid and current_tp2 and mfe > 0.5 and entry > 0:
+                    if direction == "SELL":
+                        current_favorable_pct = ((entry - current_price) / entry) * 100
+                    else:
+                        current_favorable_pct = ((current_price - entry) / entry) * 100
+                    cf = max(0.0, current_favorable_pct)
+                    retracement = min(1.0, max(0.0, 1.0 - cf / mfe)) if mfe > 0 else 0
+                    if retracement > 0.5:
+                        tp_moving_further = (
+                            (direction == "SELL" and proposed_tp2 < current_tp2) or
+                            (direction == "BUY" and proposed_tp2 > current_tp2)
+                        )
+                        if tp_moving_further:
+                            log.warning(f"🔒 TP2 RATCHET: Blocked move further "
+                                        f"${current_tp2:,.2f} → ${proposed_tp2:,.2f} "
+                                        f"(MFE {mfe:.1f}%, retracement {retracement:.0%})")
+                            tp2_valid = False
+                            tp2_ratcheted = True
+
                 if tp2_valid and (not current_tp2 or proposed_tp2 != current_tp2):
-                    log.info(f"🎯 Fund manager TP2 update: ${current_tp2 or 0:,.2f} → ${proposed_tp2:,.2f}")
+                    log.info(f"🎯 TP2 update: ${current_tp2 or 0:,.2f} → ${proposed_tp2:,.2f}")
                     active["tp2"] = proposed_tp2
                     record["tp2_updated"] = proposed_tp2
                     tp_changed = True
                 elif not tp2_valid and not tp2_ratcheted and proposed_tp2:
-                    log.warning(f"⚠️ Ignoring invalid fund manager TP2 ${proposed_tp2:,.2f} (wrong side of entry ${entry:,.2f} for {direction})")
+                    log.warning(f"⚠️ Ignoring invalid TP2 ${proposed_tp2:,.2f} "
+                                f"(wrong side of entry ${entry:,.2f} for {direction})")
 
             # Sync TP orders to exchange if any changed
             if tp_changed:
