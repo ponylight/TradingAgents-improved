@@ -878,6 +878,37 @@ def cancel_tp_orders(exchange, tp_orders):
             log.debug(f"Could not cancel TP{tp['level']} order {tp['order_id'][:12]}: {e}")
 
 
+def _cancel_orphan_conditionals(exchange):
+    """Fallback sweep: cancel all reduce-only conditional orders for SYMBOL.
+    
+    Catches orphans that weren't tracked in tp_orders state (e.g. after crash,
+    manual edits, or state corruption). Only cancels reduce-only orders with
+    a triggerPrice to avoid nuking entry orders or other strategies.
+    """
+    try:
+        open_orders = exchange.fetch_open_orders(SYMBOL)
+        for oo in open_orders:
+            trigger = oo.get("triggerPrice") or oo.get("info", {}).get("triggerPrice")
+            reduce_only = oo.get("reduceOnly", oo.get("info", {}).get("reduceOnly", False))
+            if not trigger:
+                continue
+            # Only cancel reduce-only conditionals (TP/SL orders, not entries)
+            if str(reduce_only).lower() not in ("true", "1", True):
+                continue
+            oid = str(oo.get("id", ""))[:12]
+            try:
+                exchange.cancel_order(oo["id"], SYMBOL)
+                log.info(f"🗑️ Cancelled orphan conditional order {oid} (trigger={trigger})")
+            except Exception as e:
+                err_msg = str(e).lower()
+                if "not found" in err_msg or "not exist" in err_msg or "already" in err_msg:
+                    log.debug(f"Orphan order {oid} already gone: {e}")
+                else:
+                    log.warning(f"⚠️ Failed to cancel orphan order {oid}: {e}")
+    except Exception as e:
+        log.warning(f"⚠️ Failed to fetch open orders for orphan cleanup: {e}")
+
+
 def sync_take_profits(exchange, direction, amount, active_trade, tp1_price=None, tp2_price=None):
     """Update TP orders when agents propose new levels. Cancel old, place new.
     Skips TP1 if already hit. Skips unchanged levels to avoid churn."""
@@ -2014,6 +2045,14 @@ def main():
                 except Exception as e:
                     log.warning(f"Failed to record reconcile outcome: {e}")
 
+            # Cancel any orphaned TP orders before clearing state
+            tp_orders = stale_data.get("tp_orders", [])
+            if tp_orders:
+                log.info(f"🗑️ Cancelling {len(tp_orders)} orphaned TP orders from externally-closed position")
+                cancel_tp_orders(exchange, tp_orders)
+            # Always run fallback sweep — tp_orders in state may be stale/incomplete
+            _cancel_orphan_conditionals(exchange)
+
             # Clear both active_trade AND positions.committee
             executor_state.pop("active_trade", None)
             if executor_state.get("positions", {}).get("committee") is not None:
@@ -2432,6 +2471,10 @@ def main():
         log.info(f"⏸️  {action} — no action")
 
     elif action in ("CLOSE_LONG", "CLOSE_SHORT"):
+        # Cancel TP orders before closing
+        active = executor_state.get("active_trade", {})
+        cancel_tp_orders(exchange, active.get("tp_orders", []))
+        _cancel_orphan_conditionals(exchange)  # Fallback sweep
         # Close without reversing
         for p in positions:
             entry_price = float(p["entryPrice"])
