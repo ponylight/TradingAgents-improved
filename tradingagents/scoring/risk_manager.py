@@ -43,7 +43,9 @@ class RiskManager:
     def __init__(self, config: Optional[Dict] = None):
         cfg = config or {}
         self.max_position_pct = cfg.get("max_position_pct", 0.10)
-        self.max_leverage = cfg.get("max_leverage", 20)
+        self.max_leverage = cfg.get("max_leverage", 15)          # reduced from 20 — swing default
+        self.max_leverage_swing = cfg.get("max_leverage_swing", 15)   # hard limit for swing trades
+        self.max_leverage_position = cfg.get("max_leverage_position", 10)  # hard limit for position trades (>24h)
         self.max_daily_loss_pct = cfg.get("max_daily_loss_pct", 0.03)
         self.max_drawdown_pct = cfg.get("max_drawdown_pct", 0.10)
         self.cooldown_minutes = cfg.get("cooldown_minutes", 30)
@@ -54,7 +56,7 @@ class RiskManager:
         equity: float,
         proposed_direction: str,
         proposed_alloc_pct: float,
-        proposed_leverage: int,
+        proposed_leverage: float,
         current_position: Optional[Dict] = None,
         daily_pnl: float = 0.0,
         peak_equity: float = 0.0,
@@ -101,11 +103,17 @@ class RiskManager:
                 "WARNING",
             ))
 
-        # 4. Leverage limit
-        if proposed_leverage > self.max_leverage:
+        # 4. Leverage limit — soft REDUCE (hard gates enforced before calling check_all)
+        if proposed_leverage > self.max_leverage_swing:
             actions.append(RiskAction(
                 "REDUCE",
-                f"Leverage {proposed_leverage}x exceeds max {self.max_leverage}x.",
+                f"Leverage {proposed_leverage}x exceeds swing max {self.max_leverage_swing}x. Consider reducing allocation.",
+                "WARNING",
+            ))
+        elif proposed_leverage > self.max_leverage:
+            actions.append(RiskAction(
+                "REDUCE",
+                f"Leverage {proposed_leverage}x exceeds default max {self.max_leverage}x.",
                 "WARNING",
             ))
 

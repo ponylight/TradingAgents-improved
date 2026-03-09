@@ -44,6 +44,14 @@ class TrendState(BaseModel):
     )
     sma_200: float = Field(description="200-period Simple Moving Average", default=0.0)
     sma_200_dist: float = Field(description="Distance from SMA 200 (%)", default=0.0)
+    structure_quality: Literal["confirmed", "transitional", "na"] = Field(
+        description=(
+            "'confirmed' when higher_highs and higher_lows agree; "
+            "'transitional' when they disagree (mixed structure signals); "
+            "'na' when insufficient data"
+        ),
+        default="na",
+    )
 
 
 class MomentumState(BaseModel):

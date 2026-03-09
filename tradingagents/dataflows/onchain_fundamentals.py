@@ -289,12 +289,39 @@ def format_fundamentals_report(data: Dict[str, Any]) -> str:
     aa = ad.get("active_addresses", {})
     tv = ad.get("tx_volume", {})
 
+    # === Weekend low-volume detection (Issue 5) ===
+    _tv_latest = tv.get("latest_b", 0)
+    _tv_avg = tv.get("avg_30d_b", 1) or 1
+    _tv_pct = ((_tv_latest - _tv_avg) / _tv_avg * 100) if _tv_avg > 0 else 0
+    _is_weekend = datetime.now(timezone.utc).weekday() >= 5
+    _vol_note = ""
+    if _tv_pct < -30 and _is_weekend:
+        _vol_note = "  ⚠️ Weekend — low volume expected, not necessarily bearish."
+    elif _tv_pct < -30:
+        _vol_note = f"  ⚠️ Volume {_tv_pct:.0f}% below 30d avg — potentially bearish signal."
+    _tx_volume_line = (
+        f"- Tx volume (24h): ${_tv_latest:.1f}B (30d avg: ${tv.get('avg_30d_b', 0):.1f}B){_vol_note}"
+    )
+
+    # === Hash rate staleness detection (Issue 6) ===
+    _generated_at = data.get("generated_at", "")
+    _hashrate_stale_note = ""
+    try:
+        from datetime import timedelta
+        _gen_time = datetime.fromisoformat(_generated_at.replace("Z", "+00:00")) if _generated_at else None
+        if _gen_time:
+            _age_hours = (datetime.now(timezone.utc) - _gen_time).total_seconds() / 3600
+            if _age_hours > 24:
+                _hashrate_stale_note = f"  ⚠️ STALE: data is {_age_hours:.0f}h old — do not rely on hash rate for decisions."
+    except Exception:
+        pass
+
     lines = [
         "# Bitcoin On-Chain Fundamentals Report",
         f"Generated: {data.get('generated_at', 'N/A')}",
         "",
         "## Network Health & Security",
-        f"- Hash Rate: {nh.get('hash_rate_eh', 0)} EH/s (7d avg: {ht.get('avg_7d_eh', 0)} EH/s, 30d avg: {ht.get('avg_30d_eh', 0)} EH/s, trend: {ht.get('trend_pct', 0):+.1f}%)",
+        f"- Hash Rate: {nh.get('hash_rate_eh', 0)} EH/s (7d avg: {ht.get('avg_7d_eh', 0)} EH/s, 30d avg: {ht.get('avg_30d_eh', 0)} EH/s, trend: {ht.get('trend_pct', 0):+.1f}%){_hashrate_stale_note}",
         f"- Difficulty: {nh.get('difficulty_t', 0)}T",
         f"- Next adjustment: {da.get('change_pct', 0):+.2f}% in {da.get('remaining_blocks', 0)} blocks",
         f"- Block time: {nh.get('minutes_between_blocks', 0)} min (target: 10 min)",
@@ -304,7 +331,7 @@ def format_fundamentals_report(data: Dict[str, Any]) -> str:
         "## Adoption & Usage",
         f"- Active addresses (latest): {aa.get('latest', 0):,} (30d avg: {aa.get('avg_30d', 0):,}, 7d trend: {aa.get('trend_7d_pct', 0):+.1f}%)",
         f"- Tx count (24h): {nh.get('tx_count_24h', 0):,}",
-        f"- Tx volume (24h): ${tv.get('latest_b', 0):.1f}B (30d avg: ${tv.get('avg_30d_b', 0):.1f}B)",
+        _tx_volume_line,
         f"- BTC transferred (24h): {nh.get('btc_sent_24h', 0):,.0f} BTC",
         "",
         "## Valuation & Market",

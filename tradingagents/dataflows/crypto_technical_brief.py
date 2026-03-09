@@ -236,7 +236,7 @@ def detect_trend(df):
     be=int(e8<e21)+int(e21<s50)+int(c<e8)
     d=Direction.BULLISH if bu>=2 else Direction.BEARISH if be>=2 else Direction.NEUTRAL
     st=Strength.STRONG if abs(es)>1.5 else Strength.MODERATE if abs(es)>0.5 else Strength.WEAK
-    hh,hl=_detect_hh_hl(df)
+    hh,hl,sq=_detect_hh_hl(df)
     av=float(df["adx_14"].iloc[-1]) if not pd.isna(df["adx_14"].iloc[-1]) else 0.0
     at="very_strong" if av>40 else "strong" if av>25 else "weak"
     sd=((c-s200)/s200)*100 if s200>0 else 0.0
@@ -257,18 +257,43 @@ def detect_trend(df):
         )
         d = Direction.NEUTRAL
 
+    # === ADX Weak-Trend Override ===
+    # If ADX < 20, there is no meaningful directional trend regardless of EMA alignment.
+    # Override any directional label to NEUTRAL to prevent false trend signals.
+    if av < 20 and d != Direction.NEUTRAL:
+        _log.warning(
+            f"⚠️ ADX WEAK-TREND OVERRIDE: ADX={av:.1f} < 20 (no strong trend) — "
+            f"overriding {d} to NEUTRAL (ema_slope={es:.2f}, higher_highs={hh}, higher_lows={hl})"
+        )
+        d = Direction.NEUTRAL
+
     return TrendState(direction=d,strength=st,ema_slope=round(es,4),higher_highs=hh,higher_lows=hl,
-                     adx=round(av,2),trend_strength_adx=at,sma_200=round(s200,2),sma_200_dist=round(sd,2))
+                     adx=round(av,2),trend_strength_adx=at,sma_200=round(s200,2),sma_200_dist=round(sd,2),
+                     structure_quality=sq)
 
 def _detect_hh_hl(df, lookback=20):
+    """Detect higher-highs and higher-lows swing patterns.
+    Returns (higher_highs, higher_lows, structure_quality).
+    structure_quality='transitional' when hh/hl disagree (mixed signals).
+    """
     r=df.tail(lookback)
-    if len(r)<10: return False,False
+    if len(r)<10: return False,False,"na"
     h,l=r["high"].values,r["low"].values
     sh,sl=[],[]
     for i in range(2,len(r)-2):
         if h[i]>h[i-1] and h[i]>h[i-2] and h[i]>h[i+1] and h[i]>h[i+2]: sh.append(h[i])
         if l[i]<l[i-1] and l[i]<l[i-2] and l[i]<l[i+1] and l[i]<l[i+2]: sl.append(l[i])
-    return (len(sh)>=2 and sh[-1]>sh[-2]),(len(sl)>=2 and sl[-1]>sl[-2])
+    hh=(len(sh)>=2 and sh[-1]>sh[-2])
+    hl=(len(sl)>=2 and sl[-1]>sl[-2])
+    # Disagreement between HH and HL = transitional/uncertain structure
+    if hh != hl:
+        _log.info(f"ℹ️ STRUCTURE TRANSITIONAL: higher_highs={hh}, higher_lows={hl} disagree — labelling as transitional")
+        sq="transitional"
+    elif hh and hl:
+        sq="confirmed"
+    else:
+        sq="na"
+    return hh, hl, sq
 
 def detect_momentum(df):
     rv=float(df["rsi_14"].iloc[-1]) if not pd.isna(df["rsi_14"].iloc[-1]) else 50.0

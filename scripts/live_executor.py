@@ -2712,12 +2712,63 @@ def main():
                             stop_loss = pre_price + (2 * atr)
                         log.info(f'🔧 Recalculated SL from 2×ATR: ${stop_loss:,.0f}')
 
+            # === COMPUTE EFFECTIVE LEVERAGE ===
+            # Replicate open_position sizing: notional = (equity * RISK_PER_TRADE * risk_mult / sl_dist) * price
+            # effective_leverage = notional / margin = (RISK_PER_TRADE * risk_mult * price) / (sl_dist * alloc_pct)
+            _eff_lev = None  # fail-closed: None = unknown = block
+            _liq_dist_atr_ratio = None  # fail-closed: None = unknown = block
+            try:
+                _sl_dist = abs(pre_price - stop_loss) if stop_loss and pre_price else None
+                if _sl_dist and _sl_dist > 0 and alloc_pct > 0:
+                    _risk_eff = RISK_PER_TRADE * risk_multiplier
+                    _notional = (_risk_eff / (_sl_dist / pre_price)) * pre_price  # equity-normalised then × price
+                    # effective_leverage = notional / (equity * alloc_pct) — but we want dimensionless ratio
+                    _eff_lev = (_risk_eff * pre_price / _sl_dist) / alloc_pct
+                    _eff_lev = max(1.0, min(_eff_lev, 50.0))  # clamp for sanity
+                    # Distance from entry to liquidation (isolated margin, approx)
+                    _liq_dist = pre_price / _eff_lev  # price / leverage
+                    _atr_for_liq = get_atr(exchange, period=14, timeframe='1d')
+                    _liq_dist_atr_ratio = _liq_dist / _atr_for_liq if _atr_for_liq > 0 else 999.0
+                    log.info(f"📐 Effective leverage: {_eff_lev:.1f}x | liq dist: ${_liq_dist:,.0f} ({_liq_dist_atr_ratio:.2f}×ATR)")
+            except Exception as _lev_err:
+                log.warning(f"Could not compute effective leverage: {_lev_err}")
+
+            # === HARD LEVERAGE / LIQUIDATION GATES (fail-closed) ===
+            _trade_type = trade_params.get("trade_type", "swing").lower()
+            _max_lev_hard = 10 if _trade_type == "position" else 15
+            if _eff_lev is None:
+                log.warning(f"🛑 HARD GATE: Cannot compute effective leverage — BLOCKING (fail-closed)")
+                record["risk_blocked"] = "Cannot compute effective leverage (fail-closed)"
+                record["transition"] = "RISK_BLOCKED"
+                executor_state["trades"] = executor_state.get("trades", [])
+                executor_state["trades"].append(record)
+                save_state(executor_state)
+                return
+            if _eff_lev > _max_lev_hard:
+                log.warning(f"🛑 HARD LEVERAGE GATE: effective leverage {_eff_lev}x exceeds hard limit {_max_lev_hard}x "
+                            f"for {_trade_type} trade — BLOCKING")
+                record["risk_blocked"] = f"Hard leverage gate: {_eff_lev}x > {_max_lev_hard}x ({_trade_type})"
+                record["transition"] = "RISK_BLOCKED"
+                executor_state["trades"] = executor_state.get("trades", [])
+                executor_state["trades"].append(record)
+                save_state(executor_state)
+                return
+            if _liq_dist_atr_ratio is None or _liq_dist_atr_ratio < 2.0:
+                log.warning(f"🛑 HARD LIQUIDATION GATE: liquidation price is only {_liq_dist_atr_ratio:.2f}×ATR from entry "
+                            f"(required >2×ATR) — BLOCKING")
+                record["risk_blocked"] = f"Liquidation too close: {_liq_dist_atr_ratio:.2f}×ATR < 2×ATR"
+                record["transition"] = "RISK_BLOCKED"
+                executor_state["trades"] = executor_state.get("trades", [])
+                executor_state["trades"].append(record)
+                save_state(executor_state)
+                return
+
             # === CONSOLIDATED RISK CHECK ===
             risk_actions = risk_mgr.check_all(
                 equity=equity,
                 proposed_direction=new_direction,
                 proposed_alloc_pct=alloc_pct,
-                proposed_leverage=10,
+                proposed_leverage=_eff_lev,
                 current_position=None,
                 daily_pnl=check_daily_loss_limit(executor_state, equity),
                 peak_equity=PEAK_EQUITY,

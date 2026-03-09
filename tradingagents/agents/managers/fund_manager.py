@@ -15,6 +15,27 @@ import logging
 log = logging.getLogger("fund_manager")
 
 
+def _extract_risk_decision(risk_decision: str, fallback_chars: int = 4000) -> str:
+    """
+    Extract the structured ---RISK_DECISION--- block from the risk judge output,
+    always including it in full. Falls back to first `fallback_chars` chars if
+    no structured block is found. This prevents critical blocking signals from
+    being truncated at an arbitrary char limit.
+    """
+    if not risk_decision:
+        return ""
+    # Try to find the structured block
+    match = re.search(r"(---RISK_DECISION---.*?---END---)", risk_decision, re.DOTALL)
+    if match:
+        structured = match.group(1)
+        # Include preamble up to fallback_chars, always append full structured block
+        pre = risk_decision[:risk_decision.index("---RISK_DECISION---")]
+        preamble = pre[:fallback_chars - len(structured)] if len(structured) < fallback_chars else ""
+        return (preamble + structured).strip()
+    # No structured block — truncate at fallback_chars
+    return risk_decision[:fallback_chars]
+
+
 def create_fund_manager(llm, memory=None):
 
     def fund_manager_node(state) -> dict:
@@ -110,7 +131,7 @@ Each HOLD is a capital allocation decision — own it with the same rigor as a t
 {trader_plan[:2500]}
 
 ## Risk Judge's Assessment
-{risk_decision[:2000]}
+{_extract_risk_decision(risk_decision)}
 
 ## Required Output — Mandatory Sections
 
