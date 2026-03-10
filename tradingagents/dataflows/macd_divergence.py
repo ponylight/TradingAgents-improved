@@ -247,6 +247,30 @@ def _check_divergence(
         desc_dir = "higher highs" if divergence_type == "bearish" else "lower lows"
         desc_hist = "shrinking green bars" if divergence_type == "bearish" else "shrinking red bars"
 
+        # === Price Range Proximity Filter ===
+        # If divergence price points span too wide a range relative to current price,
+        # the pattern is too stale/broad to be actionable.
+        current_price = float(close.iloc[-1])
+        range_base = min(p1_price, p3_price) if min(p1_price, p3_price) > 0 else 1
+        price_range_pct = abs(p3_price - p1_price) / range_base * 100
+        max_distance_pct = abs(p1_price - current_price) / current_price * 100 if current_price > 0 else 0
+        
+        if price_range_pct > 30:
+            log.info(
+                f"ℹ️ MACD divergence discarded: price range {p1_price:.0f}→{p3_price:.0f} "
+                f"spans {price_range_pct:.1f}% (>30%) — too broad to be actionable"
+            )
+            continue
+        if max_distance_pct > 50:
+            log.info(
+                f"ℹ️ MACD divergence discarded: 1st point ${p1_price:.0f} is "
+                f"{max_distance_pct:.1f}% from current ${current_price:.0f} — too distant"
+            )
+            continue
+        if price_range_pct > 20:
+            confidence = max(0, confidence - 2)
+            log.info(f"ℹ️ MACD divergence confidence penalized: wide range ({price_range_pct:.1f}%)")
+
         log.info(
             f"🔺 MACD Triple {divergence_type.upper()} Divergence detected! "
             f"Confidence: {confidence}/10, "

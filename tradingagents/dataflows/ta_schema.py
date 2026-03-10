@@ -52,6 +52,10 @@ class TrendState(BaseModel):
         ),
         default="na",
     )
+    contradictions: List[str] = Field(
+        description="List of internal contradictions detected during trend analysis",
+        default_factory=list,
+    )
 
 
 class MomentumState(BaseModel):
@@ -91,6 +95,10 @@ class VWAPState(BaseModel):
     anchored_vwaps: List[AVWAPLevel] = Field(
         description="Anchored VWAP levels from key swing points",
         default_factory=list,
+    )
+    avwap_converged: bool = Field(
+        description="True when all anchored VWAPs are within 0.5% — signals unreliable S/R levels",
+        default=False,
     )
 
 

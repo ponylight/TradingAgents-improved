@@ -49,6 +49,30 @@ def create_crypto_fundamentals_analyst(llm):
         # Pre-fetch the data (deterministic, fast)
         fundamentals_report = get_onchain_fundamentals.invoke({})
         
+        # === Staleness Gate ===
+        # If fundamentals data is >12h old, inject a hard warning that caps confidence.
+        staleness_warning = ""
+        try:
+            from datetime import datetime, timezone as tz
+            import re
+            gen_match = re.search(r"Generated:\s*(\S+)", fundamentals_report)
+            if gen_match:
+                gen_ts = gen_match.group(1)
+            else:
+                log.warning("Staleness check: 'Generated:' timestamp not found in fundamentals report")
+                gen_ts = None
+            if gen_ts:
+                gen_time = datetime.fromisoformat(gen_ts.replace("Z", "+00:00"))
+                age_hours = (datetime.now(tz.utc) - gen_time).total_seconds() / 3600
+                if age_hours > 12:
+                    staleness_warning = (
+                        f"\n\n⛔ STALENESS GATE: Fundamentals data is {age_hours:.1f}h old (>{12}h threshold). "
+                        f"Your overall confidence MUST NOT exceed MEDIUM. State this age prominently.\n"
+                    )
+                    log.warning(f"⚠️ Fundamentals staleness gate triggered: {age_hours:.1f}h old")
+        except Exception as e:
+            log.warning(f"Staleness check failed: {e}")
+        
         # Pre-fetch macro radar (7-signal composite)
         try:
             from tradingagents.dataflows.macro_radar import get_macro_radar_cached, get_stablecoin_health_cached
@@ -142,7 +166,7 @@ Do NOT recommend trades. You report fundamentals only. Other agents decide trade
             {
                 "role": "user",
                 "content": f"""Here is the current on-chain fundamentals data for Bitcoin:
-
+{staleness_warning}
 {fundamentals_report}
 
 ---

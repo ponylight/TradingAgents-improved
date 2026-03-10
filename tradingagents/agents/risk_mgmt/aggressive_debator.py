@@ -19,6 +19,14 @@ def _build_prompt(trader_decision, reports, history, other_responses):
 3. Challenge neutral positions — in trending crypto markets, neutrality = underperformance
 4. Point out where conservative analysts overweight tail risks that have already been priced in (extreme fear = already priced)
 
+## MANDATORY: Engage the Strongest Opposing Point
+Before presenting your case, you MUST:
+- Identify the single strongest argument AGAINST your position (from conservative/neutral responses or from the data itself)
+- State it explicitly: "The strongest counter-argument is: [X]"
+- Directly address it with data — why it's wrong, overweighted, or already priced in
+- If you cannot refute it, acknowledge it honestly and adjust your conviction
+Skipping this requirement invalidates your entire analysis. Especially for scheduled events (CPI, FOMC, earnings) — you MUST address event risk head-on.
+
 ## Professional Standard
 When proposing any trade, you MUST provide concrete levels:
 - Entry price or zone

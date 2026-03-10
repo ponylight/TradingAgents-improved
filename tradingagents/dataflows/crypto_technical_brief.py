@@ -162,18 +162,31 @@ def _calc_avwap(df, anchor_idx):
     avwap = cv / vv.replace(0, np.nan)
     return float(avwap.iloc[-1]) if not pd.isna(avwap.iloc[-1]) else None
 
-def compute_avwap_levels(df):
-    """Compute AVWAP from swing high, swing low, and volume spike anchors."""
+def compute_avwap_levels(df, min_anchor_separation=10):
+    """Compute AVWAP from swing high, swing low, and volume spike anchors.
+    
+    Enforces minimum separation between anchor points to avoid convergence
+    artifacts when all anchors cluster in a narrow time window.
+    """
     levels = []
     last_idx = df.index[-1]
     sh_idx, sl_idx = _find_swing_points(df)
     vol_idx = _find_volume_spike(df)
     
+    used_indices = []
     for label, idx in [("swing_high", sh_idx), ("swing_low", sl_idx), ("volume_spike", vol_idx)]:
+        if idx is None:
+            continue
+        # Skip anchors too close to already-used ones (causes convergence)
+        too_close = any(abs(int(idx) - int(u)) < min_anchor_separation for u in used_indices)
+        if too_close:
+            _log.info(f"ℹ️ AVWAP anchor '{label}' at idx={idx} skipped — too close to existing anchor")
+            continue
         price = _calc_avwap(df, idx)
         if price is not None:
             bars_ago = int(last_idx - idx)
             levels.append(AVWAPLevel(anchor=label, price=round(price, 2), anchor_bar_ago=bars_ago))
+            used_indices.append(idx)
     return levels
 
 # ── EMA Convergence Zone ──
@@ -267,9 +280,33 @@ def detect_trend(df):
         )
         d = Direction.NEUTRAL
 
+    # === Contradiction Detection ===
+    # Catch remaining conflicts that reconciliation didn't override,
+    # so downstream agents can gate confidence on data quality.
+    contradictions = []
+    if d == Direction.BULLISH and es < -0.5:
+        contradictions.append(
+            f"Direction={d.value} but ema_slope={es:.2f} is negative (bearish momentum)"
+        )
+    if d == Direction.BEARISH and es > 0.5:
+        contradictions.append(
+            f"Direction={d.value} but ema_slope={es:.2f} is positive (bullish momentum)"
+        )
+    if d == Direction.BEARISH and hh and hl:
+        contradictions.append(
+            f"Direction={d.value} but structure is bullish (higher_highs={hh}, higher_lows={hl})"
+        )
+    if d == Direction.NEUTRAL and hh and hl and sq == "confirmed":
+        contradictions.append(
+            f"Direction=neutral but structure is confirmed bullish (HH+HL both true)"
+        )
+    bos_val = False  # BOS is computed separately in detect_market_structure, not available here
+    if contradictions:
+        _log.warning(f"⚠️ TREND CONTRADICTIONS ({len(contradictions)}): {'; '.join(contradictions)}")
+
     return TrendState(direction=d,strength=st,ema_slope=round(es,4),higher_highs=hh,higher_lows=hl,
                      adx=round(av,2),trend_strength_adx=at,sma_200=round(s200,2),sma_200_dist=round(sd,2),
-                     structure_quality=sq)
+                     structure_quality=sq,contradictions=contradictions)
 
 def _detect_hh_hl(df, lookback=20):
     """Detect higher-highs and higher-lows swing patterns.
@@ -331,7 +368,18 @@ def detect_vwap_state(df):
     z=(c-v)/s if s and s>0 else 0.0
     p="at" if abs(z)<0.3 else "above" if z>0 else "below"
     avwaps = compute_avwap_levels(df)
-    return VWAPState(position=p,zscore_distance=round(z,2),anchored_vwaps=avwaps)
+    # Detect AVWAP convergence artifact: all levels within 0.5% = unreliable S/R
+    converged = False
+    if len(avwaps) >= 2:
+        prices = [a.price for a in avwaps]
+        spread_pct = (max(prices) - min(prices)) / min(prices) * 100 if min(prices) > 0 else 0
+        if spread_pct < 0.5:
+            converged = True
+            _log.warning(
+                f"⚠️ AVWAP CONVERGENCE: All {len(avwaps)} anchored VWAPs within {spread_pct:.2f}% "
+                f"(prices: {prices}) — S/R levels unreliable"
+            )
+    return VWAPState(position=p,zscore_distance=round(z,2),anchored_vwaps=avwaps,avwap_converged=converged)
 
 def detect_volatility(df):
     av=float(df["atr_14"].iloc[-1]) if not pd.isna(df["atr_14"].iloc[-1]) else 0.0

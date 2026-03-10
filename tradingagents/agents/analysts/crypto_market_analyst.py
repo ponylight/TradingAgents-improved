@@ -61,8 +61,9 @@ Before analyzing, sanity-check the Technical Brief. Flag any issues:
 - Missing timeframes or indicators (state what's absent)
 - Stale candle data (last close timestamp too old)
 - Implausible values (e.g. RSI outside 0-100, negative volume, ATR = 0)
-- Contradictions within the data itself
-If data quality is degraded, open with a DATA QUALITY WARNING and lower confidence.
+- Contradictions within the data itself (check `trend.contradictions` array — if non-empty, these are machine-detected conflicts)
+- AVWAP convergence (check `vwap_state.avwap_converged` — if true, S/R levels from anchored VWAPs are unreliable)
+If data quality is degraded (>2 contradictions across timeframes), open with a DATA QUALITY WARNING and cap confidence at MEDIUM.
 
 ## Your Workflow
 1. Audit the Technical Brief for data quality issues

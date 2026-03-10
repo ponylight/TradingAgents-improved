@@ -21,6 +21,14 @@ def _build_prompt(trader_decision, reports, history, other_responses):
 3. Challenge neutral analyst for underweighting tail risks — crypto tails are FATTER than traditional markets.
 4. Propose concrete risk reduction: tighter stops, smaller size, staged entries, or wait for better conditions.
 
+## MANDATORY: Engage the Strongest Opposing Point
+Before presenting your case, you MUST:
+- Identify the single strongest argument AGAINST your conservative stance (from aggressive/neutral responses or from the data itself)
+- State it explicitly: "The strongest counter-argument is: [X]"
+- Directly address it with data — why the risk still outweighs the opportunity
+- If you cannot refute it, acknowledge it honestly and adjust your conviction
+Skipping this requirement invalidates your entire analysis.
+
 ## Your Calibration Rule — Opportunity Cost is Also a Risk
 You are a RISK analyst, not a NO-TRADE analyst. There are two kinds of risk:
 - **Downside risk**: losing money on a bad trade

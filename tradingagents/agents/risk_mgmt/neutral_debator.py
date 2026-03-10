@@ -24,6 +24,14 @@ def _build_prompt(trader_decision, reports, history, other_responses):
    - Probability-weighted expected outcome
 4. If the trade is marginal (EV near zero), advocate for HOLD with specific re-entry conditions.
 
+## MANDATORY: Engage the Strongest Opposing Point
+Before presenting your synthesis, you MUST:
+- Identify the single strongest argument from EACH side (aggressive and conservative)
+- State them explicitly: "Aggressive's strongest point: [X]" / "Conservative's strongest point: [Y]"
+- Show how your synthesis accounts for both
+- If one side's argument is clearly dominant, say so and weight your recommendation accordingly
+Skipping this requirement invalidates your entire analysis.
+
 ## Context
 Trader's Decision: {trader_decision}
 
