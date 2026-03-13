@@ -157,17 +157,41 @@ def run_light_evaluation(price_data: dict, reports: dict, state: dict) -> dict:
     news_report = reports.get("news", "No news report cached")[:800]
     last_decision = state.get("last_decision", "?")
     last_decision_time = state.get("last_decision_time", "?")
-    has_position = bool(state.get("active_trade"))
-    active = state.get("active_trade", {})
-
-    position_str = "FLAT (no position)"
-    if has_position:
+    # Check both active_trade and positions.committee for current position
+    active = state.get("active_trade") or {}
+    committee = state.get("positions", {}).get("committee") or {}
+    
+    # Prefer active_trade if it exists, fall back to positions.committee
+    if active:
+        has_position = True
         direction = active.get("direction", "?")
         entry = active.get("entry", 0)
         amount = active.get("amount", 0)
         trail = active.get("trailing_stop", 0)
-        pnl_pct = ((price - entry) / entry * 100) if direction == "BUY" and entry > 0 else (((entry - price) / entry * 100) if entry > 0 else 0)
-        position_str = f"{direction} {amount:.3f} BTC @ ${entry:,.0f} | PnL: {pnl_pct:+.2f}% | Trail: ${trail:,.0f}"
+    elif committee:
+        has_position = True
+        # positions.committee uses 'side' not 'direction'
+        side = committee.get("side", "?")
+        direction = "BUY" if side == "long" else ("SELL" if side == "short" else side)
+        entry = committee.get("entry", 0)
+        amount = committee.get("amount", 0)
+        trail = committee.get("trailing_stop", committee.get("stop_loss", 0))
+    else:
+        has_position = False
+        direction = "?"
+        entry = 0
+        amount = 0
+        trail = 0
+
+    position_str = "FLAT (no position)"
+    if has_position:
+        if direction == "BUY" and entry > 0:
+            pnl_pct = (price - entry) / entry * 100
+        elif direction == "SELL" and entry > 0:
+            pnl_pct = (entry - price) / entry * 100
+        else:
+            pnl_pct = 0
+        position_str = f"{direction} {amount:.3f} BTC @ ${entry:,.0f} | PnL: {pnl_pct:+.2f}% | SL/Trail: ${trail:,.0f}"
 
     macro = get_macro_summary()
     # CII disabled — GDELT rate-limited, low decision value
@@ -256,8 +280,21 @@ def should_act(decision: dict, state: dict, price_data: dict, report_age_hours: 
     if action == "HOLD":
         return False
 
-    # CLOSE is always allowed — never block emergency exits
+    # CLOSE requires position validation — don't close based on stale state
     if action == "CLOSE":
+        # Verify we actually have a position in state
+        active = state.get("active_trade") or state.get("positions", {}).get("committee")
+        if not active:
+            log.warning("⚠️ CLOSE rejected: no position in state (active_trade or positions.committee)")
+            return False
+        # Verify the CLOSE reason makes sense for the position direction
+        side = active.get("direction") or active.get("side", "")
+        if side in ("long", "BUY") and "short" in decision.get("reason", "").lower():
+            log.warning(f"⚠️ CLOSE rejected: reason references SHORT but position is LONG — stale context")
+            return False
+        if side in ("short", "SELL") and "long" in decision.get("reason", "").lower():
+            log.warning(f"⚠️ CLOSE rejected: reason references LONG but position is SHORT — stale context")
+            return False
         return True
 
     if report_age_hours is not None and report_age_hours > MIN_REPORT_FRESHNESS_HOURS:
@@ -430,7 +467,6 @@ def main():
             tmp_file.rename(light_file)
 
             # Increment daily light trade count (merge-patch: re-read, update key, atomic write)
-            import fcntl
             today = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
             state_lock_fd = None
             try:
