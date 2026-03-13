@@ -684,14 +684,14 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
     """
     Run all pattern detectors against current market data.
     Returns a formatted report for agent consumption.
-    Results cached for 5 minutes to avoid redundant API calls.
+    Results cached for 2 minutes to avoid redundant API calls.
     """
     import time as _time
     from datetime import datetime as _dt
     now = _time.time()
     # Include date in cache key so same symbol at different times doesn't return stale data
     cache_key = f"{symbol}:{_dt.utcnow().strftime('%Y-%m-%d')}"
-    if _SCAN_CACHE.get("key") == cache_key and _SCAN_CACHE["result"] and (now - _SCAN_CACHE["ts"]) < 300:
+    if _SCAN_CACHE.get("key") == cache_key and _SCAN_CACHE["result"] and (now - _SCAN_CACHE["ts"]) < 120:
         return _SCAN_CACHE["result"]
 
     log.info(f"🔍 Running pattern scan for {symbol}")

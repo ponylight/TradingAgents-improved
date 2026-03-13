@@ -20,7 +20,6 @@ from tradingagents.dataflows.pattern_scanner import scan_all_patterns
 from tradingagents.dataflows.cross_venue import get_cross_venue_confirmation
 
 
-@tool
 def get_crypto_price_data(
     symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
     start_date: Annotated[str, "Start date in yyyy-mm-dd format"],
@@ -40,7 +39,6 @@ def get_crypto_price_data(
     return get_crypto_ohlcv(symbol, start_date, end_date, timeframe=timeframe)
 
 
-@tool
 def get_crypto_technical_indicators(
     symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
     indicator: Annotated[str, "indicator name: rsi, macd, macds, macdh, boll, boll_ub, boll_lb, atr, close_50_sma, close_200_sma, close_10_ema, vwma, mfi"],
@@ -90,7 +88,6 @@ def get_oi_timeseries(
     return get_crypto_oi_timeseries(symbol)
 
 
-@tool
 def get_orderbook_depth(
     symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
     depth: Annotated[int, "number of price levels to fetch"] = 20,
@@ -113,7 +110,6 @@ def get_crypto_fear_greed() -> str:
     return get_fear_greed_index()
 
 
-@tool
 def get_liquidation_info(
     symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
 ) -> str:
@@ -123,7 +119,6 @@ def get_liquidation_info(
     return get_crypto_liquidations_summary(symbol)
 
 
-@tool
 def get_macro_signal_radar() -> str:
     """
     Get 7-signal macro radar with composite BUY/CASH verdict.
@@ -138,7 +133,6 @@ def get_macro_signal_radar() -> str:
     return result["summary"]
 
 
-@tool
 def get_stablecoin_peg_health() -> str:
     """
     Monitor stablecoin peg health (USDT, USDC, DAI).
@@ -178,7 +172,6 @@ def run_pattern_scan(
     return scan_all_patterns(symbol)
 
 
-@tool
 def get_crisis_impact_index() -> str:
     """
     Get the CryptoMonitor Crisis Impact Index (CII) — geopolitical risk score 0-100.

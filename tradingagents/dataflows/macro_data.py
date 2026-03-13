@@ -214,8 +214,13 @@ def get_economic_calendar_summary() -> str:
 
     lines = [f"# Economic Calendar Context — {month}\n"]
 
-    # Known 2025-2026 FOMC meeting dates (Wednesday announcements)
-    # This is the reliable fallback — no API call needed
+    # Known FOMC meeting dates (Wednesday announcements)
+    # This is the reliable fallback — no external API needed.
+    # TODO: Add 2028 FOMC dates when the Fed publishes them (typically late 2027).
+    fomc_dates_2027 = [
+        (1, 29), (3, 19), (5, 7), (6, 18),
+        (7, 30), (9, 17), (11, 4), (12, 16),
+    ]
     fomc_dates_2026 = [
         (1, 29), (3, 18), (5, 6), (6, 17),
         (7, 29), (9, 16), (10, 28), (12, 16),
@@ -224,7 +229,8 @@ def get_economic_calendar_summary() -> str:
         (1, 29), (3, 19), (5, 7), (6, 18),
         (7, 30), (9, 17), (12, 17),
     ]
-    fomc_dates = fomc_dates_2026 if now.year == 2026 else fomc_dates_2025
+    fomc_by_year = {2025: fomc_dates_2025, 2026: fomc_dates_2026, 2027: fomc_dates_2027}
+    fomc_dates = fomc_by_year.get(now.year, fomc_dates_2027)
 
     next_fomc = None
     for m, d in fomc_dates:

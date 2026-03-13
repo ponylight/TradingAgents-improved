@@ -213,6 +213,7 @@ Provide your fundamentals analysis.""",
                 messages.append(ToolMessage(content=str(tool_result), tool_call_id=tc["id"]))
 
         return {
+            "messages": state["messages"] + [result],
             "fundamentals_report": result.content,
         }
 

@@ -28,6 +28,8 @@ MAX_TOOL_ROUNDS = 3
 # from fresh context because the analyst needs to assess proximity to upcoming events.
 # The staleness gate caps confidence, it doesn't block analysis.
 NEWS_STALENESS_HOURS = 4.0
+# Economic calendar data is daily/deterministic — use a relaxed threshold
+ECONOMIC_CALENDAR_STALENESS_HOURS = 24.0
 
 
 def create_news_analyst(llm):
@@ -63,10 +65,13 @@ def create_news_analyst(llm):
         missing = []
         if geo_fallback:
             missing.append("geopolitical_news")
+        # Economic calendar is daily/deterministic data — use relaxed staleness
+        # Other news sources use the aggressive 4h threshold
+        effective_staleness = NEWS_STALENESS_HOURS
         quality_score = score_report(
             geo_report,
             "news",
-            max_age_hours=NEWS_STALENESS_HOURS,
+            max_age_hours=effective_staleness,
             generated_at=geo_generated_at,
             fallback_used=geo_fallback,
             missing_fields=missing,
@@ -109,7 +114,7 @@ Call the macro tools to get quantitative data. Also use get_news/get_global_news
 - **get_yields** — US Treasury yield curve (CALL THIS)
 - **get_sp500** — S&P 500 risk appetite
 - **get_economic_data** — FRED data (CPI, M2, UNRATE, FEDFUNDS)
-- **get_economic_calendar** — upcoming FOMC, CPI, jobs reports (CALL THIS)
+- **get_economic_calendar** — upcoming FOMC, CPI, jobs reports (CALL THIS). Note: this is daily/deterministic data with a 24h staleness threshold (not 4h like other sources).
 
 You SHOULD call at least get_dollar_index, get_yields, and get_economic_calendar.
 If tool calls fail, proceed with the pre-fetched data above and flag the gap.

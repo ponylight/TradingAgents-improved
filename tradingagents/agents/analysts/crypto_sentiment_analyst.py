@@ -82,7 +82,7 @@ Call ALL of these tools before writing your report:
 1. get_funding_rate — **PRIMARY**: shows who's paying whom, directional bias of leveraged traders
 2. get_oi_timeseries — **PRIMARY**: OI over last 6 4H candles with change rate and direction (building/unwinding). PREFERRED over get_open_interest.
 3. get_open_interest — **BACKUP**: single OI snapshot. Use only if get_oi_timeseries fails or returns incomplete data.
-4. get_crypto_fear_greed — **SUPPLEMENTARY ONLY**: returns `fear_greed_value` (0-100) and `fear_greed_label`. This is a lagged, composite index. Do NOT anchor your verdict on it. Note the value but weight it LOW relative to funding and OI.
+4. get_crypto_fear_greed — **SUPPLEMENTARY ONLY**: returns the Fear and Greed data (0-100 scale). This is a lagged, composite index. Do NOT anchor your verdict on it. Note the value but weight it LOW relative to funding and OI.
 5. get_cross_venue_snapshot — **CONFIRMATION**: compares funding rates, OI, and prices across Bybit, Binance, and Coinbase. If funding rates diverge across venues, it signals a positioning imbalance worth flagging. Include the cross-venue confirmation level in your report.
 
 ## Analysis Priority (STRICT ORDER)
