@@ -18,6 +18,7 @@ import logging
 import re
 import time
 import xml.etree.ElementTree as ET
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -25,7 +26,8 @@ import requests
 
 log = logging.getLogger("geopolitical_news")
 
-TIMEOUT = 15
+TIMEOUT = 5  # Per-feed timeout (reduced from 15s)
+OVERALL_TIMEOUT = 30  # Max total time for all feeds
 HEADERS = {"User-Agent": "TradingBot/2.0 (crypto news aggregator)"}
 
 # === RSS FEEDS (curated from situation-monitor) ===
@@ -205,23 +207,43 @@ def fetch_all_news(categories: List[str] = None, max_per_feed: int = 10) -> Dict
     """
     if categories is None:
         categories = list(FEEDS.keys())
-    
+
     all_articles = []
     source_stats = {}
-    
+
+    # Build list of (name, url, category) for concurrent fetching
+    feed_tasks = []
     for category in categories:
-        feeds = FEEDS.get(category, [])
-        for name, url in feeds:
-            articles = _fetch_rss(url, max_per_feed)
-            for article in articles:
-                article["source"] = name
-                article["category"] = category
-                article["scoring"] = _score_headline(article["title"])
-                all_articles.append(article)
-            
-            source_stats[name] = len(articles)
-            time.sleep(0.3)  # Rate limit courtesy
-    
+        for name, url in FEEDS.get(category, []):
+            feed_tasks.append((name, url, category))
+
+    # Fetch all RSS feeds concurrently with overall timeout
+    deadline = time.monotonic() + OVERALL_TIMEOUT
+
+    def _fetch_one(task):
+        name, url, category = task
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            return name, category, []
+        articles = _fetch_rss(url, max_per_feed)
+        for article in articles:
+            article["source"] = name
+            article["category"] = category
+            article["scoring"] = _score_headline(article["title"])
+        return name, category, articles
+
+    with ThreadPoolExecutor(max_workers=8) as executor:
+        futures = {executor.submit(_fetch_one, t): t for t in feed_tasks}
+        for future in as_completed(futures, timeout=OVERALL_TIMEOUT):
+            try:
+                name, category, articles = future.result(timeout=1)
+                all_articles.extend(articles)
+                source_stats[name] = len(articles)
+            except Exception as e:
+                name = futures[future][0]
+                log.debug(f"Feed {name} failed: {e}")
+                source_stats[name] = 0
+
     # GDELT for crypto-specific global coverage
     gdelt_articles = _fetch_gdelt("bitcoin OR crypto OR cryptocurrency", 20)
     for article in gdelt_articles:

@@ -52,7 +52,7 @@ def get_dxy_data(
     except Exception as e2:
         log.warning(f"DXY: FRED fallback also failed: {e2}")
 
-    raise DataFetchError(f"DXY: all sources failed for {start_date} to {end_date}")
+    return f"DXY data unavailable for {start_date} to {end_date}. Both yfinance and FRED sources failed. Use other macro signals."
 
 
 def get_treasury_yields(
@@ -120,7 +120,7 @@ def get_treasury_yields(
                 log.warning(f"Treasury FRED fallback failed: {e2}")
 
     if not got_10y and not got_short:
-        raise DataFetchError(f"Treasury yields: all sources failed for {start_date} to {end_date}")
+        return f"Treasury yields unavailable for {start_date} to {end_date}. Both yfinance and FRED sources failed. Use other macro signals."
 
     return "\n".join(lines)
 
@@ -141,7 +141,8 @@ def get_sp500_data(
         header += "# BTC often correlates with S&P 500 in risk-on/risk-off environments\n\n"
         return header + csv_string
     except Exception as e:
-        raise DataFetchError(f"Error fetching S&P 500: {e}") from e
+        log.warning(f"S&P 500 fetch failed: {e}")
+        return f"S&P 500 data unavailable for {start_date} to {end_date}: {e}"
 
 
 def get_fred_data(
@@ -164,7 +165,7 @@ def get_fred_data(
         
         api_key = os.environ.get("FRED_API_KEY")
         if not api_key:
-            return "FRED_API_KEY not set. Please provide your FRED API key."
+            return f"FRED API key not configured — economic data for {series_id} unavailable. Set FRED_API_KEY env var."
         
         fred = Fred(api_key=api_key)
         data = fred.get_series(series_id, observation_start=start_date, observation_end=end_date)
@@ -194,7 +195,8 @@ def get_fred_data(
     except ImportError:
         return "fredapi not installed. Run: pip install fredapi"
     except Exception as e:
-        raise DataFetchError(f"Error fetching FRED data for {series_id}: {e}") from e
+        log.warning(f"FRED data fetch failed for {series_id}: {e}")
+        return f"FRED data for {series_id} unavailable: {e}. Using fallback sources."
 
 
 def get_economic_calendar_summary() -> str:

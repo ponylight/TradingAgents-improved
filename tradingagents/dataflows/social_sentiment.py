@@ -128,31 +128,35 @@ def get_reddit_posts(subreddit: str, sort: str = "hot", limit: int = 25) -> List
     return posts
 
 
-def get_social_sentiment() -> Dict[str, Any]:
-    """Fetch and aggregate social sentiment from all crypto subreddits."""
+def _fetch_all_posts() -> List[Dict]:
+    """Fetch posts from all crypto subreddits. Single fetch, reused by both basic and enhanced."""
     all_posts = []
-    sub_stats = {}
-
     for sub in SUBREDDITS:
         posts = get_reddit_posts(sub, "hot", 25)
         all_posts.extend(posts)
-        
-        if posts:
-            scores = [p["sentiment"]["net_sentiment"] for p in posts]
-            engagement = sum(p["score"] + p["comments"] for p in posts)
-            avg_sentiment = sum(scores) / len(scores)
-            sub_stats[sub] = {
-                "post_count": len(posts),
-                "avg_sentiment": round(avg_sentiment, 3),
-                "total_engagement": engagement,
-                "top_post": posts[0]["title"] if posts else "",
-            }
         time.sleep(0.5)  # Rate limit courtesy
+    return all_posts
 
+
+def _aggregate_sentiment(all_posts: List[Dict]) -> Dict[str, Any]:
+    """Aggregate sentiment scores from fetched posts."""
     if not all_posts:
         return {"error": "No data from Reddit", "generated_at": datetime.now(timezone.utc).isoformat()}
 
-    # Aggregate
+    sub_stats = {}
+    for sub in SUBREDDITS:
+        sub_posts = [p for p in all_posts if p.get("subreddit") == sub]
+        if sub_posts:
+            scores = [p["sentiment"]["net_sentiment"] for p in sub_posts]
+            engagement = sum(p["score"] + p["comments"] for p in sub_posts)
+            avg_sentiment = sum(scores) / len(scores)
+            sub_stats[sub] = {
+                "post_count": len(sub_posts),
+                "avg_sentiment": round(avg_sentiment, 3),
+                "total_engagement": engagement,
+                "top_post": sub_posts[0]["title"] if sub_posts else "",
+            }
+
     all_sentiments = [p["sentiment"]["net_sentiment"] for p in all_posts]
     all_bull = sum(p["sentiment"]["bullish_score"] for p in all_posts)
     all_bear = sum(p["sentiment"]["bearish_score"] for p in all_posts)
@@ -174,7 +178,6 @@ def get_social_sentiment() -> Dict[str, Any]:
     else:
         mood = "NEUTRAL"
 
-    # Extract dominant narratives (most common topics in high-engagement posts)
     top_posts = sorted(all_posts, key=lambda p: p["score"] + p["comments"], reverse=True)[:10]
     narratives = [p["title"] for p in top_posts]
 
@@ -191,6 +194,11 @@ def get_social_sentiment() -> Dict[str, Any]:
         "subreddit_breakdown": sub_stats,
         "top_narratives": narratives[:5],
     }
+
+
+def get_social_sentiment() -> Dict[str, Any]:
+    """Fetch and aggregate social sentiment from all crypto subreddits."""
+    return _aggregate_sentiment(_fetch_all_posts())
 
 
 def format_social_sentiment_report(data: Dict[str, Any]) -> str:
@@ -303,31 +311,25 @@ Respond in this exact JSON format (no markdown):
 
 def get_social_sentiment_enhanced(llm=None) -> Dict[str, Any]:
     """Get social sentiment with optional LLM classification overlay.
-    
+
     Always runs keyword scoring (fast, free).
     If an LLM is provided, also runs auxiliary classification on top posts.
     LLM results are merged as an additional "llm_classification" field.
+
+    Single fetch: posts are fetched once and reused for both keyword and LLM scoring.
     """
-    base = get_social_sentiment()
-    
-    if llm and "error" not in base:
-        # Collect all posts for LLM classification
-        all_posts = []
-        for sub in SUBREDDITS:
-            posts = get_reddit_posts(sub, "hot", 25)
-            all_posts.extend(posts)
-            time.sleep(0.3)
-        
-        if all_posts:
-            llm_result = classify_posts_with_llm(all_posts, llm)
-            if llm_result:
-                base["llm_classification"] = llm_result
-                # If LLM disagrees with keyword scoring, note it
-                keyword_mood = base.get("overall_mood", "NEUTRAL")
-                llm_mood = llm_result.get("llm_overall", "NEUTRAL")
-                if keyword_mood != llm_mood:
-                    base["sentiment_divergence"] = f"Keywords say {keyword_mood}, LLM says {llm_mood}"
-    
+    all_posts = _fetch_all_posts()
+    base = _aggregate_sentiment(all_posts)
+
+    if llm and "error" not in base and all_posts:
+        llm_result = classify_posts_with_llm(all_posts, llm)
+        if llm_result:
+            base["llm_classification"] = llm_result
+            keyword_mood = base.get("overall_mood", "NEUTRAL")
+            llm_mood = llm_result.get("llm_overall", "NEUTRAL")
+            if keyword_mood != llm_mood:
+                base["sentiment_divergence"] = f"Keywords say {keyword_mood}, LLM says {llm_mood}"
+
     return base
 
 

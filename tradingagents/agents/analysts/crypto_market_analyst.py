@@ -11,7 +11,6 @@ NOT the LLM's job: fetch data or calculate indicators (that's Tier 1).
 
 import logging
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
-from langchain_core.tools import tool
 
 log = logging.getLogger("crypto_market_analyst")
 
@@ -27,20 +26,7 @@ def create_crypto_market_analyst(llm):
     # MACD Triple Divergence detector (半木夏 strategy)
     from tradingagents.agents.utils.crypto_tools import check_macd_divergence, run_pattern_scan, get_cross_venue_snapshot
 
-    # Backtest tools — lets the analyst validate hypotheses with real data
-    from tradingagents.agents.utils.backtest_tools import backtest_strategy, compare_strategies
-
-    @tool
-    def run_backtest(strategy: str, symbol: str = "BTC/USDT", days: int = 30) -> str:
-        """Backtest a strategy (ma_crossover, macd, breakout, rsi_reversal, bollinger_bands) on historical data."""
-        return backtest_strategy(strategy, symbol, days)
-
-    @tool
-    def compare_strats(strategies: str = "ma_crossover,macd,breakout", symbol: str = "BTC/USDT", days: int = 30) -> str:
-        """Compare multiple strategies side-by-side on the same data."""
-        return compare_strategies(strategies, symbol, days)
-
-    tools = [run_backtest, compare_strats, check_macd_divergence, run_pattern_scan, get_cross_venue_snapshot]
+    tools = [check_macd_divergence, run_pattern_scan, get_cross_venue_snapshot]
     tool_map = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
@@ -83,18 +69,16 @@ If data quality is degraded (>2 contradictions across timeframes), open with a D
 ## Your Workflow
 1. Audit the Technical Brief for data quality issues
 2. Read the indicators — all are pre-calculated
-3. Use tools to validate your hypothesis (MACD divergence, pattern scan, backtest)
+3. Use tools to validate your hypothesis (MACD divergence, pattern scan)
 4. Check cross-venue confirmation
 5. Produce a structured analysis
 
 ## Available Tools
-You have 5 tools. Call them as needed to strengthen your analysis:
+You have 3 tools. Call them as needed to strengthen your analysis:
 
 1. **check_macd_divergence** — Detects MACD triple divergence (半木夏 strategy) across timeframes. Call this when you see RSI divergence in the brief to check if MACD confirms. Returns divergence type, strength, and timeframe.
 2. **run_pattern_scan** — Scans for chart patterns (double top/bottom, head & shoulders, triangles, wedges). Call this to identify structural setups that complement the brief's market_structure data.
-3. **run_backtest** — Backtests a strategy (ma_crossover, macd, breakout, rsi_reversal, bollinger_bands) on recent data. Use to validate whether the setup you've identified has worked recently. Pass `strategy`, optional `symbol` and `days`.
-4. **compare_strats** — Compares multiple strategies side-by-side. Use when the brief suggests multiple valid setups. Pass comma-separated `strategies` string.
-5. **get_cross_venue_snapshot** — Checks price/funding/OI alignment across Bybit, Binance, and Coinbase.
+3. **get_cross_venue_snapshot** — Checks price/funding/OI alignment across Bybit, Binance, and Coinbase.
 
 ## Cross-Venue Confirmation
 Call `get_cross_venue_snapshot` to check price/funding/OI alignment across Bybit, Binance, and Coinbase.
