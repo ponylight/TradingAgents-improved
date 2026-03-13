@@ -431,6 +431,25 @@ def main():
     # Check green lane setup (deterministic, no LLM cost)
     gl_signal = check_green_lane_setup()
     if gl_signal:
+        # Position gate: don't double up or conflict with existing position
+        active = state.get("active_trade") or state.get("positions", {}).get("committee")
+        if active:
+            existing_dir = active.get("direction") or active.get("side", "")
+            # Normalize: BUY/long → "long", SELL/short → "short"
+            existing_side = "long" if existing_dir in ("BUY", "long") else "short" if existing_dir in ("SELL", "short") else ""
+            gl_side = "long" if gl_signal["action"] == "BUY" else "short"
+
+            if existing_side == gl_side:
+                log.info(f"🟢 Green lane {gl_signal['action']} skipped: already {existing_side.upper()} — no doubling")
+                gl_signal = None  # Fall through to LLM evaluation
+            elif existing_side and existing_side != gl_side:
+                log.warning(
+                    f"🟢 Green lane {gl_signal['action']} skipped: have {existing_side.upper()} position — "
+                    f"close existing first before reversing"
+                )
+                gl_signal = None
+
+    if gl_signal:
         # Green lane found — write override and launch executor directly (no LLM needed)
         log.warning(f"🟢 GREEN LANE TRIGGER: {gl_signal['action']} q={gl_signal['quality']}")
         gl_file = LOGS / "green_lane_override.json"
