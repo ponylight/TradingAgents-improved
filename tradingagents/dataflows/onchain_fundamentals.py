@@ -37,8 +37,8 @@ def _get_cached(key: str, fetcher, ttl: int = CACHE_TTL) -> Any:
 
 MEMPOOL_MIRRORS = [
     "mempool.space",
-    "mempool.emzy.de/api",
-    "mempool.bisq.services/api",
+    "mempool.emzy.de",
+    "mempool.bisq.services",
 ]
 
 
