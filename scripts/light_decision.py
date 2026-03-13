@@ -288,11 +288,18 @@ def should_act(decision: dict, state: dict, price_data: dict, report_age_hours: 
             log.warning("⚠️ CLOSE rejected: no position in state (active_trade or positions.committee)")
             return False
         # Verify the CLOSE reason makes sense for the position direction
+        # Use specific position-referencing phrases to avoid false positives
+        # on common words like "short-term", "long-term", "no longer", etc.
+        import re
         side = active.get("direction") or active.get("side", "")
-        if side in ("long", "BUY") and "short" in decision.get("reason", "").lower():
+        reason_lower = decision.get("reason", "").lower()
+        # Patterns that indicate the LLM thinks we have a short/long position
+        _short_position_re = re.compile(r'\bshort\b(?!\s*-?\s*term)')
+        _long_position_re = re.compile(r'\blong\b(?!\s*-?\s*term|\s*-?\s*run)')
+        if side in ("long", "BUY") and _short_position_re.search(reason_lower):
             log.warning(f"⚠️ CLOSE rejected: reason references SHORT but position is LONG — stale context")
             return False
-        if side in ("short", "SELL") and "long" in decision.get("reason", "").lower():
+        if side in ("short", "SELL") and _long_position_re.search(reason_lower):
             log.warning(f"⚠️ CLOSE rejected: reason references LONG but position is SHORT — stale context")
             return False
         return True
