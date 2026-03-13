@@ -38,6 +38,7 @@ from tradingagents.agents.utils.crypto_tools import (
     get_crypto_fear_greed,
     get_macro_signal_radar,
     get_stablecoin_peg_health,
+    get_cross_venue_snapshot,
     )
 
 # Macro tools
@@ -90,6 +91,9 @@ CRYPTO_DEFAULT_CONFIG = {
             "cooldown_after_liquidation_hours": 48,
         },
     },
+    # Multi-exchange configuration
+    "market_data_exchanges": ["bybit"],              # Execution venue
+    "confirmation_exchanges": ["binance", "coinbase"],  # Confirmation venues (public API only)
 }
 
 
@@ -203,12 +207,14 @@ class CryptoTradingAgentsGraph:
             "market": ToolNode([
                 get_crypto_price_data,
                 get_orderbook_depth,
+                get_cross_venue_snapshot,
             ]),
             "sentiment": ToolNode([
                 get_crypto_fear_greed,
                 get_funding_rate,
                 get_open_interest,
                 get_oi_timeseries,
+                get_cross_venue_snapshot,
             ]),
             "fundamentals": ToolNode([
                 get_onchain_fundamentals,

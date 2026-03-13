@@ -13,6 +13,7 @@ from tradingagents.agents.utils.crypto_tools import (
     get_funding_rate,
     get_open_interest,
     get_oi_timeseries,
+    get_cross_venue_snapshot,
 )
 from tradingagents.dataflows.social_sentiment import get_social_sentiment_enhanced, format_social_sentiment_report_enhanced
 from tradingagents.dataflows.data_quality import score_report, format_quality_header
@@ -25,7 +26,7 @@ MAX_TOOL_ROUNDS = 3
 
 def create_crypto_sentiment_analyst(llm):
 
-    tools = [get_crypto_fear_greed, get_funding_rate, get_open_interest, get_oi_timeseries]
+    tools = [get_crypto_fear_greed, get_funding_rate, get_open_interest, get_oi_timeseries, get_cross_venue_snapshot]
     tool_map = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools)
 
@@ -82,6 +83,7 @@ Call ALL of these tools before writing your report:
 2. get_oi_timeseries — **PRIMARY**: OI over last 6 4H candles with change rate and direction (building/unwinding). PREFERRED over get_open_interest.
 3. get_open_interest — **BACKUP**: single OI snapshot. Use only if get_oi_timeseries fails or returns incomplete data.
 4. get_crypto_fear_greed — **SUPPLEMENTARY ONLY**: returns `fear_greed_value` (0-100) and `fear_greed_label`. This is a lagged, composite index. Do NOT anchor your verdict on it. Note the value but weight it LOW relative to funding and OI.
+5. get_cross_venue_snapshot — **CONFIRMATION**: compares funding rates, OI, and prices across Bybit, Binance, and Coinbase. If funding rates diverge across venues, it signals a positioning imbalance worth flagging. Include the cross-venue confirmation level in your report.
 
 ## Analysis Priority (STRICT ORDER)
 Your verdict should be driven primarily by POSITIONING DATA (funding + OI),
@@ -110,7 +112,7 @@ Do NOT output FINAL TRANSACTION PROPOSAL. You report sentiment, not trade decisi
         messages = [
             SystemMessage(content=system_message),
             HumanMessage(content=f"Analyze current sentiment and positioning for {ticker}. "
-                         f"Call all four tools (get_funding_rate, get_oi_timeseries, get_open_interest, get_crypto_fear_greed), then synthesize with the pre-fetched social data above."),
+                         f"Call all five tools (get_funding_rate, get_oi_timeseries, get_open_interest, get_crypto_fear_greed, get_cross_venue_snapshot), then synthesize with the pre-fetched social data above."),
         ]
 
         # Agentic tool-calling loop

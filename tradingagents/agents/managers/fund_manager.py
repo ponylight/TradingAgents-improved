@@ -123,6 +123,7 @@ Each HOLD is a capital allocation decision — own it with the same rigor as a t
 - **Funding Carry**: If holding a position costs >0.1%/day in funding, factor that into approval.
 - **Exchange Risk**: Single exchange (Bybit). No hedge on another venue. Accept this but size accordingly.
 - **Drawdown Budget**: If account is down >5% from peak, reduce max position size by 50%.
+- **Cross-Venue Confirmation**: No trade gets full confidence unless at least 2 of 3 venues (Bybit, Binance, Coinbase) confirm direction. If analyst reports mention "weak" cross-venue confirmation or "derivatives-led" moves, cap CONFIDENCE at 6 max.
 
 ## Historical Performance (Your Track Record)
 {performance_feedback}

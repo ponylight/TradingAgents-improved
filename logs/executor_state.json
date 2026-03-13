@@ -1,5 +1,5 @@
 {
-  "last_run": "2026-03-13T04:58:35.060440+00:00",
+  "last_run": "2026-03-13T06:52:41.670483+00:00",
   "last_decision": "BUY",
   "trades": [
     {
@@ -446,55 +446,109 @@
       "leverage_capped": true,
       "manual_open": true,
       "reason": "Leverage capped from 18.2x to 15x \u2014 executing blocked BUY signal"
+    },
+    {
+      "timestamp": "2026-03-13T06:01:11.019493+00:00",
+      "decision": "CLOSE",
+      "original_decision": null,
+      "equity": 150506.30900325,
+      "params": {},
+      "objective_score": 5.8,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "UNKNOWN"
+    },
+    {
+      "timestamp": "2026-03-13T06:15:36.407321+00:00",
+      "decision": "CLOSE",
+      "original_decision": null,
+      "equity": 150506.30900325,
+      "params": {},
+      "objective_score": 5.8,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "UNKNOWN"
+    },
+    {
+      "timestamp": "2026-03-13T06:34:13.572010+00:00",
+      "decision": "CLOSE",
+      "original_decision": null,
+      "equity": 150506.30900325,
+      "params": {},
+      "objective_score": 5.8,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "UNKNOWN"
+    },
+    {
+      "timestamp": "2026-03-13T06:52:41.670483+00:00",
+      "decision": "BUY",
+      "equity": 150322.82222461,
+      "params": {
+        "confidence": 7,
+        "stop_loss": 70180.0,
+        "take_profit_1": 73260.0,
+        "take_profit_2": 74800.0,
+        "risk_pct": 0.0424
+      },
+      "transition": "OPEN_LONG",
+      "action": "opened_buy",
+      "price": 71276.9,
+      "stop_loss": 70180.0,
+      "tp1": 73260.0,
+      "amount": 1.37,
+      "alloc_pct": 0.0424,
+      "leverage_capped": true,
+      "manual_open": true,
+      "reason": "Re-opening LONG after light_decision bug fix \u2014 leverage capped at 15x"
     }
   ],
   "last_decision_reasoning": "## Fund Manager Review\n\n**1. INDEPENDENT OBSERVATION**: Sunday night into Monday Asian session is historically the thinnest liquidity window of the week for BTC perpetuals on Bybit. Our stop at $68,214 sits ~1.9% above current price \u2014 tight enough that a weekend liquidity gap or short squeeze wick could tag it before continuation lower. I'd note that with CPI ~3 days out, market makers tend to pull bids/asks ahead of the print, further thinning the book. The position is small enough (0.57x) that",
-  "last_decision_time": "2026-03-13T04:58:35.060440+00:00",
+  "last_decision_time": "2026-03-13T06:52:41.670483+00:00",
   "starting_equity": 153885.33,
   "closed_trades": [],
   "positions": {
     "committee": {
       "side": "long",
-      "entry": 71313.1,
+      "entry": 71276.9,
       "stop_loss": 70180.0,
       "take_profit_1": 73260.0,
       "take_profit_2": 74800.0,
-      "amount": 1.328,
+      "amount": 1.37,
       "alloc_pct": 0.0424,
       "leverage_capped": true,
-      "original_alloc": 0.035,
-      "opened_at": "2026-03-13T04:58:35.060440+00:00"
+      "opened_at": "2026-03-13T06:52:41.670483+00:00"
     },
     "green_lane": null
   },
+  "light_trades": {
+    "2026-03-13": 5
+  },
+  "last_light_override_time": "2026-03-13T06:30:29.826309+00:00",
   "active_trade": {
-    "direction": "SELL",
-    "entry": 67225.9,
-    "amount": 1.304,
-    "stop_loss": 68214.0,
-    "tp1": 64500.0,
-    "tp2": 62000.0,
-    "tp_orders": [
-      {
-        "level": 1,
-        "order_id": "19ed5a59-2c61-4e47-b89f-8144e19765cb",
-        "price": 64500.0,
-        "amount": 0.652
-      },
-      {
-        "level": 2,
-        "order_id": "20702830-608b-4042-93ab-31c64283f7ec",
-        "price": 62000.0,
-        "amount": 0.652
-      }
-    ],
+    "direction": "BUY",
+    "entry": 71276.9,
+    "amount": 1.37,
+    "stop_loss": 70180.0,
+    "tp1": 73260.0,
+    "tp2": 74800.0,
+    "initial_tp1": 73260.0,
+    "initial_tp2": 74800.0,
+    "tp_orders": [],
     "tp1_hit": false,
-    "trailing_stop": 68214.0,
-    "opened_at": "2026-03-07T20:18:59.976365+00:00",
+    "trailing_stop": 64673.114285714284,
+    "opened_at": "2026-03-13T06:52:41.670483+00:00",
     "confidence": 7,
-    "atr_at_entry": 3580.557142857142,
-    "outcome_tracker_id": 0,
-    "max_drawdown_pct": -0.22,
-    "max_favorable_pct": 0.36
+    "atr_at_entry": 3301.892857142856,
+    "from_limit_order": false,
+    "needs_protection_retry": false,
+    "manual_open": true,
+    "leverage_capped": true
   }
 }

@@ -17,6 +17,7 @@ from tradingagents.dataflows.ccxt_crypto import (
 )
 from tradingagents.dataflows.macd_divergence import check_macd_divergence_for_symbol
 from tradingagents.dataflows.pattern_scanner import scan_all_patterns
+from tradingagents.dataflows.cross_venue import get_cross_venue_confirmation
 
 
 @tool
@@ -197,3 +198,18 @@ def get_crisis_impact_index() -> str:
         for e in result["top_events"]:
             lines.append(f"  - {e}")
     return "\n".join(lines)
+
+
+@tool
+def get_cross_venue_snapshot(
+    symbol: Annotated[str, "trading pair e.g. BTC/USDT"] = "BTC/USDT",
+) -> str:
+    """
+    Get cross-venue confirmation across Bybit, Binance, and Coinbase.
+    Returns: price alignment, funding rate divergence, OI comparison, spot/perp basis.
+    Use this to validate whether a move is confirmed across multiple venues.
+    If only 1 of 3 venues confirms direction, the move may be unreliable.
+    If spot/perp basis > 0.5%, the move is derivatives-led and likely short-lived.
+    """
+    result = get_cross_venue_confirmation(symbol)
+    return result["summary"]

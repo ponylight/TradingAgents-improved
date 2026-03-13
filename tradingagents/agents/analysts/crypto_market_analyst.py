@@ -22,7 +22,7 @@ def create_crypto_market_analyst(llm):
     from tradingagents.dataflows.crypto_technical_brief import build_crypto_technical_brief
 
     # MACD Triple Divergence detector (半木夏 strategy)
-    from tradingagents.agents.utils.crypto_tools import check_macd_divergence, run_pattern_scan
+    from tradingagents.agents.utils.crypto_tools import check_macd_divergence, run_pattern_scan, get_cross_venue_snapshot
 
     # Backtest tools — lets the analyst validate hypotheses with real data
     from tradingagents.agents.utils.backtest_tools import backtest_strategy, compare_strategies
@@ -37,7 +37,7 @@ def create_crypto_market_analyst(llm):
         """Compare multiple strategies side-by-side on the same data."""
         return compare_strategies(strategies, symbol, days)
 
-    tools = [run_backtest, compare_strats, check_macd_divergence, run_pattern_scan]
+    tools = [run_backtest, compare_strats, check_macd_divergence, run_pattern_scan, get_cross_venue_snapshot]
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
     def analyst_node(state) -> dict:
@@ -83,6 +83,12 @@ If data quality is degraded (>2 contradictions across timeframes), open with a D
 2. Read the indicators — all are pre-calculated
 3. Identify the dominant setup across timeframes
 4. Produce a structured analysis
+
+## Cross-Venue Confirmation
+Call `get_cross_venue_snapshot` to check price/funding/OI alignment across Bybit, Binance, and Coinbase.
+- If a move is confirmed on only 1 of 3 venues, flag it as "derivatives-led, likely short-lived" and cap confidence at MEDIUM
+- If spot/perp basis > 0.5%, the move is driven by derivatives positioning, not organic spot demand
+- Include the cross-venue confirmation level in your Summary Table
 
 ## What to Look For
 - **Trend Alignment**: Do 1h, 4h, 1d agree on direction? Multi-TF alignment = high conviction
