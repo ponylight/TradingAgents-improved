@@ -444,10 +444,31 @@ def main():
                 gl_signal = None  # Fall through to LLM evaluation
             elif existing_side and existing_side != gl_side:
                 log.warning(
-                    f"🟢 Green lane {gl_signal['action']} skipped: have {existing_side.upper()} position — "
-                    f"close existing first before reversing"
+                    f"🟢 Green lane OPPOSITE signal: {gl_signal['action']} vs existing {existing_side.upper()} — "
+                    f"waking full pipeline for evaluation"
                 )
-                gl_signal = None
+                # Opposite signal is a major event — spawn full executor for comprehensive analysis
+                # Write a special override that tells executor to run full pipeline with reversal context
+                reversal_file = LOGS / "green_lane_reversal.json"
+                tmp = LOGS / ".green_lane_reversal.tmp"
+                tmp.write_text(json.dumps({
+                    **gl_signal,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "source": "light_green_lane_reversal",
+                    "existing_position": existing_side,
+                    "reason": f"Green lane detected {gl_side.upper()} while {existing_side.upper()} — potential structure flip",
+                }))
+                tmp.rename(reversal_file)
+                if executor_running():
+                    log.warning("⏸️ Executor already running — reversal override queued")
+                else:
+                    import subprocess
+                    log.warning("🚨 Spawning full executor for reversal evaluation")
+                    subprocess.Popen(
+                        [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
+                        cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    )
+                return  # Don't fall through to LLM eval — full pipeline handles it
 
     if gl_signal:
         # Green lane found — write override and launch executor directly (no LLM needed)
