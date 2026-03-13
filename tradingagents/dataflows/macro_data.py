@@ -316,12 +316,36 @@ def get_fedwatch_probabilities() -> str | None:
     log = logging.getLogger(__name__)
 
     try:
-        # Current Fed Funds target range and effective rate
-        # UPDATE THESE when the Fed changes rates
-        CURRENT_UPPER = 3.75
-        CURRENT_LOWER = 3.50
-        CURRENT_EFF = 3.64   # Fed Funds effective rate (from FRED DFF)
+        # Fetch current Fed Funds effective rate from FRED (live)
         STEP = 0.25
+        CURRENT_EFF = None
+        CURRENT_UPPER = 3.75  # Fallback
+        CURRENT_LOWER = 3.50  # Fallback
+        fred_key = os.environ.get("FRED_API_KEY", "")
+        if fred_key:
+            for series, attr in [("DFF", "eff"), ("DFEDTARU", "upper"), ("DFEDTARL", "lower")]:
+                try:
+                    r = requests.get(
+                        f"https://api.stlouisfed.org/fred/series/observations"
+                        f"?series_id={series}&api_key={fred_key}&file_type=json"
+                        f"&sort_order=desc&limit=1",
+                        timeout=8,
+                    )
+                    if r.status_code == 200:
+                        val = r.json().get("observations", [{}])[0].get("value")
+                        if val and val != ".":
+                            if attr == "eff":
+                                CURRENT_EFF = float(val)
+                            elif attr == "upper":
+                                CURRENT_UPPER = float(val)
+                            elif attr == "lower":
+                                CURRENT_LOWER = float(val)
+                except Exception:
+                    pass
+        if CURRENT_EFF is None:
+            # Fallback: midpoint of target range
+            CURRENT_EFF = (CURRENT_UPPER + CURRENT_LOWER) / 2
+            log.debug("FedWatch: using midpoint as effective rate fallback")
 
         now = datetime.utcnow()
 
