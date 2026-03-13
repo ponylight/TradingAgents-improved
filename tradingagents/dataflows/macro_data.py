@@ -291,4 +291,103 @@ def get_economic_calendar_summary() -> str:
     lines.append("- Jobless Claims: weekly Thursday")
     lines.append("- BTC Options Expiry: last Friday of month")
 
+    # Fed Funds Futures implied probabilities
+    fedwatch = get_fedwatch_probabilities()
+    if fedwatch:
+        lines.append("")
+        lines.append(fedwatch)
+
     return "\n".join(lines)
+
+
+def get_fedwatch_probabilities() -> str | None:
+    """Derive rate cut/hike probabilities from 30-day Fed Funds futures (Yahoo Finance).
+
+    Uses the standard CME FedWatch methodology:
+    implied_rate = 100 - futures_price
+    prob_cut = (current_upper - implied_rate) / 0.25
+    """
+    import requests
+    import logging
+    log = logging.getLogger(__name__)
+
+    try:
+        # Current Fed Funds target range — update when the Fed changes rates
+        CURRENT_UPPER = 3.75  # Upper bound of target range
+        CURRENT_LOWER = 3.50  # Lower bound
+        STEP = 0.25           # Standard 25bp increment
+
+        now = datetime.utcnow()
+
+        # Month codes for Fed Funds futures (ZQ)
+        month_codes = [
+            ("F", 1), ("G", 2), ("H", 3), ("J", 4), ("K", 5), ("M", 6),
+            ("N", 7), ("Q", 8), ("U", 9), ("V", 10), ("X", 11), ("Z", 12),
+        ]
+
+        # Build tickers for next 6 months
+        tickers = []
+        for code, month_num in month_codes:
+            year = now.year
+            if month_num < now.month:
+                year += 1
+            if 0 <= (datetime(year, month_num, 1) - now).days <= 180:
+                yr_short = str(year)[-2:]
+                tickers.append((f"ZQ{code}{yr_short}.CBT", month_num, year))
+
+        if not tickers:
+            return None
+
+        lines = ["## Fed Funds Futures — Rate Cut Probabilities"]
+        lines.append(f"Current target: {CURRENT_LOWER:.2f}%-{CURRENT_UPPER:.2f}%")
+        lines.append("")
+
+        month_names = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+                       "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+
+        for ticker, month_num, year in tickers:
+            try:
+                r = requests.get(
+                    f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d",
+                    headers={"User-Agent": "Mozilla/5.0"},
+                    timeout=8,
+                )
+                if r.status_code != 200:
+                    continue
+                data = r.json()
+                result = data.get("chart", {}).get("result", [])
+                if not result:
+                    continue
+                price = result[0].get("meta", {}).get("regularMarketPrice")
+                if not price:
+                    continue
+
+                implied_rate = 100 - price
+                cuts_priced = (CURRENT_UPPER - implied_rate) / STEP
+                prob_cut_pct = max(0, min(100, cuts_priced * 100))
+                prob_hold_pct = 100 - prob_cut_pct
+
+                label = f"{month_names[month_num]} {year}"
+                if prob_cut_pct > 80:
+                    emoji = "🟢"  # Cut likely
+                elif prob_cut_pct > 50:
+                    emoji = "🟡"  # Coin flip
+                else:
+                    emoji = "🔴"  # Hold likely
+
+                lines.append(
+                    f"  {emoji} {label}: implied {implied_rate:.3f}% | "
+                    f"Cut: {prob_cut_pct:.0f}% / Hold: {prob_hold_pct:.0f}% | "
+                    f"Cuts priced: {cuts_priced:.2f}"
+                )
+            except Exception:
+                continue
+
+        if len(lines) <= 2:
+            return None
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        log.debug(f"FedWatch probabilities failed: {e}")
+        return None
