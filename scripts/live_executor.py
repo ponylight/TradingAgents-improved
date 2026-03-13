@@ -2942,14 +2942,44 @@ def main():
                 save_state(executor_state)
                 return
             if _eff_lev > _max_lev_hard:
-                log.warning(f"🛑 HARD LEVERAGE GATE: effective leverage {_eff_lev}x exceeds hard limit {_max_lev_hard}x "
-                            f"for {_trade_type} trade — BLOCKING")
-                record["risk_blocked"] = f"Hard leverage gate: {_eff_lev}x > {_max_lev_hard}x ({_trade_type})"
-                record["transition"] = "RISK_BLOCKED"
-                executor_state["trades"] = executor_state.get("trades", [])
-                executor_state["trades"].append(record)
-                save_state(executor_state)
-                return
+                # Instead of blocking, reduce alloc_pct so leverage fits within limit
+                _risk_eff_for_cap = RISK_PER_TRADE * risk_multiplier
+                _new_alloc_pct = (_risk_eff_for_cap * pre_price / _sl_dist) / _max_lev_hard
+                _min_alloc_pct = 0.005  # 0.5% minimum viable position
+                if _new_alloc_pct >= _min_alloc_pct:
+                    _old_alloc = alloc_pct
+                    alloc_pct = min(_new_alloc_pct, MAX_ALLOC_PCT)
+                    # Recompute effective leverage with new alloc
+                    _eff_lev = (_risk_eff_for_cap * pre_price / _sl_dist) / alloc_pct
+                    _eff_lev = max(1.0, min(_eff_lev, 50.0))
+                    if _eff_lev > _max_lev_hard:
+                        # alloc_pct was clamped by MAX_ALLOC_PCT and still can't bring leverage down
+                        log.warning(f"🛑 HARD LEVERAGE GATE: need {_new_alloc_pct:.1%} alloc to cap leverage but "
+                                    f"MAX_ALLOC_PCT={MAX_ALLOC_PCT:.0%} limits to {_eff_lev:.1f}x (limit {_max_lev_hard}x) — BLOCKING")
+                        record["risk_blocked"] = f"Hard leverage gate: required alloc {_new_alloc_pct:.1%} > MAX_ALLOC_PCT {MAX_ALLOC_PCT:.0%} ({_trade_type})"
+                        record["transition"] = "RISK_BLOCKED"
+                        executor_state["trades"] = executor_state.get("trades", [])
+                        executor_state["trades"].append(record)
+                        save_state(executor_state)
+                        return
+                    # Recompute liquidation distance
+                    _liq_dist = pre_price / _eff_lev
+                    _liq_dist_atr_ratio = _liq_dist / _atr_for_liq if _atr_for_liq > 0 else 999.0
+                    log.warning(f"⚠️ LEVERAGE CAP: {_old_alloc:.3%} → {alloc_pct:.3%} to keep leverage at {_eff_lev:.1f}x "
+                                f"(was {(_risk_eff_for_cap * pre_price / _sl_dist) / _old_alloc:.1f}x, limit {_max_lev_hard}x)")
+                    record["leverage_capped"] = True
+                    record["original_alloc_pct"] = _old_alloc
+                    record["capped_alloc_pct"] = alloc_pct
+                else:
+                    log.warning(f"🛑 HARD LEVERAGE GATE: even minimum alloc {_min_alloc_pct:.1%} needs "
+                                f"{(_risk_eff_for_cap * pre_price / _sl_dist) / _min_alloc_pct:.1f}x leverage "
+                                f"(limit {_max_lev_hard}x) — BLOCKING")
+                    record["risk_blocked"] = f"Hard leverage gate: min viable alloc still exceeds {_max_lev_hard}x ({_trade_type})"
+                    record["transition"] = "RISK_BLOCKED"
+                    executor_state["trades"] = executor_state.get("trades", [])
+                    executor_state["trades"].append(record)
+                    save_state(executor_state)
+                    return
             if _liq_dist_atr_ratio is None or _liq_dist_atr_ratio < 2.0:
                 log.warning(f"🛑 HARD LIQUIDATION GATE: liquidation price is only {_liq_dist_atr_ratio:.2f}×ATR from entry "
                             f"(required >2×ATR) — BLOCKING")
