@@ -222,8 +222,8 @@ def get_economic_calendar_summary() -> str:
         (7, 30), (9, 17), (11, 4), (12, 16),
     ]
     fomc_dates_2026 = [
-        (1, 29), (3, 18), (5, 6), (6, 17),
-        (7, 29), (9, 16), (10, 28), (12, 16),
+        (1, 29), (3, 18), (4, 29), (6, 17),
+        (7, 29), (9, 16), (10, 28), (12, 9),
     ]
     fomc_dates_2025 = [
         (1, 29), (3, 19), (5, 7), (6, 18),
@@ -300,20 +300,19 @@ def get_economic_calendar_summary() -> str:
     return "\n".join(lines)
 
 
+
 def get_fedwatch_probabilities() -> str | None:
     """Derive rate cut/hike probabilities from 30-day Fed Funds futures (Yahoo Finance).
 
-    Uses the CME FedWatch methodology:
-    1. Get implied avg rate for each month: implied = 100 - futures_price
-    2. For the meeting month, isolate post-meeting rate using days before/after FOMC
-    3. Compare post-meeting rate to current effective rate to get probability
-       P(cut) = (current_eff - post_meeting_rate) / 0.25
+    Uses CME FedWatch methodology:
+    - Implied rate for each meeting month = 100 - futures_price
+    - Cumulative ease probability = (current_eff - implied_rate) / step
+    - "Ease" on CME = cumulative probability of being at a lower rate by that meeting
 
     Reference: https://www.cmegroup.com/articles/2023/understanding-the-cme-group-fedwatch-tool-methodology.html
     """
     import requests
     import logging
-    import calendar as _cal
     log = logging.getLogger(__name__)
 
     try:
@@ -326,10 +325,10 @@ def get_fedwatch_probabilities() -> str | None:
 
         now = datetime.utcnow()
 
-        # FOMC meeting dates (day of announcement) — same list used in calendar
+        # FOMC meeting dates (day of announcement)
         fomc_dates_2026 = [
-            (1, 29), (3, 18), (5, 6), (6, 17),
-            (7, 29), (9, 16), (10, 28), (12, 16),
+            (1, 29), (3, 18), (4, 29), (6, 17),
+            (7, 29), (9, 16), (10, 28), (12, 9),
         ]
         fomc_dates_2027 = [
             (1, 29), (3, 19), (5, 7), (6, 18),
@@ -337,7 +336,6 @@ def get_fedwatch_probabilities() -> str | None:
         ]
         fomc_by_year = {2026: fomc_dates_2026, 2027: fomc_dates_2027}
 
-        # Month codes for Fed Funds futures (ZQ)
         month_codes = {
             1: "F", 2: "G", 3: "H", 4: "J", 5: "K", 6: "M",
             7: "N", 8: "Q", 9: "U", 10: "V", 11: "X", 12: "Z",
@@ -346,29 +344,19 @@ def get_fedwatch_probabilities() -> str | None:
                        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
         # Find upcoming FOMC meetings (next 6)
-        upcoming_meetings = []
+        upcoming = []
         for year in [now.year, now.year + 1]:
             for m, d in fomc_by_year.get(year, []):
-                meeting_date = datetime(year, m, d)
-                if meeting_date > now and len(upcoming_meetings) < 6:
-                    upcoming_meetings.append((year, m, d))
+                if datetime(year, m, d) > now and len(upcoming) < 6:
+                    upcoming.append((year, m, d))
 
-        if not upcoming_meetings:
+        if not upcoming:
             return None
 
-        # Fetch futures prices for relevant months
-        futures_cache = {}
-        months_needed = set()
-        for year, m, d in upcoming_meetings:
-            months_needed.add((year, m))
-            # Also need prior month for cross-month calculation
-            if m == 1:
-                months_needed.add((year - 1, 12))
-            else:
-                months_needed.add((year, m - 1))
-
-        for year, month_num in months_needed:
-            code = month_codes.get(month_num)
+        # Fetch futures prices for each meeting's month
+        meeting_data = []
+        for year, m, d in upcoming:
+            code = month_codes.get(m)
             if not code:
                 continue
             yr_short = str(year)[-2:]
@@ -376,91 +364,48 @@ def get_fedwatch_probabilities() -> str | None:
             try:
                 r = requests.get(
                     f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d",
-                    headers={"User-Agent": "Mozilla/5.0"},
-                    timeout=8,
+                    headers={"User-Agent": "Mozilla/5.0"}, timeout=8,
                 )
-                if r.status_code == 200:
-                    data = r.json()
-                    result = data.get("chart", {}).get("result", [])
-                    if result:
-                        price = result[0].get("meta", {}).get("regularMarketPrice")
-                        if price:
-                            futures_cache[(year, month_num)] = price
+                if r.status_code != 200:
+                    continue
+                data = r.json()
+                result = data.get("chart", {}).get("result", [])
+                if not result:
+                    continue
+                price = result[0].get("meta", {}).get("regularMarketPrice")
+                if price:
+                    implied = 100 - price
+                    meeting_data.append((year, m, d, implied))
             except Exception:
                 continue
 
-        lines = ["## Fed Funds Futures — Rate Probabilities (CME FedWatch method)"]
+        if not meeting_data:
+            return None
+
+        lines = ["## Fed Funds Futures — Rate Probabilities (FedWatch-style)"]
         lines.append(f"Current target: {CURRENT_LOWER:.2f}%-{CURRENT_UPPER:.2f}% | Effective: {CURRENT_EFF:.2f}%")
         lines.append("")
 
-        # Track the running effective rate for chained meetings
-        running_eff = CURRENT_EFF
+        for year, m, d, implied in meeting_data:
+            # Cumulative ease = probability of being below current target by this meeting
+            cum_ease_pct = max(0, min(100, (CURRENT_EFF - implied) / STEP * 100))
+            no_change_pct = max(0, 100 - cum_ease_pct)
 
-        for year, m, d in upcoming_meetings:
-            price = futures_cache.get((year, m))
-            if not price:
-                continue
-
-            month_days = _cal.monthrange(year, m)[1]
-            avg_rate = 100 - price
-
-            # Isolate post-meeting rate:
-            # avg_rate = (pre_rate * (D-1) + post_rate * (N-D+1)) / N
-            # post_rate = (avg_rate * N - pre_rate * (D-1)) / (N-D+1)
-            pre_days = d - 1
-            post_days = month_days - d + 1
-
-            # For the first meeting, pre_rate = current effective rate
-            # For subsequent meetings, use the prior month's implied rate as pre_rate
-            pre_rate = running_eff
-
-            # Check if prior month has a different implied rate (for chaining)
-            prior_key = (year, m - 1) if m > 1 else (year - 1, 12)
-            if prior_key in futures_cache:
-                prior_implied = 100 - futures_cache[prior_key]
-                # If prior month had a meeting, use its post-meeting rate
-                # For simplicity, use the prior month's implied rate
-                pre_rate = prior_implied
-
-            post_rate = (avg_rate * month_days - pre_rate * pre_days) / post_days
-
-            # P(cut) = (pre_rate - post_rate) / step (positive = cut expected)
-            rate_change = pre_rate - post_rate
-            if rate_change > 0:
-                prob_cut = min(1.0, rate_change / STEP)
-                prob_hold = 1.0 - prob_cut
-                prob_hike = 0.0
-            elif rate_change < 0:
-                prob_hike = min(1.0, abs(rate_change) / STEP)
-                prob_hold = 1.0 - prob_hike
-                prob_cut = 0.0
-            else:
-                prob_cut = 0.0
-                prob_hold = 1.0
-                prob_hike = 0.0
-
-            # Cumulative cuts from current rate
-            cum_cuts = (CURRENT_EFF - post_rate) / STEP
+            # Cumulative cuts priced (can be fractional, e.g. 0.5 = half a cut)
+            cum_cuts = max(0, (CURRENT_EFF - implied) / STEP)
 
             label = f"{month_names[m]} {d}, {year}"
-            if prob_cut > 0.50:
-                emoji = "🟢"
-            elif prob_cut > 0.20:
-                emoji = "🟡"
+            if cum_ease_pct > 50:
+                emoji = "\U0001f7e2"  # green
+            elif cum_ease_pct > 20:
+                emoji = "\U0001f7e1"  # yellow
             else:
-                emoji = "🔴"
-
-            detail = f"Cut: {prob_cut*100:.1f}% / Hold: {prob_hold*100:.1f}%"
-            if prob_hike > 0.01:
-                detail = f"Hike: {prob_hike*100:.1f}% / Hold: {prob_hold*100:.1f}%"
+                emoji = "\U0001f534"  # red
 
             lines.append(
-                f"  {emoji} {label}: {detail} | "
-                f"Implied post-meeting: {post_rate:.3f}% | Cum cuts: {cum_cuts:.2f}"
+                f"  {emoji} {label}: Ease {cum_ease_pct:.1f}% / No Change {no_change_pct:.1f}% | "
+                f"Implied: {implied:.3f}% | Cuts priced: {cum_cuts:.2f}"
             )
-
-            # Update running rate for next meeting
-            running_eff = post_rate
 
         if len(lines) <= 2:
             return None
