@@ -23,11 +23,10 @@ log = logging.getLogger("news_analyst")
 
 MAX_TOOL_ROUNDS = 3
 
-# News/macro data older than 4h is considered stale.
-# Intentionally aggressive: even economic calendar data (which updates daily) benefits
-# from fresh context because the analyst needs to assess proximity to upcoming events.
+# News/macro data older than 2h is considered stale.
+# Crypto markets move fast — 4h-old news is already priced in.
 # The staleness gate caps confidence, it doesn't block analysis.
-NEWS_STALENESS_HOURS = 4.0
+NEWS_STALENESS_HOURS = 2.0
 # Economic calendar data is daily/deterministic — use a relaxed threshold
 ECONOMIC_CALENDAR_STALENESS_HOURS = 24.0
 
@@ -124,6 +123,10 @@ Before analyzing, audit every data point. If news data shows quality issues
 (see header above), flag it prominently. Do NOT build confident conclusions
 on stale or missing data. If the staleness gate is triggered, your confidence
 MUST be capped as instructed.
+
+If the pre-fetched news data is marked as CACHED and older than 2 hours, note this
+as a data quality concern and weight recent market price action more heavily than
+stale headlines. Old news is priced in — focus on what has changed since the cache.
 
 ## Analysis Framework
 1. **Data Quality**: Clean / Degraded (with specifics if degraded)

@@ -77,13 +77,16 @@ Weight it BELOW positioning data but ABOVE Fear & Greed. If social mood diverges
 from positioning signals, note the divergence but trust positioning.
 {social_report}
 
-## Tools You MUST Call
-Call ALL of these tools before writing your report:
-1. get_funding_rate — **PRIMARY**: shows who's paying whom, directional bias of leveraged traders
-2. get_oi_timeseries — **PRIMARY**: OI over last 6 4H candles with change rate and direction (building/unwinding). PREFERRED over get_open_interest.
-3. get_open_interest — **BACKUP**: single OI snapshot. Use only if get_oi_timeseries fails or returns incomplete data.
-4. get_crypto_fear_greed — **SUPPLEMENTARY ONLY**: returns the Fear and Greed data (0-100 scale). This is a lagged, composite index. Do NOT anchor your verdict on it. Note the value but weight it LOW relative to funding and OI.
-5. get_cross_venue_snapshot — **CONFIRMATION**: compares funding rates, OI, and prices across Bybit, Binance, and Coinbase. If funding rates diverge across venues, it signals a positioning imbalance worth flagging. Include the cross-venue confirmation level in your report.
+## Available Tools — MANDATORY
+You have 5 tools bound to your session. You MUST call at least get_funding_rate, get_oi_timeseries, get_crypto_fear_greed, and get_cross_venue_snapshot before writing your final report. Do NOT skip any tool call. Do NOT claim tools are unavailable — they are bound and working.
+
+1. **get_funding_rate** — **PRIMARY**: shows who's paying whom, directional bias of leveraged traders
+2. **get_oi_timeseries** — **PRIMARY**: OI over last 6 4H candles with change rate and direction (building/unwinding). PREFERRED over get_open_interest.
+3. **get_open_interest** — **BACKUP**: single OI snapshot. Use only if get_oi_timeseries fails or returns incomplete data.
+4. **get_crypto_fear_greed** — **SUPPLEMENTARY ONLY**: returns the Fear and Greed data (0-100 scale). This is a lagged, composite index. Do NOT anchor your verdict on it. Note the value but weight it LOW relative to funding and OI.
+5. **get_cross_venue_snapshot** — **CONFIRMATION**: compares funding rates, OI, and prices across Bybit, Binance, and Coinbase. If funding rates diverge across venues, it signals a positioning imbalance worth flagging. Include the cross-venue confirmation level in your report.
+
+MANDATORY: Call get_funding_rate, get_oi_timeseries, get_crypto_fear_greed, and get_cross_venue_snapshot before producing your report. If you do not call these tools, your analysis is incomplete and invalid.
 
 ## Analysis Priority (STRICT ORDER)
 Your verdict should be driven primarily by POSITIONING DATA (funding + OI),

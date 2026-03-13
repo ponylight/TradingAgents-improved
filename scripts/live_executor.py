@@ -1804,7 +1804,8 @@ def run_agents(ta, trade_date, portfolio_context=None, analysts_to_run=None, ana
                     last_dt = last_dt.replace(tzinfo=timezone.utc)
                 age_hours = (datetime.now(timezone.utc) - last_dt).total_seconds() / 3600
                 ttl_hours = analyst_scheduler.schedule.get(cached_analyst, 24)
-                stale_threshold = ttl_hours * 1.5
+                # News is time-sensitive — use 2h hard cap. Others use 1.5x TTL.
+                stale_threshold = min(2.0, ttl_hours * 1.5) if cached_analyst == "news" else ttl_hours * 1.5
                 if age_hours > stale_threshold:
                     log.warning(
                         f"⚠️ STALE CACHE: {cached_analyst} report is {age_hours:.1f}h old "
@@ -2296,6 +2297,27 @@ def main():
     portfolio_ctx["performance_feedback"] = outcome_tracker.get_feedback_for_agents()
     portfolio_ctx["last_decision_reasoning"] = executor_state.get("last_decision_reasoning", "No prior reasoning available.")
     portfolio_ctx["last_decision_time"] = executor_state.get("last_decision_time", "Unknown")
+
+    # === OPPORTUNITY COST from last HOLD ===
+    last_hold_price = executor_state.get("last_hold_price")
+    if last_hold_price:
+        try:
+            current_for_opp = float(exchange.fetch_ticker(SYMBOL)["last"])
+            opp_cost_pct = ((current_for_opp - last_hold_price) / last_hold_price) * 100
+            hold_time = executor_state.get("last_hold_time", "unknown")
+            portfolio_ctx["opportunity_cost_note"] = (
+                f"Last HOLD at ${last_hold_price:,.0f} ({hold_time}). "
+                f"Price now ${current_for_opp:,.0f} ({opp_cost_pct:+.1f}% move missed)."
+            )
+            portfolio_ctx["opportunity_cost_pct"] = round(opp_cost_pct, 2)
+            record_entry = executor_state.get("trades", [])
+            if record_entry:
+                record_entry[-1]["opportunity_cost_pct"] = round(opp_cost_pct, 2) if len(record_entry) > 0 else None
+            log.info(f"📉 Opportunity cost since last HOLD: {opp_cost_pct:+.1f}%")
+        except Exception as _e:
+            log.debug(f"Failed to compute opportunity cost: {_e}")
+    else:
+        portfolio_ctx["opportunity_cost_note"] = "No prior HOLD to measure."
     
     # Count consecutive same-direction signals
     recent_decisions = [t.get("decision") for t in executor_state.get("trades", [])[-5:]]
@@ -3043,6 +3065,21 @@ def main():
             log.info(f"📦 Archived {len(archived)} old trade records")
         except Exception as e:
             log.warning(f"Failed to archive trades: {e}")
+
+    # === OPPORTUNITY COST TRACKING (FIX 5) ===
+    # Record price at HOLD time; on next run, calculate what the missed move was.
+    if decision == "HOLD" and not has_position:
+        try:
+            hold_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+            executor_state["last_hold_price"] = hold_price
+            executor_state["last_hold_time"] = record["timestamp"]
+            log.info(f"📏 HOLD price recorded: ${hold_price:,.0f}")
+        except Exception as _e:
+            log.debug(f"Failed to record hold price: {_e}")
+    elif decision in ("BUY", "SELL"):
+        # Clear hold tracking when we take action
+        executor_state.pop("last_hold_price", None)
+        executor_state.pop("last_hold_time", None)
 
     executor_state["last_run"] = record["timestamp"]
     executor_state["last_decision"] = decision

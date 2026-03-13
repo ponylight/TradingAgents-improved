@@ -257,26 +257,37 @@ def detect_trend(df):
     at="very_strong" if av>40 else "strong" if av>25 else "weak"
     sd=((c-s200)/s200)*100 if s200>0 else 0.0
 
-    # === Indicator Reconciliation ===
-    # EMA/SMA scoring can conflict with structural signals (higher_highs, higher_lows, ema_slope).
-    # When they conflict, override to NEUTRAL to avoid false directional bias.
-    if d == Direction.BEARISH and hh and hl and es > 0.5:
-        _log.warning(
-            f"⚠️ TREND RECONCILIATION: EMA/SMA scored BEARISH but structure is bullish "
-            f"(higher_highs=True, higher_lows=True, ema_slope={es:.2f}) — overriding to NEUTRAL"
-        )
-        d = Direction.NEUTRAL
-    elif d == Direction.BULLISH and not hh and not hl and es < -0.5:
-        _log.warning(
-            f"⚠️ TREND RECONCILIATION: EMA/SMA scored BULLISH but structure is bearish "
-            f"(higher_highs=False, higher_lows=False, ema_slope={es:.2f}) — overriding to NEUTRAL"
-        )
-        d = Direction.NEUTRAL
+    # === Structure-First Trend Resolution ===
+    # Price structure (HH/HL + EMA slope) is the ground truth for trend direction.
+    # EMA/SMA crossover scoring is a secondary signal that can lag during transitions.
+    # When structure clearly says bullish/bearish, trust it over the scoring.
+    if es > 0.5 and hh and hl:
+        if d != Direction.BULLISH:
+            _log.warning(
+                f"⚠️ TREND OVERRIDE: EMA/SMA scored {d.value} but structure is bullish "
+                f"(higher_highs=True, higher_lows=True, ema_slope={es:.2f}) — overriding to BULLISH"
+            )
+            d = Direction.BULLISH
+    elif es < -0.5 and not hh and not hl:
+        if d != Direction.BEARISH:
+            _log.warning(
+                f"⚠️ TREND OVERRIDE: EMA/SMA scored {d.value} but structure is bearish "
+                f"(higher_highs=False, higher_lows=False, ema_slope={es:.2f}) — overriding to BEARISH"
+            )
+            d = Direction.BEARISH
+    elif (hh and hl and es < -0.5) or (not hh and not hl and es > 0.5):
+        # Mixed: structure and momentum disagree — label as transitioning
+        if d != Direction.NEUTRAL:
+            _log.warning(
+                f"⚠️ TREND RECONCILIATION: Structure/momentum conflict "
+                f"(higher_highs={hh}, higher_lows={hl}, ema_slope={es:.2f}) — overriding to NEUTRAL"
+            )
+            d = Direction.NEUTRAL
 
     # === ADX Weak-Trend Override ===
     # If ADX < 20, there is no meaningful directional trend regardless of EMA alignment.
-    # Override any directional label to NEUTRAL to prevent false trend signals.
-    if av < 20 and d != Direction.NEUTRAL:
+    # Exception: strong structural signals (HH+HL or LH+LL) override low ADX.
+    if av < 20 and d != Direction.NEUTRAL and not (hh and hl) and not (not hh and not hl and es < -0.5):
         _log.warning(
             f"⚠️ ADX WEAK-TREND OVERRIDE: ADX={av:.1f} < 20 (no strong trend) — "
             f"overriding {d} to NEUTRAL (ema_slope={es:.2f}, higher_highs={hh}, higher_lows={hl})"

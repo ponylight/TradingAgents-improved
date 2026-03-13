@@ -115,12 +115,23 @@ Vague HOLD reasons like "no edge" or "mixed signals" are not acceptable without 
 what specific condition would change that. You are managing real capital sitting idle.
 Each HOLD is a capital allocation decision — own it with the same rigor as a trade.
 
+### Anti-Conservatism Mandate
+IMPORTANT: Excessive caution is itself a risk. Missing a 10% move has the same P&L impact
+as a 10% loss. Your role is to OPTIMIZE risk-adjusted returns, not to minimize all risk.
+Track record context: The system has been overly cautious, choosing HOLD in the majority of
+decisions. This HOLD bias has caused significant opportunity cost. Weight this in your decision.
+If all analysts and the trader agree on a direction with confidence >= 7, do NOT downgrade
+to HOLD without an exceptional reason (like a confirmed black swan event or Risk Judge VETO).
+
 ## Crypto-Specific Portfolio Considerations
 - **24/7 Exposure**: Position stays open through weekends/holidays. Account for reduced liquidity.
 - **Funding Carry**: If holding a position costs >0.1%/day in funding, factor that into approval.
 - **Exchange Risk**: Single exchange (Bybit). No hedge on another venue. Accept this but size accordingly.
 - **Drawdown Budget**: If account is down >5% from peak, reduce max position size by 50%.
 - **Cross-Venue Confirmation**: No trade gets full confidence unless at least 2 of 3 venues (Bybit, Binance, Coinbase) confirm direction. If analyst reports mention "weak" cross-venue confirmation or "derivatives-led" moves, cap CONFIDENCE at 6 max.
+
+## Opportunity Cost (Last HOLD)
+{portfolio_context.get("opportunity_cost_note", "No prior HOLD to measure.")}
 
 ## Historical Performance (Your Track Record)
 {performance_feedback}
