@@ -680,34 +680,37 @@ _SCAN_CACHE: Dict[str, Any] = {"result": None, "ts": 0}
 MAX_SCAN_OUTPUT = 3000  # Cap output size for prompt safety
 
 
-def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
-    """
-    Run all pattern detectors against current market data.
-    Returns a formatted report for agent consumption.
-    Results cached for 2 minutes to avoid redundant API calls.
+_STRUCTURED_CACHE: Dict[str, Any] = {"result": None, "ts": 0}
+
+
+def _run_all_detectors(symbol: str) -> tuple[List[Dict[str, Any]], float, Optional[int]]:
+    """Run all pattern detectors and return (results, current_price, fg_value).
+
+    Shared by both scan_all_patterns() and scan_all_patterns_structured().
+    Cached for 2 minutes to avoid redundant API calls.
     """
     import time as _time
     from datetime import datetime as _dt
+
     now = _time.time()
-    # Include date in cache key so same symbol at different times doesn't return stale data
     cache_key = f"{symbol}:{_dt.utcnow().strftime('%Y-%m-%d')}"
-    if _SCAN_CACHE.get("key") == cache_key and _SCAN_CACHE["result"] and (now - _SCAN_CACHE["ts"]) < 120:
-        return _SCAN_CACHE["result"]
+    if (_STRUCTURED_CACHE.get("key") == cache_key
+            and _STRUCTURED_CACHE["result"] is not None
+            and (now - _STRUCTURED_CACHE["ts"]) < 120):
+        cached = _STRUCTURED_CACHE["result"]
+        return cached["results"], cached["price"], cached["fg"]
 
     log.info(f"🔍 Running pattern scan for {symbol}")
 
-    # Fetch data
     df_daily = _fetch_ohlcv(symbol, "1d", 250)
     df_4h = _fetch_ohlcv(symbol, "4h", 60)
     fg_value = _fetch_fear_greed()
 
     if df_daily is None or len(df_daily) < 30:
-        return f"Pattern scan failed: insufficient data for {symbol}"
+        return [], 0.0, fg_value
 
     current_price = float(df_daily["close"].values[-1])
-
-    # Run all detectors — each isolated so one failure doesn't kill the scan
-    results = []
+    results: List[Dict[str, Any]] = []
 
     def _safe_detect(name: str, fn, *args, **kwargs) -> None:
         try:
@@ -721,7 +724,7 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
     _safe_detect("new_high_breakout", detect_new_high_breakout, df_daily)
     _safe_detect("bnf_contrarian", detect_bnf_contrarian, df_daily)
 
-    # 5. MACD Triple Divergence
+    # MACD Triple Divergence
     try:
         from tradingagents.dataflows.macd_divergence import detect_triple_divergence
         macd_daily = detect_triple_divergence(df_daily, lookback=180)
@@ -749,7 +752,53 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
     _safe_detect("bonde_home_run", detect_bonde_home_run, df_daily)
     _safe_detect("qullamaggie_breakout", detect_qullamaggie_breakout, df_daily)
 
-    # Format report
+    log.info(f"Pattern scan complete: {sum(1 for r in results if r.get('detected'))} signals detected")
+
+    _STRUCTURED_CACHE["result"] = {"results": results, "price": current_price, "fg": fg_value}
+    _STRUCTURED_CACHE["ts"] = _time.time()
+    _STRUCTURED_CACHE["key"] = cache_key
+
+    return results, current_price, fg_value
+
+
+def scan_all_patterns_structured(symbol: str = "BTC/USDT") -> List[Dict[str, Any]]:
+    """
+    Run all pattern detectors and return structured results.
+
+    Returns a list of dicts, each with:
+        pattern: str, detected: bool, confidence: int,
+        direction: str (BUY/SELL/empty), details: str,
+        entry_price: float|None, stop_price: float|None
+    """
+    results, current_price, fg_value = _run_all_detectors(symbol)
+    if not results:
+        return []
+
+    structured = []
+    for r in results:
+        structured.append({
+            "pattern": r.get("pattern", "unknown"),
+            "detected": r.get("detected", False),
+            "confidence": r.get("confidence", 0),
+            "direction": r.get("direction", ""),
+            "details": r.get("details", ""),
+            "entry_price": r.get("entry_price"),
+            "stop_price": r.get("stop_price"),
+        })
+    return structured
+
+
+def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
+    """
+    Run all pattern detectors against current market data.
+    Returns a formatted report for agent consumption.
+    Results cached for 2 minutes to avoid redundant API calls.
+    """
+    results, current_price, fg_value = _run_all_detectors(symbol)
+
+    if not results:
+        return f"Pattern scan failed: insufficient data for {symbol}"
+
     detected = [r for r in results if r.get("detected")]
     not_detected = [r for r in results if not r.get("detected")]
 
@@ -773,12 +822,5 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
     report = "\n".join(lines)
     if len(report) > MAX_SCAN_OUTPUT:
         report = report[:MAX_SCAN_OUTPUT] + "\n... (truncated)"
-
-    log.info(f"Pattern scan complete: {len(detected)} signals detected")
-
-    # Cache the result
-    _SCAN_CACHE["result"] = report
-    _SCAN_CACHE["ts"] = _time.time()
-    _SCAN_CACHE["key"] = cache_key
 
     return report

@@ -347,6 +347,39 @@ def should_act(decision: dict, state: dict, price_data: dict, report_age_hours: 
     return True
 
 
+def check_pattern_signals() -> dict | None:
+    """Run pattern scanner and return the highest-confidence actionable signal, or None."""
+    try:
+        from tradingagents.dataflows.pattern_scanner import scan_all_patterns_structured
+        results = scan_all_patterns_structured("BTC/USDT")
+        # Filter: detected, confidence >= 7, has a tradeable direction
+        actionable = [
+            r for r in results
+            if r["detected"]
+            and r["confidence"] >= 7
+            and r.get("direction") in ("BUY", "SELL", "SHORT")
+        ]
+        if not actionable:
+            return None
+        # Highest confidence wins
+        best = max(actionable, key=lambda r: r["confidence"])
+        # Normalize direction: SHORT → SELL for executor
+        direction = best["direction"]
+        if direction == "SHORT":
+            direction = "SELL"
+        return {
+            "action": direction,
+            "pattern_name": best["pattern"],
+            "confidence": best["confidence"],
+            "reason": best["details"],
+            "entry_price": best.get("entry_price"),
+            "stop_price": best.get("stop_price"),
+        }
+    except Exception as e:
+        log.warning(f"Pattern scanner failed: {e}")
+        return None
+
+
 def executor_running() -> bool:
     """Best-effort check: don't spawn executor if its lock is already held."""
     executor_lock = LOGS / ".executor.lock"
@@ -406,6 +439,116 @@ def main():
 
     if report_age_hours is not None:
         log.info(f"📦 Cached reports age: {report_age_hours:.1f}h")
+
+    # ─── Pattern scanner fast-path (replaces old Green Lane) ─────────
+    pattern_signal = check_pattern_signals()
+    if pattern_signal:
+        log.info(
+            f"🔍 Pattern detected: {pattern_signal['pattern_name']} "
+            f"(conf={pattern_signal['confidence']}, dir={pattern_signal['action']})"
+        )
+
+        # Position gate: check both active_trade and positions.committee
+        active = state.get("active_trade") or {}
+        committee = state.get("positions", {}).get("committee") or {}
+        current_pos = active or committee
+        if current_pos:
+            # Determine current direction
+            pos_dir = current_pos.get("direction") or current_pos.get("side", "")
+            if pos_dir in ("long", "BUY"):
+                pos_dir = "BUY"
+            elif pos_dir in ("short", "SELL"):
+                pos_dir = "SELL"
+
+            if pattern_signal["action"] == pos_dir:
+                log.info(
+                    f"⏸️  Pattern {pattern_signal['pattern_name']} same direction as "
+                    f"existing {pos_dir} position — skipping (no doubling)"
+                )
+            else:
+                # Opposite direction: write reversal override and spawn executor
+                log.warning(
+                    f"🔄 Pattern {pattern_signal['pattern_name']} OPPOSITE to existing "
+                    f"{pos_dir} position — triggering full pipeline reversal"
+                )
+                reversal_file = LOGS / "pattern_reversal.json"
+                tmp_file = LOGS / ".pattern_reversal.tmp"
+                tmp_file.write_text(json.dumps({
+                    "action": pattern_signal["action"],
+                    "pattern_name": pattern_signal["pattern_name"],
+                    "confidence": pattern_signal["confidence"],
+                    "reason": f"Reversal: {pattern_signal['reason']}",
+                    "entry_price": pattern_signal.get("entry_price"),
+                    "stop_price": pattern_signal.get("stop_price"),
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                    "source": "pattern_scanner",
+                }))
+                tmp_file.rename(reversal_file)
+
+                if executor_running():
+                    log.warning("⏸️ Executor already running — pattern reversal queued")
+                else:
+                    import subprocess
+                    subprocess.Popen(
+                        [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
+                        cwd=str(PROJECT_ROOT),
+                        stdout=subprocess.DEVNULL,
+                        stderr=subprocess.DEVNULL,
+                    )
+        else:
+            # No position: write pattern override and spawn executor
+            log.warning(
+                f"🚨 PATTERN ENTRY: {pattern_signal['action']} via "
+                f"{pattern_signal['pattern_name']} — launching executor"
+            )
+            override_file = LOGS / "pattern_override.json"
+            tmp_file = LOGS / ".pattern_override.tmp"
+            tmp_file.write_text(json.dumps({
+                "action": pattern_signal["action"],
+                "pattern_name": pattern_signal["pattern_name"],
+                "confidence": pattern_signal["confidence"],
+                "reason": pattern_signal["reason"],
+                "entry_price": pattern_signal.get("entry_price"),
+                "stop_price": pattern_signal.get("stop_price"),
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "source": "pattern_scanner",
+            }))
+            tmp_file.rename(override_file)
+
+            # Update daily trade count and cooldown
+            today = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
+            state_lock_fd = None
+            try:
+                state_lock_fd = open(STATE_FILE.with_suffix(".lock"), "w")
+                fcntl.flock(state_lock_fd, fcntl.LOCK_EX)
+                fresh_state = load_json(STATE_FILE)
+                fresh_state.setdefault("light_trades", {})[today] = fresh_state.get("light_trades", {}).get(today, 0) + 1
+                fresh_state["last_light_override_time"] = datetime.now(timezone.utc).isoformat()
+                tmp = STATE_FILE.with_suffix(".tmp")
+                tmp.write_text(json.dumps(fresh_state, indent=2))
+                tmp.rename(STATE_FILE)
+            except Exception as e:
+                log.warning(f"Failed to update light trade count: {e}")
+            finally:
+                if state_lock_fd is not None:
+                    try:
+                        fcntl.flock(state_lock_fd, fcntl.LOCK_UN)
+                        state_lock_fd.close()
+                    except Exception:
+                        pass
+
+            if executor_running():
+                log.warning("⏸️ Executor already running — pattern override queued")
+            else:
+                import subprocess
+                subprocess.Popen(
+                    [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
+                    cwd=str(PROJECT_ROOT),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+        return  # Pattern path handled — skip LLM evaluation
+    # ─── End pattern scanner fast-path ────────────────────────────────
 
     # Run evaluation
     result = run_light_evaluation(price_data, reports, state)

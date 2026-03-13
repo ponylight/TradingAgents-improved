@@ -2311,7 +2311,7 @@ def main():
 
     # ─── Check for light layer overrides ────────────────────────────────
     override_decision = None
-    for override_name in ("light_override.json",):
+    for override_name in ("pattern_override.json", "pattern_reversal.json", "light_override.json"):
         override_file = LOG_DIR / override_name
         if override_file.exists():
             try:
