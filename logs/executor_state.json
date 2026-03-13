@@ -1,6 +1,6 @@
 {
-  "last_run": "2026-03-13T06:52:41.670483+00:00",
-  "last_decision": "BUY",
+  "last_run": "2026-03-13T08:15:46.227068+00:00",
+  "last_decision": "HOLD",
   "trades": [
     {
       "timestamp": "2026-03-02T05:15:07.363222+00:00",
@@ -507,23 +507,34 @@
       "leverage_capped": true,
       "manual_open": true,
       "reason": "Re-opening LONG after light_decision bug fix \u2014 leverage capped at 15x"
+    },
+    {
+      "timestamp": "2026-03-13T08:15:46.227068+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 150264.19342199,
+      "params": {
+        "confidence": 8,
+        "risk_pct": 0.0,
+        "take_profit_1": 65000.0
+      },
+      "objective_score": 8.1,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "HOLD"
     }
   ],
-  "last_decision_reasoning": "## Fund Manager Review\n\n**1. INDEPENDENT OBSERVATION**: Sunday night into Monday Asian session is historically the thinnest liquidity window of the week for BTC perpetuals on Bybit. Our stop at $68,214 sits ~1.9% above current price \u2014 tight enough that a weekend liquidity gap or short squeeze wick could tag it before continuation lower. I'd note that with CPI ~3 days out, market makers tend to pull bids/asks ahead of the print, further thinning the book. The position is small enough (0.57x) that",
-  "last_decision_time": "2026-03-13T06:52:41.670483+00:00",
+  "last_decision_reasoning": "## Fund Manager Decision\n\n### 1. INDEPENDENT OBSERVATION\n\nThe round-trip cost of this trade needs acknowledgment. Entry fees + exit fees on Bybit (taker ~0.055% each side) total ~0.11%, meaning the +0.17% gross P&L nets to roughly **+0.06% after fees** \u2014 effectively a scratch trade. The real cost isn't monetary; it's the process failure that allowed a 0.47x vol_ma_ratio entry to slip past in the first place. I note that this is the **third consecutive sub-1% outcome** following the -0.98% and -0",
+  "last_decision_time": "2026-03-13T08:15:46.227068+00:00",
   "starting_equity": 153885.33,
   "closed_trades": [],
   "positions": {
     "committee": {
       "side": "long",
       "entry": 71276.9,
-      "stop_loss": 70180.0,
-      "take_profit_1": 73260.0,
-      "take_profit_2": 74800.0,
-      "amount": 1.37,
-      "alloc_pct": 0.0424,
-      "leverage_capped": true,
-      "opened_at": "2026-03-13T06:52:41.670483+00:00"
+      "stop_loss": 70180.0
     },
     "green_lane": null
   },
@@ -542,13 +553,15 @@
     "initial_tp2": 74800.0,
     "tp_orders": [],
     "tp1_hit": false,
-    "trailing_stop": 64673.114285714284,
+    "trailing_stop": 64859.21428571429,
     "opened_at": "2026-03-13T06:52:41.670483+00:00",
     "confidence": 7,
     "atr_at_entry": 3301.892857142856,
     "from_limit_order": false,
     "needs_protection_retry": false,
     "manual_open": true,
-    "leverage_capped": true
+    "leverage_capped": true,
+    "max_favorable_pct": 0.52,
+    "mfe_price": 71647.7
   }
 }
