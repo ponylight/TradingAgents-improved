@@ -1,5 +1,7 @@
 # TradingAgents/graph/signal_processing.py
 
+import re
+
 
 class SignalProcessor:
     """Processes trading signals to extract actionable decisions."""
@@ -22,10 +24,10 @@ class SignalProcessor:
             if f"FINAL TRANSACTION PROPOSAL: **{action}**" in content:
                 return action
 
-        # Fallback: check last 200 chars
+        # Fallback: check last 200 chars with word boundaries
         tail = content[-200:]
         for action in ["LONG", "SHORT", "NEUTRAL", "BUY", "SELL", "HOLD"]:
-            if action in tail:
+            if re.search(rf"\b{action}\b", tail):
                 return action
 
         # LLM fallback

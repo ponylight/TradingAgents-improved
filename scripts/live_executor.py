@@ -94,7 +94,18 @@ def _signal_handler(signum, frame):
     _sys.stderr.write(f"\n⚡ Signal {sig_name} received — shutdown flag set\n")
     _sys.stderr.flush()
     _shutdown_requested = True
-    # Do NOT call save_state() or sys.exit() here.
+    # Best-effort state save — Python signals run between bytecodes (not mid-syscall),
+    # and save_state uses atomic temp+rename, so re-entry is safe.
+    try:
+        es = _shutdown_state.get("executor_state")
+        if es:
+            es["_shutdown_signal"] = sig_name
+            es["_shutdown_at"] = datetime.now(timezone.utc).isoformat()
+            save_state(es)
+            _sys.stderr.write("  State saved.\n")
+            _sys.stderr.flush()
+    except Exception:
+        pass  # Best-effort — main loop will also save at checkpoints
 risk_mgr = RiskManager({
     "max_position_pct": MAX_ALLOC_PCT,
     "max_leverage": 20,
@@ -1109,7 +1120,7 @@ def _cancel_orphan_conditionals(exchange):
             if not trigger:
                 continue
             # Only cancel reduce-only conditionals (TP/SL orders, not entries)
-            if str(reduce_only).lower() not in ("true", "1", True):
+            if str(reduce_only).lower() not in ("true", "1"):
                 continue
             oid = str(oo.get("id", ""))[:12]
             try:
@@ -1316,41 +1327,43 @@ def _verify_and_repair_protection(exchange, executor_state, positions):
     # 1. Retry failed protection placement
     if active.get("needs_protection_retry"):
         log.warning("🔧 PROTECTION RETRY: Previous protection placement failed — retrying")
-        all_ok = True
+        retry_flags = active.get("protection_retry_flags", {"tp": True, "trail": True, "sl": True})
 
         tp_orders = active.get("tp_orders", [])
-        if not tp_orders and tp1:
+        if retry_flags.get("tp") and not tp_orders and tp1:
             try:
                 tp_orders = set_take_profits(exchange, direction, live_amount, tp1, tp2)
                 active["tp_orders"] = tp_orders
                 log.info(f"✅ Protection retry: TP orders placed ({len(tp_orders)} orders)")
+                retry_flags["tp"] = False
                 repaired = True
             except Exception as e:
                 log.error(f"🚨 Protection retry FAILED for TP orders: {e}")
-                all_ok = False
 
-        if atr > 0:
+        if retry_flags.get("trail") and atr > 0:
             try:
                 set_native_trailing_stop(exchange, direction, entry, atr)
                 log.info("✅ Protection retry: native trailing stop set")
+                retry_flags["trail"] = False
                 repaired = True
             except Exception as e:
                 log.error(f"🚨 Protection retry FAILED for trailing stop: {e}")
-                all_ok = False
 
-        if stop_loss:
+        if retry_flags.get("sl") and stop_loss:
             try:
                 side = "long" if direction == "BUY" else "short"
                 sync_stop_loss_to_exchange(exchange, side, live_amount, stop_loss)
                 log.info("✅ Protection retry: SL synced")
+                retry_flags["sl"] = False
                 repaired = True
             except Exception as e:
                 log.error(f"🚨 Protection retry FAILED for SL: {e}")
-                all_ok = False
 
-        # Only clear retry flag if ALL protection was placed successfully
-        if all_ok:
+        active["protection_retry_flags"] = retry_flags
+        # Clear retry flag only if all protections succeeded
+        if not any(retry_flags.values()):
             active["needs_protection_retry"] = False
+            active.pop("protection_retry_flags", None)
         else:
             log.error("🚨 Protection still incomplete — will retry next cycle")
         save_state(executor_state)
@@ -1451,17 +1464,37 @@ def manage_trailing_stop(exchange, positions, state):
         update_mfe_from_candles(exchange, trade_info)
 
         # --- TP1 hit detection ---
-        # If exchange position is smaller than our tracked amount, TP1 was filled
+        # Cross-reference TP1 order fill status with position size change
         original_amount = trade_info.get("amount", contracts)
-        if not trade_info.get("tp1_hit") and contracts < original_amount * 0.9:
-            # Position shrank by >10% — TP1 partial close fired
+        tp1_order_filled = False
+        tp1_fill_data = None
+        if not trade_info.get("tp1_hit"):
+            tp_orders = trade_info.get("tp_orders", [])
+            for tpo in tp_orders:
+                if tpo.get("level") == 1 and tpo.get("order_id"):
+                    try:
+                        order = exchange.fetch_order(tpo["order_id"], SYMBOL)
+                        if order and order.get("status") == "closed":
+                            tp1_order_filled = True
+                            tp1_fill_data = {"price": float(order.get("average", 0) or order.get("price", 0)),
+                                             "filled": float(order.get("filled", 0))}
+                    except Exception:
+                        pass  # Order may have been cancelled/expired — fall back to size check
+        if not trade_info.get("tp1_hit") and (tp1_order_filled or contracts < original_amount * 0.9):
+            # TP1 confirmed via order fill or position size reduction >10%
             pnl_on_closed = 0
             closed_qty = original_amount - contracts
-            if side == "long":
+            if tp1_fill_data and tp1_fill_data["price"] > 0:
+                tp1_price = tp1_fill_data["price"]
+                if tp1_fill_data["filled"] > 0:
+                    closed_qty = tp1_fill_data["filled"]
+            elif side == "long":
                 tp1_price = trade_info.get("tp1", current)
-                pnl_on_closed = (tp1_price - entry) * closed_qty
             else:
                 tp1_price = trade_info.get("tp1", current)
+            if side == "long":
+                pnl_on_closed = (tp1_price - entry) * closed_qty
+            else:
                 pnl_on_closed = (entry - tp1_price) * closed_qty
             trade_info["tp1_hit"] = True
             trade_info["tp1_fill_price"] = tp1_price
@@ -1519,8 +1552,9 @@ def manage_trailing_stop(exchange, positions, state):
             bars_held = hours_held / 4
             if bars_held >= TIME_EXIT_BARS:
                 pnl_pct = ((current - entry) / entry) if side == "long" else ((entry - current) / entry)
-                if abs(pnl_pct) < 0.01:  # Less than 1% move
-                    log.info(f"⏰ TIME EXIT: {bars_held:.0f} bars held, only {pnl_pct*100:.1f}% move. Closing.")
+                # Only time-exit if position is losing or barely covers fees (~0.1% round-trip)
+                if pnl_pct < 0.001:  # Less than 0.1% profit (doesn't cover fees)
+                    log.info(f"⏰ TIME EXIT: {bars_held:.0f} bars held, only {pnl_pct*100:.1f}% move (< fees). Closing.")
                     cancel_tp_orders(exchange, trade_info.get("tp_orders", []))
                     close_position(exchange, p)
                     returns_pct = pnl_pct * 100
@@ -2362,7 +2396,12 @@ def main():
                         else:
                             tp1 = fill_price - (TP1_R_MULTIPLE * risk_dist)
                     
-                    set_take_profit(exchange, pe_dir, amount, tp1)
+                    _pe_tp_failed = False
+                    try:
+                        set_take_profit(exchange, pe_dir, amount, tp1)
+                    except Exception as e:
+                        log.error(f"🚨 Pending entry TP placement failed: {e} — trade open but unprotected")
+                        _pe_tp_failed = True
                     atr = get_atr(exchange)
                     if pe_dir == "BUY":
                         initial_trail = fill_price - (ATR_TRAIL_MULTIPLE * atr)
@@ -2370,7 +2409,7 @@ def main():
                         initial_trail = fill_price + (ATR_TRAIL_MULTIPLE * atr)
                     
                     tp2 = pending.get("params", {}).get("take_profit_2")
-                    executor_state["active_trade"] = {
+                    _pe_active = {
                         "direction": pe_dir,
                         "entry": fill_price,
                         "amount": amount,
@@ -2385,6 +2424,10 @@ def main():
                         "atr_at_entry": atr,
                         "from_pending": True,
                     }
+                    if _pe_tp_failed:
+                        _pe_active["needs_protection_retry"] = True
+                        _pe_active["protection_retry_flags"] = {"tp": True, "trail": False, "sl": False}
+                    executor_state["active_trade"] = _pe_active
                     executor_state.pop("pending_entry", None)
                     save_state(executor_state)
                     log.info(f"\u2705 Pending entry filled: {pe_dir} {amount} BTC @ ${fill_price:,.0f}")
@@ -2814,6 +2857,7 @@ def main():
                     log.warning(f"Failed to record outcome: {e}")
         has_position = False
         executor_state.pop("active_trade", None)
+        save_state(executor_state)  # Persist immediately after close — crash between here and next save would misalign state
 
     elif action in ("OPEN_LONG", "OPEN_SHORT", "REVERSE_TO_LONG", "REVERSE_TO_SHORT"):
         # Flip-flop protection: require higher confidence to reverse within 12 hours
@@ -2870,6 +2914,7 @@ def main():
                         log.warning(f"Failed to record outcome: {e}")
             has_position = False
             executor_state.pop("active_trade", None)
+            save_state(executor_state)  # Persist immediately after reversal close
 
         # Determine direction
         new_direction = "BUY" if "LONG" in action else "SELL"
@@ -2910,6 +2955,7 @@ def main():
                         log.info(f'🔧 Recalculated SL from 2×ATR: ${stop_loss:,.0f}')
 
             # === COMPUTE EFFECTIVE LEVERAGE ===
+            # Canonical leverage: implied_leverage = notional / (equity × margin_allocation)
             # Replicate open_position sizing: notional = (equity * RISK_PER_TRADE * risk_mult / sl_dist) * price
             # effective_leverage = notional / margin = (RISK_PER_TRADE * risk_mult * price) / (sl_dist * alloc_pct)
             _eff_lev = None  # fail-closed: None = unknown = block
@@ -3163,6 +3209,10 @@ def main():
                     log.warning(f"Failed to record decision in outcome tracker: {e}")
             else:
                 record["action"] = "failed"
+                log.error(f"🚨 Market order failed for {new_direction} — recording failure")
+                executor_state["trades"] = executor_state.get("trades", [])
+                executor_state["trades"].append(record)
+                save_state(executor_state)
 
     # Compact trades history — keep last 200 entries, archive older
     trades = executor_state.get("trades", [])

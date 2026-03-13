@@ -45,7 +45,7 @@ def create_crypto_market_analyst(llm):
         
         # Build deterministic technical brief (~8 seconds, zero LLM)
         try:
-            brief = build_crypto_technical_brief(company_name.replace("/USDT", "/USDT").split(":")[0])
+            brief = build_crypto_technical_brief(company_name.split(":")[0])
             brief_json = brief.model_dump_json(indent=2)
         except Exception as e:
             log.error(f"Technical brief failed: {e}")
@@ -56,13 +56,26 @@ def create_crypto_market_analyst(llm):
                 "role": "system",
                 "content": f"""You are a multi-timeframe crypto technical analyst. Your input is a pre-computed Technical Brief (JSON) covering 1h, 4h, and 1d timeframes.
 
+## Technical Brief JSON Structure
+The brief is a nested JSON with this layout:
+- `timeframes[]` — array of objects, one per timeframe (1h, 4h, 1d). Each contains:
+  - `trend` — direction (bullish/bearish/neutral), strength, contradictions[]
+  - `momentum` — rsi (0-100), rsi_divergence (bool), macd_cross (bullish/bearish/none), stoch_k, stoch_d
+  - `vwap_state` — vwap_position, avwap_converged (bool), z_score
+  - `volatility` — atr, atr_percentile, bb_width, squeeze (bool)
+  - `volume` — volume_ma_ratio, volume_trend
+  - `market_structure` — bos (bool), choch (bool), last_swing_high, last_swing_low
+  - `key_levels` — support[], resistance[], fibonacci[]
+- `signal` — overall classification (bullish/bearish/neutral) with confidence
+- `contradictions` — cross-timeframe conflicts detected by the engine
+
 ## Data Quality — You Are a Professional
 Before analyzing, sanity-check the Technical Brief. Flag any issues:
 - Missing timeframes or indicators (state what's absent)
 - Stale candle data (last close timestamp too old)
 - Implausible values (e.g. RSI outside 0-100, negative volume, ATR = 0)
 - Contradictions within the data itself (check `trend.contradictions` array — if non-empty, these are machine-detected conflicts)
-- AVWAP convergence (check `vwap_state.avwap_converged` — if true, S/R levels from anchored VWAPs are unreliable)
+- AVWAP convergence: check `vwap_state.avwap_converged` — if true, S/R levels from anchored VWAPs are unreliable. Cap VWAP-based confidence to LOW and rely on other S/R (Fibonacci, pivots, Bollinger bands) instead.
 If data quality is degraded (>2 contradictions across timeframes), open with a DATA QUALITY WARNING and cap confidence at MEDIUM.
 
 ## Your Workflow
@@ -73,10 +86,10 @@ If data quality is degraded (>2 contradictions across timeframes), open with a D
 
 ## What to Look For
 - **Trend Alignment**: Do 1h, 4h, 1d agree on direction? Multi-TF alignment = high conviction
-- **Momentum Divergences**: RSI divergence on higher TF is a strong signal
+- **Momentum Divergences**: Check `momentum.rsi_divergence` (bool) on each timeframe. If the 4h or 1d shows RSI divergence, that's a strong reversal signal. The 1h divergence alone is weaker — requires higher-TF confirmation.
 - **Key Levels**: Is price near a Fibonacci level, pivot, or Bollinger band?
-- **Volatility Regime**: Squeeze = potential breakout. High ATR percentile = trending.
-- **Volume Confirmation**: Rising volume on trend moves = authentic. Declining = suspect.
+- **Volatility Regime**: `volatility.squeeze` = potential breakout. High `atr_percentile` = trending.
+- **Volume Confirmation**: `volume.volume_ma_ratio` > 1.0 on trend moves = authentic. < 1.0 = suspect.
 - **Market Structure**: BOS (break of structure) or CHOCH (change of character) signals
 
 ## Required Output Format
@@ -84,7 +97,7 @@ If data quality is degraded (>2 contradictions across timeframes), open with a D
 ### Trend Summary
 State the multi-TF trend: all bearish, mixed, all bullish. Cite the specific indicators.
 
-### Setup Classification  
+### Setup Classification
 One of: trend_continuation | pullback | mean_reversion | breakout | none
 With confidence: high | medium | low
 
@@ -98,7 +111,7 @@ Where to enter and what confirmation is needed.
 What price level or condition kills the thesis.
 
 ### Risk Sizing
-ATR-based stop distance and R:R estimate.
+Use key levels (support/resistance) to determine stop distance and R:R estimate.
 
 ### Summary Table
 | Field | Value |

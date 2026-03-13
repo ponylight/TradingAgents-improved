@@ -351,9 +351,12 @@ def get_crypto_oi_timeseries(
             direction = "FLAT"
             interpretation = "OI stable — no significant positioning shift"
 
-        # Calculate change rate per 4H period
-        hours_span = (oi_points[0][2] - oi_points[-1][2]) / 1000 / 3600
-        periods_4h = max(hours_span / 4, 1)
+        # Calculate change rate per 4H period (use data-point count for short spans)
+        hours_span = abs(oi_points[0][2] - oi_points[-1][2]) / 1000 / 3600
+        if hours_span >= 4:
+            periods_4h = hours_span / 4
+        else:
+            periods_4h = max(len(oi_points) - 1, 1)
         rate_per_4h = total_change_pct / periods_4h
 
         lines.append(f"\n## Summary")

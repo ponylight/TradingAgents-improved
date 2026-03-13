@@ -1,11 +1,21 @@
 """
-Consolidated Risk Manager
+Consolidated Risk Manager (DEPRECATED)
 
-Single point of authority for all risk checks before order execution.
-Inspired by ClawQuant's RiskManager pattern — runs BEFORE orders, not scattered.
+This module is superseded by the LLM-based Risk Judge in
+tradingagents/agents/managers/risk_manager.py, which handles risk evaluation
+as part of the agent pipeline. This class is retained for backward compatibility
+with the live executor's pre-order checks but should not be extended.
 
 Returns a list of risk actions: ALLOW, REDUCE, BLOCK, FLATTEN.
 """
+
+import warnings
+warnings.warn(
+    "tradingagents.scoring.risk_manager is deprecated; "
+    "risk evaluation is handled by agents/managers/risk_manager.py",
+    DeprecationWarning,
+    stacklevel=2,
+)
 
 import logging
 from datetime import datetime, timezone

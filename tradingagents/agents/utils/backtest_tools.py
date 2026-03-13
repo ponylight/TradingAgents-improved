@@ -13,10 +13,16 @@ from pathlib import Path
 log = logging.getLogger("backtest_tools")
 
 VENV_PYTHON = str(Path(__file__).parent.parent.parent.parent / ".venv" / "bin" / "clawquant")
+_CLAWQUANT_AVAILABLE = Path(VENV_PYTHON).exists()
+
+if not _CLAWQUANT_AVAILABLE:
+    log.info("clawquant not found at %s — backtest tools will return errors. Install with: pip install clawquant", VENV_PYTHON)
 
 
 def _run_clawquant(args: list, timeout: int = 120) -> dict:
     """Run a clawquant command and return JSON output."""
+    if not _CLAWQUANT_AVAILABLE:
+        return {"error": f"clawquant not installed at {VENV_PYTHON}. Run: pip install clawquant"}
     cmd = [VENV_PYTHON, "--json"] + args
     try:
         result = subprocess.run(

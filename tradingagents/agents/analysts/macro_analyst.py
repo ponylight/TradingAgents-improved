@@ -1,8 +1,11 @@
 """
 Macro Economy Analyst — Analyzes macroeconomic conditions affecting BTC.
+
+Uses an agentic tool-calling loop to fetch DXY, yields, S&P 500, FRED data,
+and economic calendar, then produces a macro regime report.
 """
 
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from tradingagents.agents.utils.macro_tools import (
     get_dollar_index,
     get_yields,
@@ -11,22 +14,29 @@ from tradingagents.agents.utils.macro_tools import (
     get_economic_calendar,
 )
 
+import logging
+log = logging.getLogger("macro_analyst")
+
+MAX_TOOL_ROUNDS = 3
+
 
 def create_macro_analyst(llm):
+
+    tools = [
+        get_dollar_index,
+        get_yields,
+        get_sp500,
+        get_economic_data,
+        get_economic_calendar,
+    ]
+    tool_map = {t.name: t for t in tools}
+    llm_with_tools = llm.bind_tools(tools)
 
     def macro_analyst_node(state):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
 
-        tools = [
-            get_dollar_index,
-            get_yields,
-            get_sp500,
-            get_economic_data,
-            get_economic_calendar,
-        ]
-
-        system_message = """You are a senior macroeconomic analyst specializing in the impact of macro conditions on Bitcoin.
+        system_message = f"""You are a senior macroeconomic analyst specializing in the impact of macro conditions on Bitcoin.
 Your role is to assess the macroeconomic environment and its implications for BTC price action.
 
 ## Key Macro Factors for BTC
@@ -39,7 +49,6 @@ Your role is to assess the macroeconomic environment and its implications for BT
 ### Federal Reserve Policy
 - Rate cuts / dovish Fed = bullish for BTC (cheaper money, risk-on)
 - Rate hikes / hawkish Fed = bearish for BTC (tighter conditions, risk-off)
-- FEDFUNDS series tracks the effective rate
 
 ### Inflation (CPI)
 - Hot CPI = hawkish Fed expectations = short-term bearish
@@ -59,60 +68,60 @@ Your role is to assess the macroeconomic environment and its implications for BT
 ### Equity Correlation
 - BTC/S&P500 correlation varies (0.3-0.7 in risk regimes)
 - When correlation is high, macro drives crypto
-- De-correlation episodes happen during crypto-specific catalysts
 
-## FRED Series Reference
-- FEDFUNDS: Federal Funds Rate
-- CPIAUCSL: CPI (inflation)
-- M2SL: M2 Money Supply
-- UNRATE: Unemployment Rate
-- T10Y2Y: Yield Curve Spread
+## Tools — Call These to Get Data
+1. Call **get_dollar_index** — DXY trend (last 30-60 days)
+2. Call **get_yields** — Treasury yields and curve shape
+3. Call **get_sp500** — S&P 500 risk sentiment proxy
+4. Call **get_economic_data** — FRED series: FEDFUNDS, CPIAUCSL, M2SL, UNRATE, T10Y2Y
+5. Call **get_economic_calendar** — upcoming FOMC, CPI, jobs reports
 
-## Instructions
-1. Check DXY trend (last 30-60 days)
-2. Review Fed Funds Rate trajectory
-3. Check latest CPI/inflation data
-4. Analyze M2 money supply trend
-5. Review S&P 500 as risk sentiment proxy
-6. Check economic calendar for upcoming events
-7. Produce a macro report with:
-   - Macro regime classification (Risk-On / Risk-Off / Transitioning)
-   - Liquidity conditions (Expanding / Contracting / Neutral)
-   - Key macro risks for the next 1-4 weeks
-   - Overall macro bias for BTC (Bullish / Bearish / Neutral) with confidence"""
+## Output Format
+Produce a macro report with:
+- Macro regime classification (Risk-On / Risk-Off / Transitioning)
+- Liquidity conditions (Expanding / Contracting / Neutral)
+- Key macro risks for the next 1-4 weeks
+- Overall macro bias for BTC (Bullish / Bearish / Neutral) with confidence
 
-        prompt = ChatPromptTemplate.from_messages(
-            [
-                (
-                    "system",
-                    "You are a helpful AI assistant, collaborating with other assistants."
-                    " Use the provided tools to progress towards answering the question."
-                    " If you are unable to fully answer, that's OK; another assistant with different tools"
-                    " will help where you left off. Execute what you can to make progress."
-                    " If you or any other assistant has the FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** or deliverable,"
-                    " prefix your response with FINAL TRANSACTION PROPOSAL: **BUY/HOLD/SELL** so the team knows to stop."
-                    " You have access to the following tools: {tool_names}.\n{system_message}"
-                    "For your reference, the current date is {current_date}. The asset we are analyzing is {ticker}",
-                ),
-                MessagesPlaceholder(variable_name="messages"),
-            ]
-        )
+Current date: {current_date}. Asset: {ticker}.
+Do NOT output FINAL TRANSACTION PROPOSAL. You are a macro analyst — you report macro conditions, not trade decisions."""
 
-        prompt = prompt.partial(system_message=system_message)
-        prompt = prompt.partial(tool_names=", ".join([tool.name for tool in tools]))
-        prompt = prompt.partial(current_date=current_date)
-        prompt = prompt.partial(ticker=ticker)
+        messages = [
+            SystemMessage(content=system_message),
+            HumanMessage(content=f"Analyze the current macroeconomic environment and its impact on {ticker}. "
+                         f"Call get_dollar_index, get_yields, get_sp500, get_economic_data, and get_economic_calendar, "
+                         f"then produce your macro regime report."),
+        ]
 
-        chain = prompt | llm.bind_tools(tools)
-        result = chain.invoke(state["messages"])
+        # Agentic tool-calling loop
+        for round_num in range(MAX_TOOL_ROUNDS):
+            result = llm_with_tools.invoke(messages)
+            messages.append(result)
 
-        report = ""
-        if len(result.tool_calls) == 0:
-            report = result.content
+            if not result.tool_calls:
+                break
+
+            for tc in result.tool_calls:
+                tool_fn = tool_map.get(tc["name"])
+                if tool_fn:
+                    try:
+                        output = tool_fn.invoke(tc["args"])
+                        log.info(f"Tool {tc['name']} returned {len(str(output))} chars")
+                    except Exception as e:
+                        output = f"Error calling {tc['name']}: {e}"
+                        log.warning(output)
+                else:
+                    output = f"Unknown tool: {tc['name']}"
+                messages.append(ToolMessage(content=str(output), tool_call_id=tc["id"]))
+
+        report = result.content if result.content else ""
+        if not report:
+            log.warning("Macro analyst produced no text report after tool loop")
+            report = "Macro analysis incomplete — tool calls may have failed."
 
         return {
             "messages": [result],
-            "news_report": report,  # Reusing news_report slot for macro data
+            "macro_report": report,
         }
 
     return macro_analyst_node

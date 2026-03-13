@@ -63,7 +63,7 @@ def validate_decision(
     obj_strength = objective_score.strength
 
     # --- Rule 1: Strong conflict between objective score and agent decision ---
-    if objective_score.conflicts_with(decision):
+    if objective_score.conflicts_with(decision, current_position):
         if obj_strength == "STRONG":
             # Strong conflict — override
             result.validated_decision = obj_signal
@@ -120,6 +120,13 @@ def validate_decision(
                 f"Proceeding with caution."
             )
             result.confidence_adjustment = -0.1
+
+    # --- Positive adjustment: objective score validates the decision ---
+    if not objective_score.conflicts_with(decision, current_position):
+        if obj_strength == "STRONG":
+            result.confidence_adjustment = max(result.confidence_adjustment, 0.15)
+        elif obj_strength == "MODERATE":
+            result.confidence_adjustment = max(result.confidence_adjustment, 0.10)
 
     # --- Rule 3: Momentum divergence check ---
     # If momentum is strongly against the decision

@@ -140,7 +140,7 @@ Each HOLD is a capital allocation decision — own it with the same rigor as a t
 Before approving any trade, verify the Risk Judge provided a ---RISK_SIZING--- block with:
 - account_risk_pct ≤ 1.0%
 - implied_leverage ≤ 15x (swing) / 10x (position)
-- liquidation_buffer_pct > 2× stop_distance_pct
+- liquidation_buffer_pct > 1.5× stop_distance_pct
 - position_size_btc is reasonable for current equity
 If ANY field is missing or breaches limits, REJECT with reason "risk sizing incomplete/invalid".
 
@@ -177,6 +177,7 @@ Keep it short. You are an approver, not an analyst. The work is already done —
 
         parsed = _parse_fund_decision(fund_decision)
         parsed = _validate_fund_decision(fund_decision, parsed)
+        parsed = _validate_required_sections(fund_decision, parsed)
 
         # Validate risk sizing from upstream Risk Judge
         risk_sizing = _parse_risk_sizing(risk_decision)
@@ -271,6 +272,33 @@ def _validate_fund_decision(full_text, parsed):
     return parsed
 
 
+def _validate_required_sections(full_text: str, parsed: dict) -> dict:
+    """Validate that FM output includes all required reasoning sections.
+
+    Only enforced for trade-opening actions — HOLD doesn't need full reasoning.
+    """
+    action = parsed.get('action', '').upper()
+    if action not in ('OPEN_LONG', 'OPEN_SHORT'):
+        return parsed
+
+    upper = full_text.upper()
+    missing = []
+    if 'INDEPENDENT OBSERVATION' not in upper:
+        missing.append('INDEPENDENT OBSERVATION')
+    if 'ORDERBOOK' not in upper and 'LIQUIDITY CHECK' not in upper:
+        missing.append('ORDERBOOK/LIQUIDITY CHECK')
+    if 'I AGREE' not in upper and 'I DISAGREE' not in upper:
+        missing.append('EXPLICIT AGREEMENT/DISAGREEMENT')
+
+    if missing:
+        log.warning(f"FM missing required sections: {', '.join(missing)} — downgrading to HOLD")
+        parsed['action'] = 'HOLD'
+        parsed['reason'] = f'OVERRIDDEN: missing required sections: {", ".join(missing)}'
+        parsed['_missing_sections'] = missing
+
+    return parsed
+
+
 def _parse_risk_sizing(risk_text: str) -> dict:
     """Extract ---RISK_SIZING--- block from Risk Judge output."""
     if not risk_text:
@@ -300,16 +328,16 @@ def _validate_risk_sizing(sizing: dict) -> str:
     """Validate risk sizing values. Returns error string or empty string if OK."""
     if not sizing:
         return "no sizing fields parsed"
-    required = ["account_risk_pct", "stop_distance_pct", "implied_leverage", "position_size_btc"]
+    required = ["account_risk_pct", "stop_distance_pct", "implied_leverage", "liquidation_buffer_pct", "position_size_btc"]
     missing = [f for f in required if f not in sizing]
     if missing:
         return f"missing fields: {', '.join(missing)}"
-    if sizing["account_risk_pct"] > 1.5:  # Allow small float above 1.0 for rounding
+    if sizing["account_risk_pct"] > 1.05:  # 5% tolerance for rounding
         return f"account_risk_pct={sizing['account_risk_pct']:.1f}% exceeds 1% hard limit"
-    if sizing["implied_leverage"] > 16:  # Allow small float above 15x for rounding
+    if sizing["implied_leverage"] > 15.5:  # 3% tolerance for rounding
         return f"implied_leverage={sizing['implied_leverage']:.1f}x exceeds 15x hard limit"
     liq_buf = sizing.get("liquidation_buffer_pct", 0)
     stop_dist = sizing.get("stop_distance_pct", 0)
-    if liq_buf > 0 and stop_dist > 0 and liq_buf < 2 * stop_dist:
-        return f"liquidation_buffer={liq_buf:.1f}% < 2× stop_distance={stop_dist:.1f}%"
+    if liq_buf > 0 and stop_dist > 0 and liq_buf < 1.5 * stop_dist:
+        return f"liquidation_buffer={liq_buf:.1f}% < 1.5× stop_distance={stop_dist:.1f}%"
     return ""

@@ -40,9 +40,9 @@ def _score_quality(trades: List[Dict]) -> float:
     avg_ret = sum(returns) / len(returns)
     std_ret = (sum((r - avg_ret) ** 2 for r in returns) / len(returns)) ** 0.5
 
-    # Pseudo-Sharpe (return / risk)
+    # Pseudo-Sharpe (return / risk) — negative Sharpe penalizes instead of clamping to 0
     sharpe_like = avg_ret / std_ret if std_ret > 0 else 0
-    sharpe_score = _clamp(sharpe_like * 33.3)
+    sharpe_score = _clamp(sharpe_like * 33.3, lo=-30)
 
     # Average return contribution
     ret_score = _clamp(50 + avg_ret * 10)  # 0% = 50, +5% = 100, -5% = 0
@@ -83,7 +83,7 @@ def _score_robustness(trades: List[Dict]) -> float:
 
     correct = sum(1 for t in trades if t.get("outcome") == "correct")
     win_rate = correct / len(trades) if trades else 0
-    wr_score = _clamp(win_rate * 130)  # 50% = 65, 70% = 91
+    wr_score = _clamp(win_rate * 100)  # 50% = 50, 70% = 70 (linear)
 
     # Profit factor: gross wins / gross losses
     wins = sum(t.get("return_pct", 0) for t in trades if t.get("return_pct", 0) > 0)
@@ -105,23 +105,26 @@ def _score_data_quality(brief=None) -> float:
     score = 100.0
     penalties = []
 
+    n_tf = max(len(brief.timeframes), 1)
+    penalty_per_tf = 30.0 / n_tf  # Proportional: total penalty scales with broken timeframes
+
     for tf in brief.timeframes:
         # VWAP z-score should be -3 to +3
         z = tf.vwap_state.zscore_distance
         if abs(z) > 5:
-            score -= 15
+            score -= penalty_per_tf * 0.5
             penalties.append(f"{tf.timeframe}: VWAP z={z:.1f} (abnormal)")
 
         # Volume ratio should be 0.1 to 5.0
         vr = tf.volume.vol_ma_ratio
         if vr < 0.05 or vr > 10:
-            score -= 10
+            score -= penalty_per_tf * 0.33
             penalties.append(f"{tf.timeframe}: vol_ratio={vr:.2f} (abnormal)")
 
         # RSI should be 0-100
         rsi = tf.momentum.rsi_value
         if rsi < 0 or rsi > 100:
-            score -= 20
+            score -= penalty_per_tf * 0.67
             penalties.append(f"{tf.timeframe}: RSI={rsi:.1f} (invalid)")
 
     if penalties:
@@ -160,8 +163,6 @@ def _score_decision_quality(trades: List[Dict]) -> float:
     # Penalize if too many warnings (system too noisy)
     if warn_rate > 0.8:
         score -= 15  # Almost every decision gets warned — thresholds too tight
-    elif warn_rate < 0.1 and len(trades) > 5:
-        score -= 10  # Almost no warnings — thresholds too loose?
 
     return _clamp(score)
 

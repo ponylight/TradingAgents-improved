@@ -48,7 +48,7 @@ class ConditionalLogic:
 
         if (
             state["investment_debate_state"]["count"] >= 2 * self.max_debate_rounds
-        ):  # 3 rounds of back-and-forth between 2 agents
+        ):  # max_debate_rounds rounds of back-and-forth between 2 agents (2 messages per round)
             return "Research Manager"
         if state["investment_debate_state"]["current_response"].startswith("Bull"):
             return "Bear Researcher"

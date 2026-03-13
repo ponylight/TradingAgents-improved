@@ -123,19 +123,6 @@ def _fetch_rss(url: str, limit: int = 15) -> List[Dict]:
             if len(items) >= limit:
                 break
         
-        # Try Atom format if no items found
-        if not items:
-            ns = {"atom": "http://www.w3.org/2005/Atom"}
-            for entry in root.findall(".//atom:entry", ns):
-                title = (entry.findtext("atom:title", namespaces=ns) or "").strip()
-                link_elem = entry.find("atom:link", ns)
-                link = link_elem.get("href", "") if link_elem is not None else ""
-                
-                if title:
-                    items.append({"title": title[:200], "link": link, "pub_date": "", "description": ""})
-                if len(items) >= limit:
-                    break
-        
         return items
     except Exception as e:
         log.debug(f"RSS fetch failed {url}: {e}")

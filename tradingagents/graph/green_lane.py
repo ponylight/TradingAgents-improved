@@ -217,7 +217,7 @@ def trigger_analyst_audit(symbol: str, signal: GreenLaneSignal, ta_graph) -> Non
     def _run_audit():
         log.info(f"trigger_analyst_audit: starting background audit for {symbol}")
         try:
-            results = ta_graph.propagate(symbol, symbol)
+            results = ta_graph.propagate(symbol, datetime.now(timezone.utc).strftime("%Y-%m-%d"))
             date_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
             # Resolve logs dir relative to project root
             project_root = os.path.abspath(

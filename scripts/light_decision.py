@@ -56,7 +56,7 @@ LOCK_FILE = LOGS / ".light_decision.lock"
 MIN_CONFIDENCE = 8         # 1-10, only act on high conviction
 MIN_MOVE_PCT = 1.5         # Minimum % move from last decision price to consider
 MAX_LIGHT_TRADES_PER_DAY = 2  # Don't overtrade
-MIN_REPORT_FRESHNESS_HOURS = 6
+MIN_REPORT_FRESHNESS_HOURS = 4
 OVERRIDE_COOLDOWN_SECONDS = 20 * 60
 
 LOGS.mkdir(parents=True, exist_ok=True)
@@ -297,8 +297,8 @@ def should_act(decision: dict, state: dict, price_data: dict, report_age_hours: 
                     f"({seconds_since:.0f}s < {OVERRIDE_COOLDOWN_SECONDS}s)"
                 )
                 return False
-        except Exception:
-            pass
+        except Exception as e:
+            log.warning(f"Failed to parse last_light_override_time '{last_override_at}': {e} — cooldown bypassed")
 
     return True
 
@@ -311,7 +311,7 @@ def check_green_lane_setup() -> dict | None:
         if signal:
             log.info(f"🟢 Green lane: {signal.direction.upper()} q={signal.quality_score} entry=${signal.entry_price:,.2f}")
             return {
-                "action": signal.direction.upper(),
+                "action": "BUY" if signal.direction.lower() == "long" else "SELL",
                 "entry": signal.entry_price,
                 "stop_loss": signal.stop_loss,
                 "tp1": signal.tp1,
@@ -432,19 +432,25 @@ def main():
             # Increment daily light trade count (merge-patch: re-read, update key, atomic write)
             import fcntl
             today = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
+            state_lock_fd = None
             try:
-                lock_fd = open(STATE_FILE.with_suffix(".lock"), "w")
-                fcntl.flock(lock_fd, fcntl.LOCK_EX)
+                state_lock_fd = open(STATE_FILE.with_suffix(".lock"), "w")
+                fcntl.flock(state_lock_fd, fcntl.LOCK_EX)
                 fresh_state = load_json(STATE_FILE)
                 fresh_state.setdefault("light_trades", {})[today] = fresh_state.get("light_trades", {}).get(today, 0) + 1
                 fresh_state["last_light_override_time"] = datetime.now(timezone.utc).isoformat()
                 tmp = STATE_FILE.with_suffix(".tmp")
                 tmp.write_text(json.dumps(fresh_state, indent=2))
                 tmp.rename(STATE_FILE)
-                fcntl.flock(lock_fd, fcntl.LOCK_UN)
-                lock_fd.close()
             except Exception as e:
                 log.warning(f"Failed to update light trade count: {e}")
+            finally:
+                if state_lock_fd is not None:
+                    try:
+                        fcntl.flock(state_lock_fd, fcntl.LOCK_UN)
+                        state_lock_fd.close()
+                    except Exception:
+                        pass
 
             if executor_running():
                 log.warning("⏸️ Executor already running — light override queued, not spawning another executor")

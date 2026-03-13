@@ -177,6 +177,7 @@ def run_pattern_scan(
     return scan_all_patterns(symbol)
 
 
+@tool
 def get_crisis_impact_index() -> str:
     """
     Get the CryptoMonitor Crisis Impact Index (CII) — geopolitical risk score 0-100.

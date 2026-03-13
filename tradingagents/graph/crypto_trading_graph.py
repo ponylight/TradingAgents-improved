@@ -22,7 +22,6 @@ from tradingagents.agents.managers.fund_manager import create_fund_manager
 from tradingagents.utils.telemetry import wrap_with_telemetry
 from tradingagents.agents.analysts.crypto_market_analyst import create_crypto_market_analyst
 from tradingagents.agents.analysts.crypto_sentiment_analyst import create_crypto_sentiment_analyst
-from tradingagents.agents.analysts.macro_analyst import create_macro_analyst
 from tradingagents.agents.analysts.crypto_fundamentals_analyst import create_crypto_fundamentals_analyst
 from tradingagents.default_config import DEFAULT_CONFIG
 from tradingagents.agents.utils.memory import FinancialSituationMemory
@@ -32,13 +31,11 @@ from tradingagents.dataflows.config import set_config
 # Crypto tools
 from tradingagents.agents.utils.crypto_tools import (
     get_crypto_price_data,
-    get_crypto_technical_indicators,
     get_funding_rate,
     get_open_interest,
     get_oi_timeseries,
     get_orderbook_depth,
     get_crypto_fear_greed,
-    get_liquidation_info,
     get_macro_signal_radar,
     get_stablecoin_peg_health,
     )
@@ -348,7 +345,8 @@ class CryptoTradingAgentsGraph:
             workflow.add_edge(current_tools, current_analyst)
 
         # Fan-in: ALL analysts must complete → single cleanup → Bull Researcher
-        workflow.add_edge(analyst_done_nodes, "Analyst Cleanup")
+        for node in analyst_done_nodes:
+            workflow.add_edge(node, "Analyst Cleanup")
         workflow.add_edge("Analyst Cleanup", "Bull Researcher")
 
         # Research debate

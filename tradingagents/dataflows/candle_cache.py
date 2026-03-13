@@ -1,4 +1,9 @@
-"""Simple file-based cache for OHLCV candles. Avoids re-fetching from ccxt every run."""
+"""Simple file-based cache for OHLCV candles. Avoids re-fetching from ccxt every run.
+
+NOTE: ccxt_crypto.py has its own in-memory cache keyed by (symbol, exchange, timeframe, start_date, end_date).
+This file-based cache uses (symbol, timeframe, since_ms, limit) as keys. The two caches don't share state,
+so overlapping date ranges may cause redundant fetches. This is non-breaking but could be unified in the future.
+"""
 
 import json
 import os

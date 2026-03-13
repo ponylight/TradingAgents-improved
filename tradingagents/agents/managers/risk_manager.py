@@ -18,7 +18,7 @@ def create_risk_manager(llm, memory):
 
         risk_debate_state = state["risk_debate_state"]
         history = risk_debate_state["history"]
-        trader_plan = state["investment_plan"]
+        trader_plan = state.get("investment_plan", "")
 
         # Portfolio context
         portfolio_context = state.get("portfolio_context", {})
@@ -64,7 +64,7 @@ def create_risk_manager(llm, memory):
 - What effective leverage does the proposed size imply?
 - At 20x, a 5% move = 100% gain or total loss. At 5x, manageable.
 - >15x on a swing trade = EXTREMELY dangerous. Flag it.
-- Distance to liquidation price: < 2× ATR(4h) = too close.
+- Distance to liquidation price: < 1.5× ATR(4h) = too close.
 
 ### 2. Volatility Risk
 - Current ATR percentile: is the market in a high-vol or low-vol regime?
@@ -99,7 +99,7 @@ def create_risk_manager(llm, memory):
 | Stop-loss required | Must exist | VETO if missing |
 | Max leverage (swing) | 15x | RESIZE if above |
 | Max leverage (position) | 10x | RESIZE if above |
-| Liquidation distance | > 2× ATR(4h) | RESIZE if too close |
+| Liquidation distance | > 1.5× ATR(4h) | RESIZE if too close |
 
 ## Historical Performance (Risk Awareness)
 {performance_feedback}
@@ -151,11 +151,20 @@ position_size_btc: <position size in BTC, e.g. 0.45>
 
 Rules:
 - account_risk_pct MUST be ≤ 1.0 (hard limit). If trader implies more, RESIZE.
-- implied_leverage = notional / (equity × margin_allocation). Must be ≤ 15x swing, ≤ 10x position.
-- liquidation_buffer_pct = 100 / implied_leverage. Must be > 2× stop_distance_pct.
-- position_size_btc = (equity × account_risk_pct) / (entry_price × stop_distance_pct / 100)
+- Canonical leverage formula: implied_leverage = notional / (equity × margin_allocation). Must be ≤ 15x swing, ≤ 10x position.
+- liquidation_buffer_pct = 100 / implied_leverage. Must be > 1.5× stop_distance_pct.
+  Example: at 10x leverage, liquidation_buffer_pct = 100/10 = 10%. If stop_distance_pct = 5%, then 10% > 1.5×5% = 7.5% → OK.
+- position_size_btc = (equity × account_risk_pct / 100) / (entry_price × stop_distance_pct / 100)
+  Example: equity=$50,000, account_risk_pct=1.0, entry=$95,000, stop_distance_pct=2.5 →
+  position_size_btc = (50000 × 0.01) / (95000 × 0.025) = 500 / 2375 = 0.21 BTC
 
-### RISK VERDICT: APPROVED / APPROVED_WITH_ADJUSTMENTS / VETOED
+### Risk Verdict (MANDATORY — output this block for deterministic parsing)
+```
+---RISK_VERDICT---
+VERDICT: APPROVED / APPROVED_WITH_ADJUSTMENTS / VETOED
+REASON: <one-line summary>
+---END_RISK_VERDICT---
+```
 
 If APPROVED: "Risk parameters acceptable. Proceed as proposed."
 If APPROVED_WITH_ADJUSTMENTS: specify EXACTLY what to change (e.g., "Reduce size from 2% to 3% margin to bring leverage from 12x to 7x" or "Tighten stop to $XX,XXX"). Update the RISK_SIZING block to reflect adjustments.

@@ -687,8 +687,10 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
     Results cached for 5 minutes to avoid redundant API calls.
     """
     import time as _time
+    from datetime import datetime as _dt
     now = _time.time()
-    cache_key = symbol
+    # Include date in cache key so same symbol at different times doesn't return stale data
+    cache_key = f"{symbol}:{_dt.utcnow().strftime('%Y-%m-%d')}"
     if _SCAN_CACHE.get("key") == cache_key and _SCAN_CACHE["result"] and (now - _SCAN_CACHE["ts"]) < 300:
         return _SCAN_CACHE["result"]
 
@@ -777,6 +779,6 @@ def scan_all_patterns(symbol: str = "BTC/USDT") -> str:
     # Cache the result
     _SCAN_CACHE["result"] = report
     _SCAN_CACHE["ts"] = _time.time()
-    _SCAN_CACHE["key"] = symbol
+    _SCAN_CACHE["key"] = cache_key
 
     return report

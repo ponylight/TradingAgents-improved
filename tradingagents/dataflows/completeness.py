@@ -47,7 +47,36 @@ def check_ohlcv_completeness(candles: list, timeframe: str = "4h", symbol: str =
             frozen += 1
     if frozen > 2:
         issues.append(f"{frozen}/10 recent candles have identical OHLC (frozen feed?)")
-    
+
+    # Check for backwards timestamps
+    backwards = 0
+    for i in range(1, len(candles)):
+        if candles[i][0] <= candles[i-1][0]:
+            backwards += 1
+    if backwards > 0:
+        issues.append(f"{backwards} backwards/duplicate timestamps detected")
+
+    # Check for extreme price moves (>50% single bar)
+    extreme_moves = 0
+    for c in candles[-20:]:
+        if c[1] > 0:  # open > 0
+            bar_range = abs(c[2] - c[3]) / c[1]  # (high - low) / open
+            if bar_range > 0.5:
+                extreme_moves += 1
+    if extreme_moves > 0:
+        issues.append(f"{extreme_moves}/20 recent candles have >50% price range (extreme move or bad data)")
+
+    # Check for volume spikes (>100x median)
+    if len(candles) >= 20:
+        recent_vols = [c[5] for c in candles[-20:] if c[5] > 0]
+        if len(recent_vols) >= 10:
+            sorted_vols = sorted(recent_vols)
+            median_vol = sorted_vols[len(sorted_vols) // 2]
+            if median_vol > 0:
+                vol_spikes = sum(1 for v in recent_vols if v > median_vol * 100)
+                if vol_spikes > 0:
+                    issues.append(f"{vol_spikes}/20 recent candles have >100x median volume (spike or bad data)")
+
     stats = {
         "candle_count": len(candles),
         "age_hours": round(age_hours, 1),

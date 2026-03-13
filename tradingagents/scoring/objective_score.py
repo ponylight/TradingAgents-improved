@@ -49,9 +49,17 @@ class ScoreBreakdown:
             return "WEAK"
         return "NEUTRAL"
 
-    def conflicts_with(self, agent_decision: str) -> bool:
-        """Check if objective score conflicts with agent's decision."""
+    def conflicts_with(self, agent_decision: str, current_position: str = "NEUTRAL") -> bool:
+        """Check if objective score conflicts with agent's decision.
+
+        Args:
+            agent_decision: The agent's proposed action.
+            current_position: Current position state (NEUTRAL, LONG, SHORT).
+                HOLD while in a position aligned against the signal is NOT a conflict
+                (e.g. HOLD SHORT when signal is BUY is protective, not conflicting).
+        """
         agent = agent_decision.upper().strip()
+        pos = current_position.upper().strip()
         sig = self.signal
 
         # Direct conflicts
@@ -59,9 +67,13 @@ class ScoreBreakdown:
             return True
         if sig == "SELL" and agent in ("BUY", "OPEN_LONG", "REVERSE_TO_LONG"):
             return True
-        # Holding against a strong signal only counts as a conflict when the signal is truly strong.
-        # Moderate scores are common in noisy/choppy conditions and should not force action by themselves.
+        # HOLD/STAY_NEUTRAL against a strong signal — but NOT if holding a position
+        # that opposes the signal (e.g. HOLD SHORT during BUY is protective, not conflicting)
         if self.strength == "STRONG" and agent in ("HOLD", "STAY_NEUTRAL"):
+            if sig == "BUY" and pos == "SHORT":
+                return False  # Holding short is protective, not a conflict
+            if sig == "SELL" and pos == "LONG":
+                return False  # Holding long is protective, not a conflict
             return True
         return False
 
@@ -72,8 +84,8 @@ def score_technical(brief) -> float:
     weights = 0.0
 
     for tf in brief.timeframes:
-        # Weight: 1d=3, 4h=2, 1h=1
-        w = {"1d": 3.0, "4h": 2.0, "1h": 1.0}.get(tf.timeframe, 1.0)
+        # Weight: 1d=2, 4h=2, 1h=1 (balanced daily/4h to avoid daily over-dominance)
+        w = {"1d": 2.0, "4h": 2.0, "1h": 1.0}.get(tf.timeframe, 1.0)
 
         tf_score = 0.0
 
@@ -126,15 +138,15 @@ def score_momentum(brief) -> float:
     weights = 0.0
 
     for tf in brief.timeframes:
-        w = {"1d": 3.0, "4h": 2.0, "1h": 1.0}.get(tf.timeframe, 1.0)
+        w = {"1d": 2.0, "4h": 2.0, "1h": 1.0}.get(tf.timeframe, 1.0)
         tf_score = 0.0
 
         # RSI
         rsi = tf.momentum.rsi_value
         if rsi > 70:
             tf_score -= 30  # Overbought
-        elif rsi > 60:
-            tf_score -= 10
+        elif rsi > 65:
+            tf_score -= 5  # Slightly overbought but not bearish in uptrends
         elif rsi < 30:
             tf_score += 30  # Oversold
         elif rsi < 40:
@@ -175,7 +187,7 @@ def score_volume(brief) -> float:
     weights = 0.0
 
     for tf in brief.timeframes:
-        w = {"1d": 3.0, "4h": 2.0, "1h": 1.0}.get(tf.timeframe, 1.0)
+        w = {"1d": 2.0, "4h": 2.0, "1h": 1.0}.get(tf.timeframe, 1.0)
         tf_score = 0.0
 
         # Volume/MA ratio — high volume confirms trend
@@ -213,16 +225,16 @@ def score_sentiment(sentiment_data: Optional[Dict] = None) -> float:
 
     score = 0.0
 
-    # Funding rate — most important real-time signal
+    # Funding rate — capped at ±12 to prevent single-metric dominance
     funding = sentiment_data.get("funding_rate", 0)
     if funding > 0.01:
-        score -= 20  # Longs paying heavily — overextended
+        score -= 12  # Longs paying heavily — overextended
     elif funding > 0.005:
-        score -= 10
+        score -= 6
     elif funding < -0.005:
-        score += 20  # Shorts paying — squeeze potential
+        score += 12  # Shorts paying — squeeze potential
     elif funding < 0:
-        score += 10
+        score += 6
 
     # OI change
     oi_change = sentiment_data.get("oi_change_pct", 0)

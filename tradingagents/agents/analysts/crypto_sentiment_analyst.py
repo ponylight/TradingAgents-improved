@@ -33,7 +33,8 @@ def create_crypto_sentiment_analyst(llm):
         current_date = state["trade_date"]
         ticker = state["company_of_interest"]
 
-        # Pre-fetch social sentiment (real-time, no LLM needed)
+        # Pre-fetch social sentiment (keyword-based, no LLM tool call).
+        # Injected into the system prompt as context — LLM sees it but doesn't call a tool for it.
         social_fallback = False
         try:
             social_data = get_social_sentiment_enhanced(llm=llm)
@@ -69,15 +70,18 @@ You own TWO data domains: derivatives positioning AND social sentiment.
 
 {quality_header}
 {fallback_warning}
-## Pre-Fetched Social Sentiment (from Reddit crypto communities)
+## Pre-Fetched Social Sentiment (from Reddit crypto communities — MEDIUM WEIGHT)
+This data was gathered via keyword analysis of Reddit posts, NOT via a tool call.
+Weight it BELOW positioning data but ABOVE Fear & Greed. If social mood diverges
+from positioning signals, note the divergence but trust positioning.
 {social_report}
 
 ## Tools You MUST Call
 Call ALL of these tools before writing your report:
 1. get_funding_rate — **PRIMARY**: shows who's paying whom, directional bias of leveraged traders
 2. get_oi_timeseries — **PRIMARY**: OI over last 6 4H candles with change rate and direction (building/unwinding). PREFERRED over get_open_interest.
-3. get_open_interest — **BACKUP**: single OI snapshot. Use only if get_oi_timeseries fails.
-4. get_crypto_fear_greed — **SUPPLEMENTARY ONLY**: this is a lagged, composite index. Do NOT anchor your verdict on it. Note the value but weight it LOW relative to funding and OI.
+3. get_open_interest — **BACKUP**: single OI snapshot. Use only if get_oi_timeseries fails or returns incomplete data.
+4. get_crypto_fear_greed — **SUPPLEMENTARY ONLY**: returns `fear_greed_value` (0-100) and `fear_greed_label`. This is a lagged, composite index. Do NOT anchor your verdict on it. Note the value but weight it LOW relative to funding and OI.
 
 ## Analysis Priority (STRICT ORDER)
 Your verdict should be driven primarily by POSITIONING DATA (funding + OI),
@@ -106,7 +110,7 @@ Do NOT output FINAL TRANSACTION PROPOSAL. You report sentiment, not trade decisi
         messages = [
             SystemMessage(content=system_message),
             HumanMessage(content=f"Analyze current sentiment and positioning for {ticker}. "
-                         f"Call all three tools, then synthesize with the pre-fetched social data."),
+                         f"Call all four tools (get_funding_rate, get_oi_timeseries, get_open_interest, get_crypto_fear_greed), then synthesize with the pre-fetched social data above."),
         ]
 
         # Agentic tool-calling loop

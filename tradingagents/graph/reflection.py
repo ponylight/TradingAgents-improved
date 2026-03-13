@@ -99,6 +99,6 @@ Be specific. Vague lessons like "be more careful" are useless. Cite numbers, ind
 
     def reflect_fund_manager(self, current_state, returns_losses, fund_manager_memory):
         situation = self._extract_current_situation(current_state)
-        fund_decision = current_state.get("fund_manager_decision", current_state.get("final_trade_decision", ""))
+        fund_decision = current_state.get("fund_manager_decision", "")
         result = self._reflect_on_component("FUND MANAGER", fund_decision, situation, returns_losses)
         fund_manager_memory.add_situations([(situation, result)])

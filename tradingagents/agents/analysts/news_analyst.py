@@ -50,6 +50,7 @@ def create_news_analyst(llm):
             geo_generated_at = geo_data.get("generated_at")
         except Exception as e:
             log.warning(f"Geopolitical news fetch failed: {e}")
+            geo_data = {}
             geo_report = "Geopolitical news unavailable."
             alert_count = 0
             geo_fallback = True
@@ -77,22 +78,38 @@ def create_news_analyst(llm):
             )
             log.warning(f"⚠️ News staleness gate triggered: {age_str} old")
 
+        # Safe source count extraction (geo_data always defined — use isinstance guard)
+        sources_fetched = geo_data.get('sources_fetched', 0) if isinstance(geo_data, dict) else 0
+
+        quality_degraded_note = ""
+        if quality_score["quality"] == DataQuality.DEGRADED:
+            quality_degraded_note = (
+                "\n⚠️ DATA DEGRADED: Some news sources returned errors or partial data. "
+                "Cap confidence by one level if key sources are missing.\n"
+            )
+
         system_message = f"""You are a senior crypto news and macro analyst for BTC.
 
 {quality_header}
-{staleness_warning}
+{staleness_warning}{quality_degraded_note}
 ## Pre-Fetched Geopolitical & Market Intelligence
-REAL-TIME data from {geo_data.get('sources_fetched', 0) if 'geo_data' in dir() else '?'} news sources + GDELT.
+Data from {sources_fetched} news sources + GDELT.
 {"⚠️ " + str(alert_count) + " GEOPOLITICAL ALERTS — prioritize these." if alert_count > 0 else "No active geopolitical alerts."}
 
 {geo_report}
 
-## Tools Available (call the macro ones to supplement news)
-- get_dollar_index — DXY level and trend
-- get_yields — US Treasury yield curve
-- get_sp500 — S&P 500 risk appetite
-- get_economic_data — FRED data (CPI, M2, UNRATE)
-- get_economic_calendar — upcoming FOMC, CPI, jobs reports
+## Tools You MUST Call
+Call the macro tools to get quantitative data. Also use get_news/get_global_news for additional headlines:
+- **get_news** — crypto-specific news for the asset (pass ticker and date range)
+- **get_global_news** — broader market headlines (pass current date)
+- **get_dollar_index** — DXY level and trend (CALL THIS)
+- **get_yields** — US Treasury yield curve (CALL THIS)
+- **get_sp500** — S&P 500 risk appetite
+- **get_economic_data** — FRED data (CPI, M2, UNRATE, FEDFUNDS)
+- **get_economic_calendar** — upcoming FOMC, CPI, jobs reports (CALL THIS)
+
+You SHOULD call at least get_dollar_index, get_yields, and get_economic_calendar.
+If tool calls fail, proceed with the pre-fetched data above and flag the gap.
 
 ## Data Quality — You Are a Professional
 Before analyzing, audit every data point. If news data shows quality issues
@@ -102,11 +119,12 @@ MUST be capped as instructed.
 
 ## Analysis Framework
 1. **Data Quality**: Clean / Degraded (with specifics if degraded)
-2. Macro Environment: risk-on or risk-off? Liquidity expanding or contracting?
-3. Top Events: ranked by BTC impact (from pre-fetched news above)
-4. Primary Catalyst: the ONE thing that matters most right now
-5. Upcoming Events: next 48h calendar items (from tools)
-6. Overall News/Macro Verdict: BULLISH / NEUTRAL / BEARISH
+2. **Macro Regime**: classify as Risk-On / Risk-Off / Transitioning based on DXY, yields, S&P 500
+3. **Liquidity**: Expanding / Contracting / Neutral (M2, Fed policy, yield curve)
+4. Top Events: ranked by BTC impact (from pre-fetched news above)
+5. Primary Catalyst: the ONE thing that matters most right now
+6. Upcoming Events: next 48h calendar items (from tools)
+7. Overall News/Macro Verdict: BULLISH / NEUTRAL / BEARISH
 
 Current date: {current_date}. Asset: {ticker}.
 Do NOT output FINAL TRANSACTION PROPOSAL. You report events and macro, not trade decisions."""
@@ -114,8 +132,9 @@ Do NOT output FINAL TRANSACTION PROPOSAL. You report events and macro, not trade
         messages = [
             SystemMessage(content=system_message),
             HumanMessage(content=f"Analyze the current news and macro environment for {ticker}. "
-                         f"The pre-fetched headlines are above. Call macro tools (DXY, yields, economic_calendar) "
-                         f"to get quantitative data, then synthesize your report."),
+                         f"The pre-fetched headlines are above. Call get_dollar_index, get_yields, "
+                         f"get_economic_calendar, and optionally get_news/get_global_news for additional data. "
+                         f"Then synthesize your report with macro regime classification."),
         ]
 
         # Agentic tool-calling loop

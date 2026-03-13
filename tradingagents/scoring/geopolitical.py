@@ -38,11 +38,11 @@ TIER3_MODERATE = [
 
 # Geopolitical actors that amplify severity when combined with keywords
 ACTORS = [
-    r"\b(?:US|USA|United\s+States|America)\b",
+    r"\b(?:US|USA|United\s+States)\b", r"\bAmeric(?:a|an)\s+(?:military|government|forces|sanctions)\b",
     r"\bChina\b", r"\bRussia\b", r"\bIran\b", r"\bIsrael\b",
     r"\bNorth\s+Korea\b", r"\bUkraine\b", r"\bTaiwan\b",
-    r"\bNATO\b", r"\bEU\b", r"\bOPEC\b",
-    r"\bMiddle\s+East\b", r"\bGulf\b", r"\bSouth\s+China\s+Sea\b",
+    r"\bNATO\b", r"\bE\.?U\.?\b", r"\bOPEC\b",
+    r"\bMiddle\s+East\b", r"\bPersian\s+Gulf\b", r"\bSouth\s+China\s+Sea\b",
 ]
 
 
@@ -83,11 +83,16 @@ def detect_geopolitical_events(texts: List[str]) -> Tuple[float, List[str]]:
             base = -10
 
         # Amplify if major geopolitical actors are involved
+        # Cap amplified score so lower tiers cannot exceed next-higher tier base
         actor_hits = [p for p in ACTORS if re.search(p, text, re.IGNORECASE)]
+        unamplified = base
         if len(actor_hits) >= 2:
-            base *= 1.5  # Two major actors = amplified
+            base *= 1.5
         elif len(actor_hits) >= 1:
             base *= 1.2
+        # Prevent tier inversion: amplified T3 must not exceed T2 base, etc.
+        tier_cap = -40 if tier1_hits else -20 if tier2_hits else -15
+        base = max(base, tier_cap)  # both are negative, so max picks the less severe
 
         total_severity += base
 

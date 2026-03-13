@@ -68,6 +68,24 @@ def score_report(
             except (ValueError, TypeError):
                 pass
 
+    # --- Check for implausible technical values ---
+    import math
+    _anomaly_patterns = {
+        r"VWAP z-score:\s*([-\d.]+)": lambda v: math.isnan(v) or math.isinf(v) or abs(v) > 10,
+        r"RSI:\s*([-\d.]+)": lambda v: math.isnan(v) or math.isinf(v) or v < 0 or v > 100,
+        r"Stoch K:\s*([-\d.]+)": lambda v: math.isnan(v) or math.isinf(v) or v < 0 or v > 100,
+        r"Stoch D:\s*([-\d.]+)": lambda v: math.isnan(v) or math.isinf(v) or v < 0 or v > 100,
+    }
+    for pattern, check_fn in _anomaly_patterns.items():
+        m = re.search(pattern, report)
+        if m:
+            try:
+                val = float(m.group(1))
+                if check_fn(val):
+                    issues.append(f"Implausible value: {pattern.split(':')[0].strip()} = {val}")
+            except (ValueError, TypeError):
+                pass
+
     # --- Check for failure indicators ---
     failure_patterns = [
         r"(?i)error fetching",
