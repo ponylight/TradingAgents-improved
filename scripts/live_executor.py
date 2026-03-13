@@ -1856,7 +1856,19 @@ def run_agents(ta, trade_date, portfolio_context=None, analysts_to_run=None, ana
             decision = "BUY"
         elif action == "OPEN_SHORT":
             decision = "SELL"
-        elif action in ("CLOSE", "HOLD"):
+        elif action == "CLOSE":
+            # FM wants to close existing position — determine direction
+            current_pos = (portfolio_context or {}).get("position", "none")
+            if "long" in current_pos.lower():
+                decision = "CLOSE_LONG"
+                log.info("🏛️ Fund Manager: CLOSE existing LONG position")
+            elif "short" in current_pos.lower():
+                decision = "CLOSE_SHORT"
+                log.info("🏛️ Fund Manager: CLOSE existing SHORT position")
+            else:
+                decision = "HOLD"  # No position to close
+                log.info("🏛️ Fund Manager: CLOSE but no position open — treating as HOLD")
+        elif action == "HOLD":
             decision = "HOLD"
         elif action in ("LONG", "SHORT", "NEUTRAL"):
             # TradingModeConfig standardized signals

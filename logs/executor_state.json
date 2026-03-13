@@ -1,5 +1,5 @@
 {
-  "last_run": "2026-03-13T08:15:46.227068+00:00",
+  "last_run": "2026-03-13T12:15:56.318468+00:00",
   "last_decision": "HOLD",
   "trades": [
     {
@@ -524,10 +524,26 @@
       "validation_warnings": null,
       "was_overridden": false,
       "transition": "HOLD"
+    },
+    {
+      "timestamp": "2026-03-13T12:15:56.318468+00:00",
+      "decision": "HOLD",
+      "original_decision": null,
+      "equity": 150264.19342199,
+      "params": {
+        "confidence": 7,
+        "risk_pct": 0.0
+      },
+      "objective_score": 9.7,
+      "objective_signal": "NEUTRAL",
+      "geo_severity": null,
+      "validation_warnings": null,
+      "was_overridden": false,
+      "transition": "HOLD"
     }
   ],
-  "last_decision_reasoning": "## Fund Manager Decision\n\n### 1. INDEPENDENT OBSERVATION\n\nThe round-trip cost of this trade needs acknowledgment. Entry fees + exit fees on Bybit (taker ~0.055% each side) total ~0.11%, meaning the +0.17% gross P&L nets to roughly **+0.06% after fees** \u2014 effectively a scratch trade. The real cost isn't monetary; it's the process failure that allowed a 0.47x vol_ma_ratio entry to slip past in the first place. I note that this is the **third consecutive sub-1% outcome** following the -0.98% and -0",
-  "last_decision_time": "2026-03-13T08:15:46.227068+00:00",
+  "last_decision_reasoning": "## 1. INDEPENDENT OBSERVATION\n\nExecution timing matters here. BTC just printed +2.66% intraday \u2014 this is likely driven by short liquidations given the OI surge (+6.3% in 28h) and funding flip. Post-squeeze price action typically sees a retracement within 4-8 hours as the mechanical buying exhausts. If we delay this close, we risk giving back the +0.98% to a natural mean-reversion before FOMC even becomes the issue. The window to exit near the top of this squeeze is narrow \u2014 every hour of hesitat",
+  "last_decision_time": "2026-03-13T12:15:56.318468+00:00",
   "starting_equity": 153885.33,
   "closed_trades": [],
   "positions": {
@@ -553,7 +569,7 @@
     "initial_tp2": 74800.0,
     "tp_orders": [],
     "tp1_hit": false,
-    "trailing_stop": 64859.21428571429,
+    "trailing_stop": 65653.17285714285,
     "opened_at": "2026-03-13T06:52:41.670483+00:00",
     "confidence": 7,
     "atr_at_entry": 3301.892857142856,
@@ -561,7 +577,7 @@
     "needs_protection_retry": false,
     "manual_open": true,
     "leverage_capped": true,
-    "max_favorable_pct": 0.52,
-    "mfe_price": 71647.7
+    "max_favorable_pct": 1.79,
+    "mfe_price": 72551.8
   }
 }
