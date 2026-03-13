@@ -241,7 +241,7 @@ def get_economic_calendar_summary() -> str:
                 if delta <= 0:
                     lines.append(f"⚠️ FOMC rate decision TODAY/YESTERDAY ({m}/{d})")
                 elif delta <= 3:
-                    lines.append(f"⚠️ FOMC rate decision in {delta} days ({m}/{d}) — reduce size")
+                    lines.append(f"FOMC rate decision in {delta} days ({m}/{d}) — see FedWatch probabilities below")
                 elif delta <= 14:
                     lines.append(f"FOMC in {delta} days ({m}/{d})")
                 next_fomc = (m, d, delta)

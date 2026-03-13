@@ -84,7 +84,7 @@ def create_risk_manager(llm, memory):
 - If stop is near a liquidation cluster → recommend wider stop or smaller size.
 
 ### 5. Event Risk
-- FOMC, CPI, jobs report within 24h? Binary event → require smaller size or wait.
+- FOMC, CPI, jobs report within 24h? Check if the outcome is already priced in (see FedWatch probabilities). If consensus is >90%, it's not a binary event — trade normally. Only reduce size if the market is genuinely uncertain (e.g., 40-60% split).
 - Regulatory hearings, ETF decisions, major protocol upgrades?
 - Weekend approaching with open position?
 
