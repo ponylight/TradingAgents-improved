@@ -284,6 +284,100 @@ def get_crypto_open_interest(
         raise DataFetchError(f"Error fetching open interest: {e}") from e
 
 
+def get_crypto_oi_timeseries(
+    symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
+    exchange_id: str = "bybit",
+    periods: int = 6,
+) -> str:
+    """Get OI time-series over recent intervals (default: last 6 × 4H candles).
+
+    Returns OI at each timestamp plus:
+    - Change rate (% per period)
+    - Direction: BUILDING (OI rising), UNWINDING (OI falling), FLAT
+    - Total change over the window
+    """
+    import urllib.request
+
+    bybit_symbol = symbol.replace("/", "").replace(":USDT", "")
+    try:
+        # Fetch 5min-interval OI snapshots — 6 periods × 48 intervals/4h = 288 for 6 × 4h
+        # But Bybit /open-interest endpoint has limited granularity. Use 1h interval, fetch enough for ~24h.
+        limit = min(periods * 4, 48)  # 4 × 1h snapshots per 4H candle
+        r = urllib.request.urlopen(
+            f"https://api.bybit.com/v5/market/open-interest"
+            f"?category=linear&symbol={bybit_symbol}&intervalTime=1h&limit={limit}",
+            timeout=10,
+        )
+        data = json.loads(r.read())
+
+        if data["retCode"] != 0 or not data["result"]["list"]:
+            return f"No OI time-series data for {symbol}"
+
+        oi_list = data["result"]["list"]  # newest first
+
+        lines = [f"# Open Interest Time-Series for {symbol} ({exchange_id})\n"]
+        lines.append(f"## Last {len(oi_list)} hourly snapshots (newest first)\n")
+
+        # Parse all OI values with timestamps
+        oi_points = []
+        for entry in oi_list:
+            ts_ms = int(entry["timestamp"])
+            oi_val = float(entry["openInterest"])
+            ts_str = datetime.fromtimestamp(ts_ms / 1000).strftime("%Y-%m-%d %H:%M")
+            oi_points.append((ts_str, oi_val, ts_ms))
+
+        # Display each point with period-over-period change
+        for i, (ts_str, oi_val, _) in enumerate(oi_points):
+            if i < len(oi_points) - 1:
+                prev_oi = oi_points[i + 1][1]
+                change_pct = ((oi_val - prev_oi) / prev_oi * 100) if prev_oi else 0
+                lines.append(f"  {ts_str}: {oi_val:,.2f} BTC ({change_pct:+.2f}%)")
+            else:
+                lines.append(f"  {ts_str}: {oi_val:,.2f} BTC (baseline)")
+
+        # Compute summary statistics
+        newest_oi = oi_points[0][1]
+        oldest_oi = oi_points[-1][1]
+        total_change_pct = ((newest_oi - oldest_oi) / oldest_oi * 100) if oldest_oi else 0
+
+        # Determine direction
+        if total_change_pct > 2.0:
+            direction = "BUILDING"
+            interpretation = "OI rising — new positions entering, conviction building"
+        elif total_change_pct < -2.0:
+            direction = "UNWINDING"
+            interpretation = "OI falling — positions closing, conviction fading"
+        else:
+            direction = "FLAT"
+            interpretation = "OI stable — no significant positioning shift"
+
+        # Calculate change rate per 4H period
+        hours_span = (oi_points[0][2] - oi_points[-1][2]) / 1000 / 3600
+        periods_4h = max(hours_span / 4, 1)
+        rate_per_4h = total_change_pct / periods_4h
+
+        lines.append(f"\n## Summary")
+        lines.append(f"Current OI: {newest_oi:,.2f} BTC")
+        lines.append(f"Window OI: {oldest_oi:,.2f} → {newest_oi:,.2f} BTC")
+        lines.append(f"Total change: {total_change_pct:+.2f}%")
+        lines.append(f"Rate: {rate_per_4h:+.2f}% per 4H candle")
+        lines.append(f"Direction: {direction}")
+        lines.append(f"Interpretation: {interpretation}")
+
+        # Flag significant moves
+        if abs(total_change_pct) > 5:
+            lines.append(f"\n⚠️ SIGNIFICANT OI {'BUILD-UP' if total_change_pct > 0 else 'FLUSH'}: {total_change_pct:+.1f}% — watch for squeeze")
+        elif abs(total_change_pct) > 3:
+            lines.append(f"\n📊 Notable OI shift: {total_change_pct:+.1f}%")
+
+        lines.append(f"\nTimestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        return "\n".join(lines)
+
+    except Exception as e:
+        raise DataFetchError(f"Error fetching OI time-series: {e}") from e
+
+
 def get_crypto_orderbook(
     symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
     depth: int = 20,

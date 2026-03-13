@@ -19,8 +19,8 @@ import pandas as pd
 _log = logging.getLogger("crypto_technical_brief")
 
 from .ta_schema import (
-    AVWAPLevel, Direction, KeyLevel, MarketStructure, MomentumState,
-    SignalSummary, Strength, TechnicalBrief, TimeframeBrief,
+    AVWAPLevel, CrossTFResolution, Direction, KeyLevel, MarketStructure,
+    MomentumState, SignalSummary, Strength, TechnicalBrief, TimeframeBrief,
     TrendState, VolatilityState, VolumeState, VWAPState,
 )
 
@@ -44,8 +44,11 @@ def _rsi(close, period=14):
 def _stoch_rsi(close, period=14, k=3, d=3):
     rsi = _rsi(close, period)
     mn, mx = rsi.rolling(period).min(), rsi.rolling(period).max()
-    st = ((rsi - mn) / (mx - mn)) * 100
-    return st.rolling(k).mean(), st.rolling(k).mean().rolling(d).mean()
+    rng = mx - mn
+    st = ((rsi - mn) / rng.replace(0, np.nan)) * 100
+    k_line = st.rolling(k, min_periods=1).mean()
+    d_line = k_line.rolling(d, min_periods=1).mean()
+    return k_line, d_line
 
 def _adx(high, low, close, period=14):
     pdm = high.diff().clip(lower=0)
@@ -364,8 +367,13 @@ def detect_momentum(df):
 def detect_vwap_state(df):
     c,v=df["close"].iloc[-1],df["vwap"].iloc[-1]
     if pd.isna(v) or v==0: return VWAPState(position="at",zscore_distance=0.0)
-    s=df["close"].iloc[-20:].std()
-    z=(c-v)/s if s and s>0 else 0.0
+    # Z-score: use std of (close - vwap) residuals over same 20-bar window
+    # This measures how unusual the current deviation is vs recent deviations
+    residuals = df["close"] - df["vwap"]
+    s = residuals.iloc[-20:].std()
+    z = float(residuals.iloc[-1]) / s if s and s > 0 else 0.0
+    # Clamp to [-5, +5] to prevent nonsensical extremes
+    z = max(-5.0, min(5.0, z))
     p="at" if abs(z)<0.3 else "above" if z>0 else "below"
     avwaps = compute_avwap_levels(df)
     # Detect AVWAP convergence artifact: all levels within 0.5% = unreliable S/R
@@ -396,8 +404,24 @@ def detect_volume(df):
     # Use second-to-last bar to avoid incomplete candle skewing ratios
     idx = -2 if len(df) >= 3 else -1
     vl=float(df["volume"].iloc[idx])
-    vs=float(df["vol_sma_20"].iloc[idx]) if not pd.isna(df["vol_sma_20"].iloc[idx]) else 1.0
+    vs=float(df["vol_sma_20"].iloc[idx]) if not pd.isna(df["vol_sma_20"].iloc[idx]) else 0.0
+    # Fallback: if SMA is 0/NaN (insufficient data), use median of available volume
+    if vs <= 0:
+        valid_vol = df["volume"].iloc[:idx+1 if idx != -1 else len(df)].dropna()
+        vs = float(valid_vol.median()) if len(valid_vol) >= 5 else 1.0
     vr=vl/vs if vs>0 else 1.0
+    # Guard against nonsensical ratios from data gaps
+    if vr < 0.05:
+        # Suspiciously low — use median-based ratio as fallback
+        window = df["volume"].iloc[max(0,idx-19):idx+1 if idx != -1 else len(df)]
+        med = float(window.median()) if len(window) >= 5 else vs
+        vr_med = vl / med if med > 0 else vr
+        if vr_med > vr:
+            _log.warning(
+                f"⚠️ VOL/MA RATIO LOW: SMA-based={vr:.3f}, median-based={vr_med:.3f} "
+                f"(vol={vl:.0f}, sma20={vs:.0f}, median={med:.0f}) — using median"
+            )
+            vr = vr_med
     sr=df["vol_sma_20"].iloc[-6:-1] if len(df) >= 7 else df["vol_sma_20"].tail(5)
     sl=(sr.iloc[-1]/sr.iloc[0])-1 if len(sr)>=5 and sr.iloc[0]>0 else 0
     vt="up" if sl>0.05 else "down" if sl<-0.05 else "flat"
@@ -479,6 +503,56 @@ def generate_signal_summary(briefs, levels):
     conf="high" if al and mc>=1 else "medium" if bu>=2 or be>=2 else "low"
     return SignalSummary(setup=setup,confidence=conf,description=desc)
 
+# ── Cross-Timeframe Contradiction Resolver ──
+
+_TF_WEIGHTS = {"1d": 3, "4h": 2, "1h": 1}
+
+def resolve_cross_timeframe(briefs: List[TimeframeBrief]) -> CrossTFResolution:
+    """Weighted vote across timeframes to resolve directional contradictions.
+
+    Weights: 1d=3, 4h=2, 1h=1.  Higher timeframes dominate.
+    """
+    if not briefs:
+        return CrossTFResolution(resolved_direction="neutral", has_contradiction=False, details="no data")
+
+    score = 0.0  # positive=bullish, negative=bearish
+    parts = []
+    for b in briefs:
+        w = _TF_WEIGHTS.get(b.timeframe, 1)
+        d = b.trend.direction
+        if d == Direction.BULLISH:
+            score += w
+        elif d == Direction.BEARISH:
+            score -= w
+        parts.append(f"{b.timeframe}={d.value}(w{w})")
+
+    total_w = sum(_TF_WEIGHTS.get(b.timeframe, 1) for b in briefs)
+    # Detect contradiction: not all timeframes agree
+    dirs = set(b.trend.direction for b in briefs)
+    has_contradiction = len(dirs) > 1 and Direction.NEUTRAL not in dirs or (
+        len(dirs) == 3  # all three disagree somehow
+    )
+
+    # Resolve: need >50% weighted score for directional call
+    threshold = total_w * 0.3  # 30% of max weight needed
+    if score > threshold:
+        resolved = "bullish"
+    elif score < -threshold:
+        resolved = "bearish"
+    else:
+        resolved = "neutral"
+
+    detail = f"{', '.join(parts)} → weighted_score={score:+.0f}/{total_w} → {resolved}"
+    if has_contradiction:
+        _log.warning(f"⚠️ CROSS-TF CONTRADICTION: {detail}")
+
+    return CrossTFResolution(
+        resolved_direction=resolved,
+        has_contradiction=has_contradiction,
+        details=detail,
+    )
+
+
 # ── Main ──
 
 def build_crypto_technical_brief(symbol="BTC/USDT"):
@@ -511,6 +585,9 @@ def build_crypto_technical_brief(symbol="BTC/USDT"):
             mtf_parts.append(f"{b.ema_alignment.title()} on {b.timeframe}")
     mtf_summary = "MTF EMA Alignment: " + ", ".join(mtf_parts) if mtf_parts else "MTF EMA Alignment: Mixed"
 
+    # Cross-timeframe contradiction resolution
+    cross_tf = resolve_cross_timeframe(tbs)
+
     return TechnicalBrief(symbol=symbol,generated_at=datetime.now(timezone.utc).isoformat(timespec="seconds"),
                          timeframes=tbs,key_levels=levels,signal_summary=signal,raw_prices=rp,
-                         mtf_ema_alignment=mtf_summary)
+                         mtf_ema_alignment=mtf_summary,cross_tf_resolution=cross_tf)

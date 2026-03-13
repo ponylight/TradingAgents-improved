@@ -97,6 +97,9 @@ Net exposure should always be intentional, never accidental.
 - Risk Judge VETOED → you MUST reject. No override. Ever.
 - No stop-loss defined → reject
 - Missing confidence score or thesis → reject (process failure)
+- Missing ---RISK_SIZING--- block from Risk Judge → reject (process failure)
+- account_risk_pct > 1.0% → reject (hard limit breach)
+- implied_leverage > 15x → reject (hard limit breach)
 
 ### Automatic APPROVE:
 - Risk Judge APPROVED + Trader HOLD with reaffirmed thesis → approve HOLD
@@ -133,6 +136,14 @@ Each HOLD is a capital allocation decision — own it with the same rigor as a t
 ## Risk Judge's Assessment
 {_extract_risk_decision(risk_decision)}
 
+## Risk Sizing Validation (YOU MUST CHECK)
+Before approving any trade, verify the Risk Judge provided a ---RISK_SIZING--- block with:
+- account_risk_pct ≤ 1.0%
+- implied_leverage ≤ 15x (swing) / 10x (position)
+- liquidation_buffer_pct > 2× stop_distance_pct
+- position_size_btc is reasonable for current equity
+If ANY field is missing or breaches limits, REJECT with reason "risk sizing incomplete/invalid".
+
 ## Required Output — Mandatory Sections
 
 Your response MUST include ALL three of the following before the structured block:
@@ -166,6 +177,22 @@ Keep it short. You are an approver, not an analyst. The work is already done —
 
         parsed = _parse_fund_decision(fund_decision)
         parsed = _validate_fund_decision(fund_decision, parsed)
+
+        # Validate risk sizing from upstream Risk Judge
+        risk_sizing = _parse_risk_sizing(risk_decision)
+        if risk_sizing:
+            parsed["risk_sizing"] = risk_sizing
+            sizing_issue = _validate_risk_sizing(risk_sizing)
+            if sizing_issue and parsed.get("action") in ("OPEN_LONG", "OPEN_SHORT"):
+                log.warning(f"FM RISK SIZING REJECT: {sizing_issue}")
+                parsed["action"] = "HOLD"
+                parsed["reason"] = f"OVERRIDDEN: risk sizing invalid — {sizing_issue}"
+                parsed["_sizing_rejected"] = True
+        elif parsed.get("action") in ("OPEN_LONG", "OPEN_SHORT"):
+            log.warning("FM: No ---RISK_SIZING--- block found in Risk Judge output — trade blocked")
+            parsed["_sizing_missing"] = True
+            # Don't auto-reject here — the LLM prompt already instructs rejection
+
         log.info(f"Fund Manager: {parsed.get('action', 'UNKNOWN')} — {parsed.get('reason', 'N/A')}")
 
         return {
@@ -240,5 +267,49 @@ def _validate_fund_decision(full_text, parsed):
         parsed['action'] = 'HOLD'
         parsed['reason'] = f'OVERRIDDEN: reasoning/block contradiction (block said {action}, reasoning said HOLD)'
         parsed['_contradiction_detected'] = True
-    
+
     return parsed
+
+
+def _parse_risk_sizing(risk_text: str) -> dict:
+    """Extract ---RISK_SIZING--- block from Risk Judge output."""
+    if not risk_text:
+        return {}
+    block = re.search(r'---RISK_SIZING---(.*?)---END_RISK_SIZING---', risk_text, re.DOTALL)
+    if not block:
+        return {}
+    sizing = {}
+    fields = [
+        ("account_risk_pct", float),
+        ("stop_distance_pct", float),
+        ("implied_leverage", float),
+        ("liquidation_buffer_pct", float),
+        ("position_size_btc", float),
+    ]
+    for key, cast in fields:
+        m = re.search(rf'{key}:\s*([\d.]+)', block.group(1))
+        if m:
+            try:
+                sizing[key] = cast(m.group(1))
+            except (ValueError, TypeError):
+                pass
+    return sizing
+
+
+def _validate_risk_sizing(sizing: dict) -> str:
+    """Validate risk sizing values. Returns error string or empty string if OK."""
+    if not sizing:
+        return "no sizing fields parsed"
+    required = ["account_risk_pct", "stop_distance_pct", "implied_leverage", "position_size_btc"]
+    missing = [f for f in required if f not in sizing]
+    if missing:
+        return f"missing fields: {', '.join(missing)}"
+    if sizing["account_risk_pct"] > 1.5:  # Allow small float above 1.0 for rounding
+        return f"account_risk_pct={sizing['account_risk_pct']:.1f}% exceeds 1% hard limit"
+    if sizing["implied_leverage"] > 16:  # Allow small float above 15x for rounding
+        return f"implied_leverage={sizing['implied_leverage']:.1f}x exceeds 15x hard limit"
+    liq_buf = sizing.get("liquidation_buffer_pct", 0)
+    stop_dist = sizing.get("stop_distance_pct", 0)
+    if liq_buf > 0 and stop_dist > 0 and liq_buf < 2 * stop_dist:
+        return f"liquidation_buffer={liq_buf:.1f}% < 2× stop_distance={stop_dist:.1f}%"
+    return ""

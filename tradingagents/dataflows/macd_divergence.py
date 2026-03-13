@@ -248,28 +248,39 @@ def _check_divergence(
         desc_hist = "shrinking green bars" if divergence_type == "bearish" else "shrinking red bars"
 
         # === Price Range Proximity Filter ===
-        # If divergence price points span too wide a range relative to current price,
-        # the pattern is too stale/broad to be actionable.
+        # Divergence anchor points must be within a reasonable % of current price
+        # and within a reasonable number of candles to be actionable.
         current_price = float(close.iloc[-1])
         range_base = min(p1_price, p3_price) if min(p1_price, p3_price) > 0 else 1
         price_range_pct = abs(p3_price - p1_price) / range_base * 100
         max_distance_pct = abs(p1_price - current_price) / current_price * 100 if current_price > 0 else 0
-        
-        if price_range_pct > 30:
+
+        if price_range_pct > 20:
             log.info(
                 f"ℹ️ MACD divergence discarded: price range {p1_price:.0f}→{p3_price:.0f} "
-                f"spans {price_range_pct:.1f}% (>30%) — too broad to be actionable"
+                f"spans {price_range_pct:.1f}% (>20%) — too broad to be actionable"
             )
             continue
-        if max_distance_pct > 50:
+        if max_distance_pct > 30:
             log.info(
                 f"ℹ️ MACD divergence discarded: 1st point ${p1_price:.0f} is "
                 f"{max_distance_pct:.1f}% from current ${current_price:.0f} — too distant"
             )
             continue
-        if price_range_pct > 20:
+        if price_range_pct > 15:
             confidence = max(0, confidence - 2)
             log.info(f"ℹ️ MACD divergence confidence penalized: wide range ({price_range_pct:.1f}%)")
+
+        # === Time Proximity Filter ===
+        # All 3 divergence segments must start within the last 100 candles
+        max_candle_span = 100
+        candles_from_end = len(close) - s1["start_idx"]
+        if candles_from_end > max_candle_span:
+            log.info(
+                f"ℹ️ MACD divergence discarded: 1st segment started {candles_from_end} candles ago "
+                f"(>{max_candle_span}) — too old to be actionable"
+            )
+            continue
 
         log.info(
             f"🔺 MACD Triple {divergence_type.upper()} Divergence detected! "

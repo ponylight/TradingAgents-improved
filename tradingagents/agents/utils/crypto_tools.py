@@ -10,6 +10,7 @@ from tradingagents.dataflows.ccxt_crypto import (
     get_crypto_indicators,
     get_crypto_funding_rate,
     get_crypto_open_interest,
+    get_crypto_oi_timeseries,
     get_crypto_orderbook,
     get_fear_greed_index,
     get_crypto_liquidations_summary,
@@ -73,6 +74,19 @@ def get_open_interest(
     Rising OI + rising price = strong trend. Rising OI + falling price = bearish pressure.
     """
     return get_crypto_open_interest(symbol)
+
+
+@tool
+def get_oi_timeseries(
+    symbol: Annotated[str, "trading pair e.g. BTC/USDT:USDT"],
+) -> str:
+    """
+    Get open interest TIME-SERIES over the last ~24 hours (hourly snapshots).
+    Shows OI at each timestamp, period-over-period change, total change rate,
+    and direction (BUILDING/UNWINDING/FLAT).
+    PREFERRED over get_open_interest — gives trend context, not just a snapshot.
+    """
+    return get_crypto_oi_timeseries(symbol)
 
 
 @tool

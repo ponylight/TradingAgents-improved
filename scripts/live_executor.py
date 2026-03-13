@@ -18,6 +18,7 @@ import re
 import signal
 import time
 import logging
+import warnings
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from dotenv import load_dotenv
@@ -111,18 +112,26 @@ analyst_scheduler = AnalystScheduler({
 LOG_DIR.mkdir(exist_ok=True)
 MEMORY_DIR.mkdir(exist_ok=True)
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    handlers=[
-        logging.FileHandler(LOG_DIR / f"executor_{datetime.now().strftime('%Y-%m-%d')}.log"),
-        logging.StreamHandler(),
-    ],
+warnings.filterwarnings(
+    "ignore",
+    message=r"Core Pydantic V1 functionality isn't compatible with Python 3\.14 or greater\.",
+    category=UserWarning,
 )
+
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.INFO)
+_root_logger.handlers.clear()
+_root_logger.addHandler(logging.FileHandler(LOG_DIR / f"executor_{datetime.now().strftime('%Y-%m-%d')}.log"))
 log = logging.getLogger("executor")
+log.propagate = True
 
 
 # === EXCHANGE ===
+
+for handler in logging.getLogger().handlers:
+    if isinstance(handler, logging.FileHandler):
+        handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s"))
+
 
 def get_exchange():
     is_demo = os.getenv("BYBIT_DEMO", "").lower() == "true"
@@ -154,6 +163,51 @@ def get_equity(exchange):
 def get_positions(exchange):
     positions = exchange.fetch_positions([SYMBOL])
     return [p for p in positions if abs(float(p["contracts"] or 0)) > 0]
+
+
+def get_realtime_snapshot() -> dict:
+    try:
+        path = LOG_DIR / "realtime_price.json"
+        if not path.exists():
+            return {}
+        return json.loads(path.read_text())
+    except Exception:
+        return {}
+
+
+def override_direction_allowed(override_decision: dict, current_price: float | None) -> tuple[bool, str]:
+    """Machine-check light/full override direction before execution.
+
+    Current short thesis requires:
+    1) failed reclaim back below ~70,273-70,400
+    2) confirmed breakdown through 69,620
+    """
+    action = str(override_decision.get("action", "")).upper()
+    if action == "SHORT":
+        action = "SELL"
+    elif action == "LONG":
+        action = "BUY"
+
+    if action != "SELL":
+        return True, "non-short override"
+
+    if current_price is None:
+        return False, "missing current price for short trigger validation"
+
+    band_low, band_high = 70273.0, 70400.0
+    breakdown_level = 69620.0
+
+    if current_price >= breakdown_level:
+        return False, (
+            f"short trigger blocked: price ${current_price:,.0f} has not broken below ${breakdown_level:,.0f}"
+        )
+
+    if current_price > band_high:
+        return False, (
+            f"short trigger blocked: price ${current_price:,.0f} is still above failed-reclaim band ${band_low:,.0f}-${band_high:,.0f}"
+        )
+
+    return True, "short trigger confirmed"
 
 
 def get_atr(exchange, period=14, timeframe="1d"):
@@ -501,6 +555,55 @@ def parse_trade_params(full_decision: str) -> dict:
     return params
 
 
+def material_change_gate(decision: str, trade_params: dict, current_price: float | None) -> tuple[str, str | None]:
+    """Auto-invalidate a BUY/SELL thesis if price has already crossed key levels.
+
+    Returns (decision, reason).  If the thesis is stale, decision becomes HOLD.
+    Examples of stale theses:
+      - "short if price breaks below $69,620" but price is at $71,000
+      - entry limit at $80,000 but price already at $82,000 (missed move)
+      - stop-loss already breached before we even enter
+    """
+    if decision not in ("BUY", "SELL") or current_price is None:
+        return decision, None
+
+    sl = trade_params.get("stop_loss")
+    tp1 = trade_params.get("take_profit_1")
+    entry = trade_params.get("entry_price")
+
+    reasons = []
+
+    if sl:
+        # For BUY: price already below stop-loss = thesis dead
+        if decision == "BUY" and current_price < sl:
+            reasons.append(f"price ${current_price:,.0f} already below stop-loss ${sl:,.0f}")
+        # For SELL: price already above stop-loss = thesis dead
+        elif decision == "SELL" and current_price > sl:
+            reasons.append(f"price ${current_price:,.0f} already above stop-loss ${sl:,.0f}")
+
+    if tp1:
+        # For BUY: price already above TP1 = move already happened
+        if decision == "BUY" and current_price > tp1:
+            reasons.append(f"price ${current_price:,.0f} already above TP1 ${tp1:,.0f} (move happened)")
+        # For SELL: price already below TP1 = move already happened
+        elif decision == "SELL" and current_price < tp1:
+            reasons.append(f"price ${current_price:,.0f} already below TP1 ${tp1:,.0f} (move happened)")
+
+    if entry:
+        # If entry is a limit price, check if we're too far from it (>3% away)
+        dist_pct = abs(current_price - entry) / entry * 100
+        if dist_pct > 3.0:
+            # BUY limit below market is fine (waiting for dip), but BUY limit above market by >3% = stale
+            if decision == "BUY" and current_price > entry * 1.03:
+                reasons.append(f"price ${current_price:,.0f} ran +{dist_pct:.1f}% past entry ${entry:,.0f}")
+            elif decision == "SELL" and current_price < entry * 0.97:
+                reasons.append(f"price ${current_price:,.0f} dropped {dist_pct:.1f}% past entry ${entry:,.0f}")
+
+    if reasons:
+        return "HOLD", f"MATERIAL-CHANGE GATE: {'; '.join(reasons)}"
+    return decision, None
+
+
 # === POSITION MANAGEMENT ===
 
 
@@ -797,6 +900,60 @@ def fetch_fear_greed_value() -> int | None:
         return None
 
 
+def check_orderbook_depth(exchange, notional_usd, max_slippage_pct=0.1):
+    """Check orderbook depth for acceptable slippage before execution.
+
+    Returns (ok, actual_slippage_pct, depth_usd_within_slippage).
+    If the book is too thin, returns (False, ...) so caller can reduce size or skip.
+    """
+    try:
+        book = exchange.fetch_order_book(SYMBOL, limit=50)
+        if not book or not book.get("bids") or not book.get("asks"):
+            log.warning("⚠️ Orderbook empty — skipping depth check")
+            return True, 0.0, 0.0
+
+        mid = (book["bids"][0][0] + book["asks"][0][0]) / 2 if book["bids"] and book["asks"] else 0
+        if mid <= 0:
+            return True, 0.0, 0.0
+
+        # Compute cumulative depth on both sides
+        for side_name, levels in [("bids", book["bids"]), ("asks", book["asks"])]:
+            cum_usd = 0.0
+            worst_price = mid
+            for price_level, qty in levels:
+                cum_usd += price_level * qty
+                worst_price = price_level
+                if cum_usd >= notional_usd:
+                    break
+
+            slippage = abs(worst_price - mid) / mid * 100
+            depth_usd = cum_usd
+
+            if side_name == "bids":
+                bid_slip, bid_depth = slippage, depth_usd
+            else:
+                ask_slip, ask_depth = slippage, depth_usd
+
+        # Use the worse side (we might be buying or selling)
+        worst_slip = max(bid_slip, ask_slip)
+        min_depth = min(bid_depth, ask_depth)
+
+        if worst_slip > max_slippage_pct:
+            log.warning(
+                f"⚠️ THIN ORDERBOOK: {worst_slip:.2f}% slippage for ${notional_usd:,.0f} notional "
+                f"(limit {max_slippage_pct}%). Depth: bids ${bid_depth:,.0f}, asks ${ask_depth:,.0f}"
+            )
+            return False, worst_slip, min_depth
+
+        log.info(f"📊 Orderbook OK: {worst_slip:.3f}% slippage for ${notional_usd:,.0f}. "
+                 f"Depth: bids ${bid_depth:,.0f}, asks ${ask_depth:,.0f}")
+        return True, worst_slip, min_depth
+
+    except Exception as e:
+        log.warning(f"⚠️ Orderbook depth check failed: {e} — proceeding anyway")
+        return True, 0.0, 0.0
+
+
 def open_position(exchange, direction, equity, alloc_pct, stop_loss=None, risk_multiplier=1.0):
     """Open position sized by 1% risk target and daily ATR. Leverage auto-derived."""
     ticker = exchange.fetch_ticker(SYMBOL)
@@ -815,6 +972,18 @@ def open_position(exchange, direction, equity, alloc_pct, stop_loss=None, risk_m
     effective_risk = RISK_PER_TRADE * risk_multiplier
     risk_dollars = equity * effective_risk
     notional = (risk_dollars / sl_distance) * price  # exact notional for 1% risk
+
+    # Liquidity check — reduce size if orderbook is too thin
+    depth_ok, slippage_pct, depth_usd = check_orderbook_depth(exchange, notional)
+    if not depth_ok:
+        if depth_usd > 0 and depth_usd < notional:
+            reduced_notional = depth_usd * 0.8  # Use 80% of available depth
+            log.warning(f"📉 Reducing notional ${notional:,.0f} → ${reduced_notional:,.0f} due to thin book")
+            notional = reduced_notional
+        else:
+            log.warning(f"📉 Orderbook too thin (slippage {slippage_pct:.2f}%) — skipping trade")
+            return None
+
     amount = float(exchange.amount_to_precision(SYMBOL, notional / price))
 
     if amount <= 0:
@@ -1983,12 +2152,12 @@ def main():
         log.error("🛑 Aborting: Bybit API unreachable. Check VPN connection.")
         return
 
-    # Start CryptoMonitor background refresh (warms CII cache during LLM calls)
-    try:
-        from tradingagents.dataflows.crypto_monitor import start_background_refresh
-        start_background_refresh(interval=1800)
-    except Exception as e:
-        log.warning(f"CryptoMonitor background start failed: {e}")
+    # CryptoMonitor disabled — GDELT rate-limited, low decision value
+    # try:
+    #     from tradingagents.dataflows.crypto_monitor import start_background_refresh
+    #     start_background_refresh(interval=1800)
+    # except Exception as e:
+    #     log.warning(f"CryptoMonitor background start failed: {e}")
 
     exchange = get_exchange()
     equity = get_equity(exchange)
@@ -2315,16 +2484,29 @@ def main():
             action = "BUY"
         elif action == "SHORT":
             action = "SELL"
-        decision = action
-        trade_params = {
-            "confidence": override_decision.get("confidence", override_decision.get("quality", 8)),
-            "stop_loss": override_decision.get("stop_loss"),
-            "take_profit_1": override_decision.get("tp1"),
-            "take_profit_2": override_decision.get("tp2"),
-        }
-        reports = {"override_source": override_decision.get("source", "unknown"),
-                   "override_reason": override_decision.get("reason", override_decision.get("reasoning", ""))}
-        log.warning(f"⚡ OVERRIDE DECISION: {decision} from {reports['override_source']}")
+
+        realtime = get_realtime_snapshot()
+        current_price = realtime.get("price") if isinstance(realtime, dict) else None
+        allowed, reason = override_direction_allowed({**override_decision, "action": action}, current_price)
+        if not allowed:
+            decision = "HOLD"
+            trade_params = {"confidence": 0, "risk_pct": 0.0}
+            reports = {
+                "override_source": override_decision.get("source", "unknown"),
+                "override_reason": f"Blocked override: {reason}",
+            }
+            log.warning(f"⛔ OVERRIDE BLOCKED: {action} from {reports['override_source']} — {reason}")
+        else:
+            decision = action
+            trade_params = {
+                "confidence": override_decision.get("confidence", override_decision.get("quality", 8)),
+                "stop_loss": override_decision.get("stop_loss"),
+                "take_profit_1": override_decision.get("tp1"),
+                "take_profit_2": override_decision.get("tp2"),
+            }
+            reports = {"override_source": override_decision.get("source", "unknown"),
+                       "override_reason": override_decision.get("reason", override_decision.get("reasoning", ""))}
+            log.warning(f"⚡ OVERRIDE DECISION: {decision} from {reports['override_source']} ({reason})")
     elif override_decision and override_decision["action"] == "CLOSE":
         decision = "CLOSE"
         trade_params = {}
@@ -2393,6 +2575,21 @@ def main():
     if validation.warnings:
         for w in validation.warnings:
             log.warning(f"\u26a0\ufe0f  Validation: {w}")
+
+    # === MATERIAL-CHANGE GATE ===
+    # Auto-invalidate thesis if price has already crossed SL/TP/entry levels
+    if decision in ("BUY", "SELL") and not has_position:
+        realtime = get_realtime_snapshot()
+        gate_price = realtime.get("price") if isinstance(realtime, dict) else None
+        if gate_price is None:
+            try:
+                gate_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+            except Exception:
+                pass
+        gated_decision, gate_reason = material_change_gate(decision, trade_params, gate_price)
+        if gated_decision != decision:
+            log.warning(f"⛔ {gate_reason} — forcing HOLD (was {decision})")
+            decision = gated_decision
 
     record = {
         "timestamp": datetime.now(timezone.utc).isoformat(),

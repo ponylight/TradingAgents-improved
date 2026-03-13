@@ -185,6 +185,19 @@ class TimeframeBrief(BaseModel):
 
 # ── Top-level Technical Brief ────────────────────────────────────────────
 
+class CrossTFResolution(BaseModel):
+    resolved_direction: str = Field(
+        description="Weighted vote across timeframes: bullish/bearish/neutral (1d>4h>1h)"
+    )
+    has_contradiction: bool = Field(
+        description="True when timeframes disagree on direction", default=False
+    )
+    details: str = Field(
+        description="Human-readable breakdown of per-TF directions and weights",
+        default="",
+    )
+
+
 class TechnicalBrief(BaseModel):
     symbol: str
     generated_at: str = Field(description="ISO-8601 timestamp of generation")
@@ -203,6 +216,10 @@ class TechnicalBrief(BaseModel):
     mtf_ema_alignment: str = Field(
         description="Multi-timeframe EMA alignment summary",
         default="",
+    )
+    cross_tf_resolution: Optional[CrossTFResolution] = Field(
+        description="Weighted cross-timeframe direction resolution (1d>4h>1h)",
+        default=None,
     )
 
 

@@ -34,7 +34,7 @@ try:
         _PATTERN_LIBRARY = _PATTERN_LIBRARY_PATH.read_text(encoding="utf-8").strip()
         if len(_PATTERN_LIBRARY) > MAX_PATTERN_CHARS:
             _total = len(_PATTERN_LIBRARY)
-            _logging.getLogger("trader").warning(
+            _logging.getLogger("trader").debug(
                 f"Pattern library truncated: {_total} chars → {MAX_PATTERN_CHARS} chars"
             )
             _PATTERN_LIBRARY = (

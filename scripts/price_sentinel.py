@@ -17,6 +17,7 @@ import json
 import subprocess
 import sys
 import logging
+import warnings
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 
@@ -36,15 +37,22 @@ GL_COOLDOWN_HOURS = 4     # Minimum hours between green lane triggers
 GL_DAILY_MAX = 3          # Maximum triggers per day
 GL_MIN_QUALITY = 7        # Minimum quality score to act on
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    handlers=[
-        logging.FileHandler(PROJECT_ROOT / "logs" / "sentinel.log"),
-        logging.StreamHandler(),
-    ],
+warnings.filterwarnings(
+    "ignore",
+    message=r"Core Pydantic V1 functionality isn't compatible with Python 3\.14 or greater\.",
+    category=UserWarning,
 )
+
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.INFO)
+_root_logger.handlers.clear()
+_root_logger.addHandler(logging.FileHandler(PROJECT_ROOT / "logs" / "sentinel.log"))
 log = logging.getLogger("sentinel")
+log.propagate = True
+
+for handler in logging.getLogger().handlers:
+    if isinstance(handler, logging.FileHandler):
+        handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s"))
 
 CANDLE_MOVE_THRESHOLD = 0.03   # 3% candle body triggers pipeline
 VOLUME_SPIKE_MULTIPLIER = 2.5  # Volume >= 2.5x 6-candle average triggers pipeline

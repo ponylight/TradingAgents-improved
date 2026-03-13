@@ -35,13 +35,13 @@ from tradingagents.agents.utils.crypto_tools import (
     get_crypto_technical_indicators,
     get_funding_rate,
     get_open_interest,
+    get_oi_timeseries,
     get_orderbook_depth,
     get_crypto_fear_greed,
     get_liquidation_info,
     get_macro_signal_radar,
     get_stablecoin_peg_health,
-    get_crisis_impact_index,
-)
+    )
 
 # Macro tools
 from tradingagents.agents.utils.macro_tools import (
@@ -211,12 +211,13 @@ class CryptoTradingAgentsGraph:
                 get_crypto_fear_greed,
                 get_funding_rate,
                 get_open_interest,
+                get_oi_timeseries,
             ]),
             "fundamentals": ToolNode([
                 get_onchain_fundamentals,
                 get_macro_signal_radar,
                 get_stablecoin_peg_health,
-                get_crisis_impact_index,
+                # GDELT CII removed — too many 429s, low decision value
             ]),
             "news": ToolNode([
                 get_news,

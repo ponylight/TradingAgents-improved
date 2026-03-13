@@ -1,61 +1,128 @@
 """
 Macro economic data provider using FRED API and yfinance.
 For the Macro Analyst agent.
+
+Each function tries a primary source and falls back to alternatives.
 """
 
 import os
 import json
+import logging
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta
 from typing import Annotated
 from .exceptions import DataFetchError
 
+log = logging.getLogger("macro_data")
+
 
 def get_dxy_data(
     start_date: Annotated[str, "Start date yyyy-mm-dd"],
     end_date: Annotated[str, "End date yyyy-mm-dd"],
 ) -> str:
-    """Get US Dollar Index (DXY) data via yfinance."""
+    """Get US Dollar Index (DXY) data. Primary: yfinance DX-Y.NYB, fallback: FRED DTWEXBGS."""
+    header = f"# US Dollar Index (DXY) from {start_date} to {end_date}\n"
+    header += f"# DXY rising = USD strengthening = typically bearish for BTC\n\n"
+
+    # Primary: yfinance
     try:
         dxy = yf.download("DX-Y.NYB", start=start_date, end=end_date, progress=False, auto_adjust=True, multi_level_index=False)
-        if dxy.empty:
-            return f"No DXY data found for {start_date} to {end_date}"
-        
-        dxy = dxy.reset_index()
-        csv_string = dxy.to_csv(index=False)
-        header = f"# US Dollar Index (DXY) from {start_date} to {end_date}\n"
-        header += f"# DXY rising = USD strengthening = typically bearish for BTC\n\n"
-        return header + csv_string
+        if not dxy.empty:
+            log.info("DXY: loaded from yfinance DX-Y.NYB")
+            dxy = dxy.reset_index()
+            return header + f"# Source: yfinance DX-Y.NYB\n" + dxy.to_csv(index=False)
+        log.warning("DXY: yfinance returned empty — trying FRED fallback")
     except Exception as e:
-        raise DataFetchError(f"Error fetching DXY: {e}") from e
+        log.warning(f"DXY: yfinance failed ({e}) — trying FRED fallback")
+
+    # Fallback: FRED DTWEXBGS (Trade Weighted USD)
+    try:
+        api_key = os.environ.get("FRED_API_KEY")
+        if api_key:
+            from fredapi import Fred
+            fred = Fred(api_key=api_key)
+            data = fred.get_series("DTWEXBGS", observation_start=start_date, observation_end=end_date)
+            if not data.empty:
+                log.info("DXY: loaded from FRED DTWEXBGS (trade-weighted USD)")
+                df = data.reset_index()
+                df.columns = ["Date", "Close"]
+                df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+                return header + f"# Source: FRED DTWEXBGS (trade-weighted USD, proxy)\n" + df.to_csv(index=False)
+    except Exception as e2:
+        log.warning(f"DXY: FRED fallback also failed: {e2}")
+
+    raise DataFetchError(f"DXY: all sources failed for {start_date} to {end_date}")
 
 
 def get_treasury_yields(
     start_date: Annotated[str, "Start date yyyy-mm-dd"],
     end_date: Annotated[str, "End date yyyy-mm-dd"],
 ) -> str:
-    """Get US Treasury yields (10Y and 2Y) via yfinance."""
+    """Get US Treasury yields. Primary: yfinance ^TNX/^IRX, fallback: FRED DGS10/DGS2."""
+    lines = [f"# US Treasury Yields from {start_date} to {end_date}\n"]
+    lines.append("# Rising yields = tighter monetary conditions = typically bearish for risk assets\n")
+
+    got_10y = False
+    got_short = False
+
+    # Primary: yfinance
     try:
         tnx = yf.download("^TNX", start=start_date, end=end_date, progress=False, auto_adjust=True, multi_level_index=False)
-        twy = yf.download("^IRX", start=start_date, end=end_date, progress=False, auto_adjust=True, multi_level_index=False)
-        
-        lines = [f"# US Treasury Yields from {start_date} to {end_date}\n"]
-        lines.append("# Rising yields = tighter monetary conditions = typically bearish for risk assets\n")
-        
         if not tnx.empty:
-            lines.append("## 10-Year Treasury Yield:")
+            lines.append("## 10-Year Treasury Yield (yfinance ^TNX):")
             tnx = tnx.reset_index()
             lines.append(tnx[["Date", "Close"]].tail(20).to_string(index=False))
-        
+            got_10y = True
+            log.info("Treasury 10Y: loaded from yfinance ^TNX")
+    except Exception as e:
+        log.warning(f"Treasury 10Y yfinance failed: {e}")
+
+    try:
+        twy = yf.download("^IRX", start=start_date, end=end_date, progress=False, auto_adjust=True, multi_level_index=False)
         if not twy.empty:
-            lines.append("\n## 13-Week Treasury Bill Rate:")
+            lines.append("\n## 13-Week Treasury Bill Rate (yfinance ^IRX):")
             twy = twy.reset_index()
             lines.append(twy[["Date", "Close"]].tail(20).to_string(index=False))
-        
-        return "\n".join(lines)
+            got_short = True
+            log.info("Treasury 13W: loaded from yfinance ^IRX")
     except Exception as e:
-        raise DataFetchError(f"Error fetching treasury yields: {e}") from e
+        log.warning(f"Treasury 13W yfinance failed: {e}")
+
+    # Fallback: FRED for anything that failed
+    if not got_10y or not got_short:
+        api_key = os.environ.get("FRED_API_KEY")
+        if api_key:
+            try:
+                from fredapi import Fred
+                fred = Fred(api_key=api_key)
+                if not got_10y:
+                    data = fred.get_series("DGS10", observation_start=start_date, observation_end=end_date)
+                    if not data.empty:
+                        df = data.reset_index()
+                        df.columns = ["Date", "Yield"]
+                        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+                        lines.append("\n## 10-Year Treasury Yield (FRED DGS10):")
+                        lines.append(df.tail(20).to_string(index=False))
+                        got_10y = True
+                        log.info("Treasury 10Y: loaded from FRED DGS10")
+                if not got_short:
+                    data = fred.get_series("DGS2", observation_start=start_date, observation_end=end_date)
+                    if not data.empty:
+                        df = data.reset_index()
+                        df.columns = ["Date", "Yield"]
+                        df["Date"] = df["Date"].dt.strftime("%Y-%m-%d")
+                        lines.append("\n## 2-Year Treasury Yield (FRED DGS2):")
+                        lines.append(df.tail(20).to_string(index=False))
+                        got_short = True
+                        log.info("Treasury 2Y: loaded from FRED DGS2")
+            except Exception as e2:
+                log.warning(f"Treasury FRED fallback failed: {e2}")
+
+    if not got_10y and not got_short:
+        raise DataFetchError(f"Treasury yields: all sources failed for {start_date} to {end_date}")
+
+    return "\n".join(lines)
 
 
 def get_sp500_data(
@@ -134,27 +201,52 @@ def get_economic_calendar_summary() -> str:
     """
     Provide economic calendar context with current-month awareness.
     Uses date math to identify upcoming events.
+    Hardcoded FOMC/CPI/NFP dates as fallback — no external API needed.
     """
-    from datetime import datetime, timedelta
-    
+    import calendar as _cal
+
     now = datetime.utcnow()
     day = now.day
     weekday = now.weekday()  # 0=Mon
     month = now.strftime("%B %Y")
-    
+
     lines = [f"# Economic Calendar Context — {month}\n"]
-    
-    # FOMC dates 2026 (approximate — 8 meetings)
-    fomc_months = [1, 3, 5, 6, 7, 9, 11, 12]
-    if now.month in fomc_months:
-        lines.append(f"⚠️ FOMC meeting month — rate decision expected this month")
-    
+
+    # Known 2025-2026 FOMC meeting dates (Wednesday announcements)
+    # This is the reliable fallback — no API call needed
+    fomc_dates_2026 = [
+        (1, 29), (3, 18), (5, 6), (6, 17),
+        (7, 29), (9, 16), (10, 28), (12, 16),
+    ]
+    fomc_dates_2025 = [
+        (1, 29), (3, 19), (5, 7), (6, 18),
+        (7, 30), (9, 17), (12, 17),
+    ]
+    fomc_dates = fomc_dates_2026 if now.year == 2026 else fomc_dates_2025
+
+    next_fomc = None
+    for m, d in fomc_dates:
+        try:
+            fdate = datetime(now.year, m, d)
+            delta = (fdate - now).days
+            if delta >= -1:  # Include yesterday (just happened)
+                if delta <= 0:
+                    lines.append(f"⚠️ FOMC rate decision TODAY/YESTERDAY ({m}/{d})")
+                elif delta <= 3:
+                    lines.append(f"⚠️ FOMC rate decision in {delta} days ({m}/{d}) — reduce size")
+                elif delta <= 14:
+                    lines.append(f"FOMC in {delta} days ({m}/{d})")
+                next_fomc = (m, d, delta)
+                break
+        except ValueError:
+            continue
+
     # CPI typically 10th-15th
     if 8 <= day <= 16:
         lines.append(f"⚠️ CPI release window (typically 10th-15th) — may have just released or upcoming")
     elif day < 8:
-        lines.append(f"CPI release expected in ~{10-day} days")
-    
+        lines.append(f"CPI release expected in ~{10 - day} days")
+
     # NFP: first Friday
     if day <= 7 and weekday <= 4:
         days_to_friday = (4 - weekday) % 7
@@ -162,10 +254,9 @@ def get_economic_calendar_summary() -> str:
             lines.append(f"⚠️ Non-Farm Payrolls likely TODAY (first Friday of month)")
         elif days_to_friday > 0 and day + days_to_friday <= 7:
             lines.append(f"⚠️ NFP expected in {days_to_friday} days (first Friday)")
-    
+
     # Options expiry: last Friday of month
-    import calendar
-    last_day = calendar.monthrange(now.year, now.month)[1]
+    last_day = _cal.monthrange(now.year, now.month)[1]
     last_friday = last_day
     while datetime(now.year, now.month, last_friday).weekday() != 4:
         last_friday -= 1
@@ -176,12 +267,12 @@ def get_economic_calendar_summary() -> str:
         lines.append(f"Options expiry passed this month")
     else:
         lines.append(f"Options expiry in ~{days_to_expiry} days ({now.month}/{last_friday})")
-    
+
     # Weekly: Jobless claims Thursday
     if weekday <= 3:
         days_to_thurs = 3 - weekday
         lines.append(f"Initial Jobless Claims: {'TODAY' if days_to_thurs == 0 else f'in {days_to_thurs} days'} (Thursday)")
-    
+
     lines.append("")
     lines.append("## Standing Calendar:")
     lines.append("- FOMC: ~8x/year (Jan, Mar, May, Jun, Jul, Sep, Nov, Dec)")
@@ -191,5 +282,5 @@ def get_economic_calendar_summary() -> str:
     lines.append("- GDP: quarterly")
     lines.append("- Jobless Claims: weekly Thursday")
     lines.append("- BTC Options Expiry: last Friday of month")
-    
+
     return "\n".join(lines)

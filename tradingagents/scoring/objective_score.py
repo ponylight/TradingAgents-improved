@@ -59,8 +59,9 @@ class ScoreBreakdown:
             return True
         if sig == "SELL" and agent in ("BUY", "OPEN_LONG", "REVERSE_TO_LONG"):
             return True
-        # Holding against a strong signal
-        if self.strength in ("STRONG", "MODERATE") and agent in ("HOLD", "STAY_NEUTRAL"):
+        # Holding against a strong signal only counts as a conflict when the signal is truly strong.
+        # Moderate scores are common in noisy/choppy conditions and should not force action by themselves.
+        if self.strength == "STRONG" and agent in ("HOLD", "STAY_NEUTRAL"):
             return True
         return False
 

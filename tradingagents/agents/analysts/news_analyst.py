@@ -15,11 +15,16 @@ from tradingagents.agents.utils.macro_tools import (
     get_economic_calendar,
 )
 from tradingagents.dataflows.geopolitical_news import fetch_all_news, format_geopolitical_report
+from tradingagents.dataflows.data_quality import score_report, format_quality_header, DataQuality
 
 import logging
+from datetime import datetime, timezone
 log = logging.getLogger("news_analyst")
 
 MAX_TOOL_ROUNDS = 3
+
+# News/macro data older than 4h is considered stale
+NEWS_STALENESS_HOURS = 4.0
 
 
 def create_news_analyst(llm):
@@ -36,17 +41,46 @@ def create_news_analyst(llm):
         ticker = state["company_of_interest"]
 
         # Pre-fetch geopolitical news from 30+ RSS feeds + GDELT
+        geo_fallback = False
+        geo_generated_at = None
         try:
             geo_data = fetch_all_news(max_per_feed=8)
             geo_report = format_geopolitical_report(geo_data)
             alert_count = geo_data.get("alert_count", 0)
+            geo_generated_at = geo_data.get("generated_at")
         except Exception as e:
             log.warning(f"Geopolitical news fetch failed: {e}")
             geo_report = "Geopolitical news unavailable."
             alert_count = 0
+            geo_fallback = True
+
+        # === Data Freshness Gate ===
+        staleness_warning = ""
+        missing = []
+        if geo_fallback:
+            missing.append("geopolitical_news")
+        quality_score = score_report(
+            geo_report,
+            "news",
+            max_age_hours=NEWS_STALENESS_HOURS,
+            generated_at=geo_generated_at,
+            fallback_used=geo_fallback,
+            missing_fields=missing,
+        )
+        quality_header = format_quality_header(quality_score, "news")
+
+        if quality_score["quality"] in (DataQuality.STALE, DataQuality.FAILED):
+            age_str = f"{quality_score['data_age_hours']:.1f}h" if quality_score["data_age_hours"] else "unknown"
+            staleness_warning = (
+                f"\n\n⛔ STALENESS GATE: News/macro data is {age_str} old (>{NEWS_STALENESS_HOURS}h threshold). "
+                f"Cap your overall confidence by ONE level (HIGH→MEDIUM, MEDIUM→LOW). State this prominently.\n"
+            )
+            log.warning(f"⚠️ News staleness gate triggered: {age_str} old")
 
         system_message = f"""You are a senior crypto news and macro analyst for BTC.
 
+{quality_header}
+{staleness_warning}
 ## Pre-Fetched Geopolitical & Market Intelligence
 REAL-TIME data from {geo_data.get('sources_fetched', 0) if 'geo_data' in dir() else '?'} news sources + GDELT.
 {"⚠️ " + str(alert_count) + " GEOPOLITICAL ALERTS — prioritize these." if alert_count > 0 else "No active geopolitical alerts."}
@@ -60,12 +94,19 @@ REAL-TIME data from {geo_data.get('sources_fetched', 0) if 'geo_data' in dir() e
 - get_economic_data — FRED data (CPI, M2, UNRATE)
 - get_economic_calendar — upcoming FOMC, CPI, jobs reports
 
+## Data Quality — You Are a Professional
+Before analyzing, audit every data point. If news data shows quality issues
+(see header above), flag it prominently. Do NOT build confident conclusions
+on stale or missing data. If the staleness gate is triggered, your confidence
+MUST be capped as instructed.
+
 ## Analysis Framework
-1. Macro Environment: risk-on or risk-off? Liquidity expanding or contracting?
-2. Top Events: ranked by BTC impact (from pre-fetched news above)
-3. Primary Catalyst: the ONE thing that matters most right now
-4. Upcoming Events: next 48h calendar items (from tools)
-5. Overall News/Macro Verdict: BULLISH / NEUTRAL / BEARISH
+1. **Data Quality**: Clean / Degraded (with specifics if degraded)
+2. Macro Environment: risk-on or risk-off? Liquidity expanding or contracting?
+3. Top Events: ranked by BTC impact (from pre-fetched news above)
+4. Primary Catalyst: the ONE thing that matters most right now
+5. Upcoming Events: next 48h calendar items (from tools)
+6. Overall News/Macro Verdict: BULLISH / NEUTRAL / BEARISH
 
 Current date: {current_date}. Asset: {ticker}.
 Do NOT output FINAL TRANSACTION PROPOSAL. You report events and macro, not trade decisions."""

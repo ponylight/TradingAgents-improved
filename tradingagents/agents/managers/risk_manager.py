@@ -135,10 +135,30 @@ def create_risk_manager(llm, memory):
 - [ ] Leverage within limits
 - [ ] Liquidation distance safe
 
+### Position Sizing (MANDATORY — compute these, do not leave blank)
+You MUST calculate and output ALL of these fields. Use the trader's proposed parameters
+and current equity to derive them. If a field cannot be computed, state why.
+
+```
+---RISK_SIZING---
+account_risk_pct: <% of equity at risk, e.g. 1.0>
+stop_distance_pct: <% from entry to stop-loss, e.g. 2.5>
+implied_leverage: <notional / margin, e.g. 3.2>
+liquidation_buffer_pct: <% from entry to liquidation, e.g. 15.0>
+position_size_btc: <position size in BTC, e.g. 0.45>
+---END_RISK_SIZING---
+```
+
+Rules:
+- account_risk_pct MUST be ≤ 1.0 (hard limit). If trader implies more, RESIZE.
+- implied_leverage = notional / (equity × margin_allocation). Must be ≤ 15x swing, ≤ 10x position.
+- liquidation_buffer_pct = 100 / implied_leverage. Must be > 2× stop_distance_pct.
+- position_size_btc = (equity × account_risk_pct) / (entry_price × stop_distance_pct / 100)
+
 ### RISK VERDICT: APPROVED / APPROVED_WITH_ADJUSTMENTS / VETOED
 
 If APPROVED: "Risk parameters acceptable. Proceed as proposed."
-If APPROVED_WITH_ADJUSTMENTS: specify EXACTLY what to change (e.g., "Reduce size from 2% to 3% margin to bring leverage from 12x to 7x" or "Tighten stop to $XX,XXX").
+If APPROVED_WITH_ADJUSTMENTS: specify EXACTLY what to change (e.g., "Reduce size from 2% to 3% margin to bring leverage from 12x to 7x" or "Tighten stop to $XX,XXX"). Update the RISK_SIZING block to reflect adjustments.
 If VETOED: state which hard limit was breached and why.
 
 Do NOT recommend a trade direction. Do NOT say BUY, SELL, or HOLD."""

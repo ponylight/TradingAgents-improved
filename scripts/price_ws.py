@@ -15,6 +15,7 @@ import json
 import time
 import logging
 import subprocess
+import warnings
 import signal  # noqa: E402 — used for graceful shutdown
 import sys
 from datetime import datetime, timezone, timedelta
@@ -46,15 +47,18 @@ COOLDOWN_SECONDS = 3600     # 1 hour between executor launches
 REFERENCE_RESET_HOURS = 4   # Reset reference price every 4h (align with cron)
 
 (PROJECT_ROOT / "logs").mkdir(parents=True, exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    handlers=[
-        logging.FileHandler(PROJECT_ROOT / "logs" / "ws_monitor.log"),
-        logging.StreamHandler(),
-    ],
+warnings.filterwarnings(
+    "ignore",
+    message=r"Core Pydantic V1 functionality isn't compatible with Python 3\.14 or greater\.",
+    category=UserWarning,
 )
+
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.INFO)
+_root_logger.handlers.clear()
+_root_logger.addHandler(logging.FileHandler(PROJECT_ROOT / "logs" / "ws_monitor.log"))
 log = logging.getLogger("ws_monitor")
+log.propagate = True
 
 # Graceful shutdown
 _running = True
@@ -68,6 +72,10 @@ def _signal_handler(sig, frame):
 
 signal.signal(signal.SIGTERM, _signal_handler)
 signal.signal(signal.SIGINT, _signal_handler)
+
+for handler in logging.getLogger().handlers:
+    if isinstance(handler, logging.FileHandler):
+        handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s"))
 
 
 def load_state() -> dict:

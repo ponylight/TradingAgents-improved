@@ -20,6 +20,7 @@ from tradingagents.dataflows.onchain_fundamentals import (
     get_btc_fundamentals,
     format_fundamentals_report,
 )
+from tradingagents.dataflows.data_quality import score_report, format_quality_header
 
 log = logging.getLogger("crypto_fundamentals")
 
@@ -49,31 +50,22 @@ def create_crypto_fundamentals_analyst(llm):
         # Pre-fetch the data (deterministic, fast)
         fundamentals_report = get_onchain_fundamentals.invoke({})
         
-        # === Staleness Gate ===
-        # If fundamentals data is >12h old, inject a hard warning that caps confidence.
+        # === Staleness Gate + Structured Quality Scoring ===
         staleness_warning = ""
+        missing_fields = []
         try:
             from datetime import datetime, timezone as tz
             import re
             gen_match = re.search(r"Generated:\s*(\S+)", fundamentals_report)
-            if gen_match:
-                gen_ts = gen_match.group(1)
-            else:
+            gen_ts = gen_match.group(1) if gen_match else None
+            if not gen_match:
                 log.warning("Staleness check: 'Generated:' timestamp not found in fundamentals report")
-                gen_ts = None
-            if gen_ts:
-                gen_time = datetime.fromisoformat(gen_ts.replace("Z", "+00:00"))
-                age_hours = (datetime.now(tz.utc) - gen_time).total_seconds() / 3600
-                if age_hours > 12:
-                    staleness_warning = (
-                        f"\n\n⛔ STALENESS GATE: Fundamentals data is {age_hours:.1f}h old (>{12}h threshold). "
-                        f"Your overall confidence MUST NOT exceed MEDIUM. State this age prominently.\n"
-                    )
-                    log.warning(f"⚠️ Fundamentals staleness gate triggered: {age_hours:.1f}h old")
         except Exception as e:
             log.warning(f"Staleness check failed: {e}")
-        
+            gen_ts = None
+
         # Pre-fetch macro radar (7-signal composite)
+        macro_fallback = False
         try:
             from tradingagents.dataflows.macro_radar import get_macro_radar_cached, get_stablecoin_health_cached
             macro = get_macro_radar_cached()
@@ -84,26 +76,42 @@ def create_crypto_fundamentals_analyst(llm):
             log.warning(f"Macro radar fetch failed: {e}")
             macro_summary = "Macro radar unavailable"
             stablecoin_summary = "Stablecoin data unavailable"
+            macro_fallback = True
+            missing_fields.append("macro_radar")
 
-        # Pre-fetch CryptoMonitor CII (geopolitical risk)
-        try:
-            from tradingagents.dataflows.crypto_monitor import get_crisis_impact_index
-            cii = get_crisis_impact_index()
-            quality = cii.get('data_quality', 'unknown')
-            cii_summary = (
-                f"Crisis Impact Index (heuristic): {cii['cii_score']}/100 ({cii['level']}) — {cii['crypto_impact']} [data: {quality}]\n"
-                f"Components: GDELT={cii['components']['gdelt_score']:.0f} Headlines={cii['components']['headline_score']:.0f} Mining={cii['components']['mining_region_score']:.0f}"
+        # Structured quality scoring
+        quality_score = score_report(
+            fundamentals_report,
+            "fundamentals",
+            max_age_hours=12.0,
+            generated_at=gen_ts,
+            fallback_used=macro_fallback,
+            missing_fields=missing_fields,
+        )
+        quality_header = format_quality_header(quality_score, "fundamentals")
+
+        if quality_score["data_age_hours"] is not None and quality_score["data_age_hours"] > 12:
+            staleness_warning = (
+                f"\n\n⛔ STALENESS GATE: Fundamentals data is {quality_score['data_age_hours']:.1f}h old (>12h threshold). "
+                f"Your overall confidence MUST NOT exceed MEDIUM. State this age prominently.\n"
             )
-            if cii.get("top_events"):
-                cii_summary += "\nTop Events: " + "; ".join(cii["top_events"][:3])
-        except Exception as e:
-            log.warning(f"CryptoMonitor CII fetch failed: {e}")
-            cii_summary = "Geopolitical risk data unavailable"
+            log.warning(f"⚠️ Fundamentals staleness gate triggered: {quality_score['data_age_hours']:.1f}h old")
+
+        # CII disabled — GDELT rate-limited, low decision value
+        # try:
+        #     from tradingagents.dataflows.crypto_monitor import get_crisis_impact_index
+        #     cii = get_crisis_impact_index()
+        #     ...
+        # except Exception as e:
+        #     log.warning(f"CryptoMonitor CII fetch failed: {e}")
+        cii_summary = "Geopolitical risk (CII disabled)"
         
         messages = [
             {
                 "role": "system",
                 "content": f"""You are a senior Bitcoin on-chain fundamentals analyst.
+
+{quality_header}
 
 ## Your Role
 You analyze Bitcoin's fundamental health using on-chain data, NOT price charts.
@@ -178,9 +186,7 @@ MACRO SIGNAL RADAR (7-signal composite — weight heavily):
 {stablecoin_summary}
 
 ---
-GEOPOLITICAL RISK (CryptoMonitor CII):
-
-{cii_summary}
+GEOPOLITICAL RISK: (CII disabled — GDELT rate-limited)
 
 Provide your fundamentals analysis.""",
             },

@@ -19,7 +19,9 @@ import os
 import sys
 import logging
 import time
-from datetime import datetime, timezone
+import warnings
+import fcntl
+from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -48,22 +50,28 @@ REALTIME_FILE = LOGS / "realtime_price.json"
 STATE_FILE = LOGS / "executor_state.json"
 LIGHT_LOG = LOGS / "light_decision.log"
 VENV_PYTHON = PROJECT_ROOT / ".venv" / "bin" / "python3"
+LOCK_FILE = LOGS / ".light_decision.lock"
 
 # Only act if confidence is HIGH and move is significant
 MIN_CONFIDENCE = 8         # 1-10, only act on high conviction
 MIN_MOVE_PCT = 1.5         # Minimum % move from last decision price to consider
 MAX_LIGHT_TRADES_PER_DAY = 2  # Don't overtrade
+MIN_REPORT_FRESHNESS_HOURS = 6
+OVERRIDE_COOLDOWN_SECONDS = 20 * 60
 
 LOGS.mkdir(parents=True, exist_ok=True)
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s  %(levelname)-8s  %(message)s",
-    handlers=[
-        logging.FileHandler(LIGHT_LOG),
-        logging.StreamHandler(),
-    ],
+warnings.filterwarnings(
+    "ignore",
+    message=r"Core Pydantic V1 functionality isn't compatible with Python 3\.14 or greater\.",
+    category=UserWarning,
 )
+
+_root_logger = logging.getLogger()
+_root_logger.setLevel(logging.INFO)
+_root_logger.handlers.clear()
+_root_logger.addHandler(logging.FileHandler(LIGHT_LOG))
 log = logging.getLogger("light_decision")
+log.propagate = True
 
 
 def load_json(path: Path) -> dict:
@@ -91,16 +99,25 @@ def get_realtime_price() -> dict:
     return data
 
 
-def get_cached_reports() -> dict:
-    """Load most recent analyst reports."""
+def get_cached_reports() -> tuple[dict, Path | None]:
+    """Load most recent analyst reports and return the file used."""
     today = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
     reports_file = LOGS / f"agent_reports_{today}.json"
     if not reports_file.exists():
-        # Try yesterday
-        from datetime import timedelta
         yesterday = (datetime.now(ZoneInfo("Australia/Sydney")) - timedelta(days=1)).strftime("%Y-%m-%d")
         reports_file = LOGS / f"agent_reports_{yesterday}.json"
-    return load_json(reports_file)
+    if not reports_file.exists():
+        return {}, None
+    return load_json(reports_file), reports_file
+
+
+def report_file_age_hours(path: Path | None) -> float | None:
+    if not path or not path.exists():
+        return None
+    try:
+        return (time.time() - path.stat().st_mtime) / 3600
+    except OSError:
+        return None
 
 
 def get_executor_state() -> dict:
@@ -153,7 +170,8 @@ def run_light_evaluation(price_data: dict, reports: dict, state: dict) -> dict:
         position_str = f"{direction} {amount:.3f} BTC @ ${entry:,.0f} | PnL: {pnl_pct:+.2f}% | Trail: ${trail:,.0f}"
 
     macro = get_macro_summary()
-    cii = get_cii_summary()
+    # CII disabled — GDELT rate-limited, low decision value
+    # cii = get_cii_summary()
 
     prompt = f"""You are a fast-response crypto trading monitor. Make a QUICK decision based on cached intelligence + live price.
 
@@ -168,7 +186,7 @@ Market: {market_report}
 News: {news_report}
 
 MACRO: {macro}
-GEO: {cii}
+GEO: (CII disabled)
 
 RULES:
 - You are a SUPPLEMENT to the full agent pipeline, not a replacement
@@ -230,7 +248,7 @@ def parse_decision(raw: str) -> dict:
     return result
 
 
-def should_act(decision: dict, state: dict, price_data: dict) -> bool:
+def should_act(decision: dict, state: dict, price_data: dict, report_age_hours: float | None = None) -> bool:
     """Determine if we should act on a light decision."""
     action = decision["action"]
     confidence = decision["confidence"]
@@ -241,6 +259,13 @@ def should_act(decision: dict, state: dict, price_data: dict) -> bool:
     # CLOSE is always allowed — never block emergency exits
     if action == "CLOSE":
         return True
+
+    if report_age_hours is not None and report_age_hours > MIN_REPORT_FRESHNESS_HOURS:
+        log.warning(
+            f"Light decision {action} rejected: cached reports too stale "
+            f"({report_age_hours:.1f}h > {MIN_REPORT_FRESHNESS_HOURS}h)"
+        )
+        return False
 
     if confidence < MIN_CONFIDENCE:
         log.info(f"Light decision {action} rejected: confidence {confidence} < {MIN_CONFIDENCE}")
@@ -258,6 +283,22 @@ def should_act(decision: dict, state: dict, price_data: dict) -> bool:
     if light_trades >= MAX_LIGHT_TRADES_PER_DAY:
         log.warning(f"Light trade limit reached ({light_trades}/{MAX_LIGHT_TRADES_PER_DAY} today)")
         return False
+
+    last_override_at = state.get("last_light_override_time")
+    if last_override_at:
+        try:
+            last_dt = datetime.fromisoformat(last_override_at)
+            if last_dt.tzinfo is None:
+                last_dt = last_dt.replace(tzinfo=timezone.utc)
+            seconds_since = (datetime.now(timezone.utc) - last_dt).total_seconds()
+            if seconds_since < OVERRIDE_COOLDOWN_SECONDS:
+                log.warning(
+                    f"Light decision {action} rejected: override cooldown active "
+                    f"({seconds_since:.0f}s < {OVERRIDE_COOLDOWN_SECONDS}s)"
+                )
+                return False
+        except Exception:
+            pass
 
     return True
 
@@ -283,7 +324,34 @@ def check_green_lane_setup() -> dict | None:
     return None
 
 
+def executor_running() -> bool:
+    """Best-effort check: don't spawn executor if its lock is already held."""
+    executor_lock = LOGS / ".executor.lock"
+    executor_lock.parent.mkdir(parents=True, exist_ok=True)
+    fd = open(executor_lock, "a+")
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        fcntl.flock(fd, fcntl.LOCK_UN)
+        return False
+    except (IOError, OSError):
+        return True
+    finally:
+        fd.close()
+
+
 def main():
+    lock_fd = open(LOCK_FILE, "w")
+    try:
+        fcntl.flock(lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (IOError, OSError):
+        log.warning("⏸️ Another light decision instance is running — exiting")
+        lock_fd.close()
+        return
+
+    for handler in logging.getLogger().handlers:
+        if isinstance(handler, logging.FileHandler):
+            handler.setFormatter(logging.Formatter("%(asctime)s  %(levelname)-8s  %(message)s"))
+
     log.info("=" * 40)
     log.info("⚡ Light Decision Layer")
     log.info("=" * 40)
@@ -305,12 +373,16 @@ def main():
     log.info(f"💰 Price: ${price_data['price']:,.2f} ({price_data.get('change_pct', 0):+.2f}%)")
 
     # Load cached data
-    reports = get_cached_reports()
+    reports, reports_file = get_cached_reports()
     state = get_executor_state()
+    report_age_hours = report_file_age_hours(reports_file)
 
     if not reports:
         log.warning("No cached reports — skipping evaluation")
         return
+
+    if report_age_hours is not None:
+        log.info(f"📦 Cached reports age: {report_age_hours:.1f}h")
 
     # Check green lane setup (deterministic, no LLM cost)
     gl_signal = check_green_lane_setup()
@@ -321,11 +393,14 @@ def main():
         tmp = LOGS / ".green_lane_override.tmp"
         tmp.write_text(json.dumps({**gl_signal, "timestamp": datetime.now(timezone.utc).isoformat(), "source": "light_green_lane"}))
         tmp.rename(gl_file)
-        import subprocess
-        subprocess.Popen(
-            [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
-            cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
+        if executor_running():
+            log.warning("⏸️ Executor already running — green lane override queued, not spawning another executor")
+        else:
+            import subprocess
+            subprocess.Popen(
+                [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
+                cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+            )
         return
 
     # Run evaluation
@@ -336,7 +411,7 @@ def main():
     decision = parse_decision(result.get("raw", ""))
     log.info(f"⚡ Decision: {decision['action']} (confidence={decision['confidence']}) — {decision['reason']}")
 
-    if should_act(decision, state, price_data):
+    if should_act(decision, state, price_data, report_age_hours=report_age_hours):
         action = decision["action"]
         if action in ("BUY", "SELL", "CLOSE"):
             label = "LIGHT ENTRY" if action in ("BUY", "SELL") else "LIGHT CLOSE"
@@ -362,6 +437,7 @@ def main():
                 fcntl.flock(lock_fd, fcntl.LOCK_EX)
                 fresh_state = load_json(STATE_FILE)
                 fresh_state.setdefault("light_trades", {})[today] = fresh_state.get("light_trades", {}).get(today, 0) + 1
+                fresh_state["last_light_override_time"] = datetime.now(timezone.utc).isoformat()
                 tmp = STATE_FILE.with_suffix(".tmp")
                 tmp.write_text(json.dumps(fresh_state, indent=2))
                 tmp.rename(STATE_FILE)
@@ -370,13 +446,16 @@ def main():
             except Exception as e:
                 log.warning(f"Failed to update light trade count: {e}")
 
-            import subprocess
-            subprocess.Popen(
-                [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
-                cwd=str(PROJECT_ROOT),
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            if executor_running():
+                log.warning("⏸️ Executor already running — light override queued, not spawning another executor")
+            else:
+                import subprocess
+                subprocess.Popen(
+                    [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
+                    cwd=str(PROJECT_ROOT),
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
     else:
         log.info("⏸️  No action needed")
 

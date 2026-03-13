@@ -76,12 +76,14 @@ def validate_decision(
             log.warning(f"🚨 OVERRIDE: {result.override_reason}")
 
         elif obj_strength == "MODERATE":
-            # Moderate conflict — warn and reduce confidence
+            # Moderate conflict — warn and reduce confidence for directional trades.
+            # HOLD vs moderate BUY/SELL should stay a soft warning only.
             result.warnings.append(
                 f"Objective score ({objective_score.overall:+.1f} = {obj_signal}) "
                 f"conflicts with agent decision ({decision}). Score strength: {obj_strength}."
             )
-            result.confidence_adjustment = -0.2
+            if decision not in ("HOLD", "STAY_NEUTRAL"):
+                result.confidence_adjustment = -0.2
             log.warning(f"⚠️ CONFLICT: objective={obj_signal} vs agent={decision} (moderate)")
 
         elif obj_strength == "WEAK":
