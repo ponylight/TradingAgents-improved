@@ -205,20 +205,7 @@ def override_direction_allowed(override_decision: dict, current_price: float | N
     if current_price is None:
         return False, "missing current price for short trigger validation"
 
-    band_low, band_high = 70273.0, 70400.0
-    breakdown_level = 69620.0
-
-    if current_price >= breakdown_level:
-        return False, (
-            f"short trigger blocked: price ${current_price:,.0f} has not broken below ${breakdown_level:,.0f}"
-        )
-
-    if current_price > band_high:
-        return False, (
-            f"short trigger blocked: price ${current_price:,.0f} is still above failed-reclaim band ${band_low:,.0f}-${band_high:,.0f}"
-        )
-
-    return True, "short trigger confirmed"
+    return True, "override direction accepted"
 
 
 def get_atr(exchange, period=14, timeframe="1d"):
@@ -1580,6 +1567,7 @@ def manage_trailing_stop(exchange, positions, state):
                 state["pending_reflection"] = {"returns_pct": returns_pct, "direction": "long", "entry": entry, "exit": current}
                 log.info(f"📊 Trail close P&L: {returns_pct:+.2f}%")
                 state.pop("active_trade", None)
+                save_state(state)
         else:  # short
             new_trail = current + trail_dist
             old_trail = trade_info.get("trailing_stop", entry + trail_dist)
@@ -1595,6 +1583,7 @@ def manage_trailing_stop(exchange, positions, state):
                 state["pending_reflection"] = {"returns_pct": returns_pct, "direction": "short", "entry": entry, "exit": current}
                 log.info(f"📊 Trail close P&L: {returns_pct:+.2f}%")
                 state.pop("active_trade", None)
+                save_state(state)
 
     return state
 
@@ -2306,6 +2295,7 @@ def main():
             opened_dt = datetime.fromisoformat(active["opened_at"])
             hours = (datetime.now(timezone.utc) - opened_dt).total_seconds() / 3600
             portfolio_ctx["age_bars"] = int(hours / 4)
+            portfolio_ctx["hours_held"] = hours
     
     # Inject performance feedback from outcome tracker
     portfolio_ctx["performance_feedback"] = outcome_tracker.get_feedback_for_agents()
@@ -2344,6 +2334,8 @@ def main():
             else:
                 break
         portfolio_ctx["consecutive_same_direction"] = count
+
+    trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
 
     # ─── Check for light layer overrides ────────────────────────────────
     override_decision = None
@@ -2411,6 +2403,7 @@ def main():
     else:
         # Run agents for new signal (full pipeline)
         trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        trade_date = datetime.now(timezone.utc).strftime("%Y-%m-%d")  # refresh for pipeline
         decision, trade_params, reports = run_agents(ta, trade_date, portfolio_ctx, analysts_to_run=analysts_to_run, analysts_to_cache=analysts_to_cache, analyst_scheduler=analyst_scheduler)
 
     # === SHUTDOWN CHECKPOINT (post agent pipeline) ===
@@ -2433,7 +2426,7 @@ def main():
 
     # === GEOPOLITICAL EVENT DETECTION ===
     news_texts = []
-    news_report = reports.get("news_report", "") if isinstance(reports, dict) else ""
+    news_report = reports.get("news", "") if isinstance(reports, dict) else ""
     if news_report:
         news_texts = [line.strip() for line in news_report.split("\n") if len(line.strip()) > 20]
     geo_severity, geo_events = detect_geopolitical_events(news_texts)
@@ -2693,8 +2686,8 @@ def main():
         # Close without reversing
         for p in positions:
             entry_price = float(p["entryPrice"])
-            close_position(exchange, p)
-            exit_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+            order = close_position(exchange, p)
+            exit_price = float(order.get('average') or order.get('price') or exchange.fetch_ticker(SYMBOL)['last']) if order else float(exchange.fetch_ticker(SYMBOL)['last'])
             if p["side"] == "long":
                 returns_pct = ((exit_price - entry_price) / entry_price) * 100
             else:
@@ -2750,8 +2743,8 @@ def main():
         if action.startswith("REVERSE") and has_position:
             for p in positions:
                 entry_price = float(p["entryPrice"])
-                close_position(exchange, p)
-                exit_price = float(exchange.fetch_ticker(SYMBOL)["last"])
+                order = close_position(exchange, p)
+                exit_price = float(order.get('average') or order.get('price') or exchange.fetch_ticker(SYMBOL)['last']) if order else float(exchange.fetch_ticker(SYMBOL)['last'])
                 if p["side"] == "long":
                     returns_pct = ((exit_price - entry_price) / entry_price) * 100
                 else:

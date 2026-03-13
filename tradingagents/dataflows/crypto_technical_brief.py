@@ -57,7 +57,8 @@ def _adx(high, low, close, period=14):
     atr = tr.rolling(period).mean()
     pdi = 100*(pdm.ewm(alpha=1/period).mean()/atr)
     mdi = 100*(mdm.ewm(alpha=1/period).mean()/atr)
-    dx = (abs(pdi-mdi)/abs(pdi+mdi))*100
+    denom = abs(pdi + mdi)
+    dx = ((abs(pdi - mdi) / denom.replace(0, np.nan)) * 100).fillna(0)
     return dx.ewm(alpha=1/period).mean()
 
 def _macd(close, fast=12, slow=26, sig=9):
