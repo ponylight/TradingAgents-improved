@@ -2519,19 +2519,33 @@ def main():
     current_pos = "NEUTRAL"
     if has_position and positions:
         current_pos = positions[0]["side"].upper()  # "LONG" or "SHORT"
-    
-    # Normalize decision to trading mode
-    trade_signal = decision.upper()
-    if trade_signal == "BUY":
-        trade_signal = "LONG"
-    elif trade_signal == "SELL":
-        trade_signal = "SHORT"
-    elif trade_signal == "HOLD":
-        trade_signal = "NEUTRAL" if not has_position else current_pos
 
-    transition = get_position_transition(current_pos, trade_signal)
-    action = transition["action"]
-    log.info(f"📋 Position transition: {current_pos} + {trade_signal} → {action} ({transition['description']})")
+    # CLOSE_LONG / CLOSE_SHORT / CLOSE already express the action directly — skip transition mapping
+    if decision in ("CLOSE_LONG", "CLOSE_SHORT"):
+        action = decision
+        log.info(f"📋 Direct close action: {action} (current_pos={current_pos})")
+    elif decision == "CLOSE":
+        # Bare CLOSE from override path — resolve using live position
+        if current_pos == "LONG":
+            action = "CLOSE_LONG"
+        elif current_pos == "SHORT":
+            action = "CLOSE_SHORT"
+        else:
+            action = "STAY_NEUTRAL"
+        log.info(f"📋 Resolved CLOSE → {action} (current_pos={current_pos})")
+    else:
+        # Normalize decision to trading mode
+        trade_signal = decision.upper()
+        if trade_signal == "BUY":
+            trade_signal = "LONG"
+        elif trade_signal == "SELL":
+            trade_signal = "SHORT"
+        elif trade_signal == "HOLD":
+            trade_signal = "NEUTRAL" if not has_position else current_pos
+
+        transition = get_position_transition(current_pos, trade_signal)
+        action = transition["action"]
+        log.info(f"📋 Position transition: {current_pos} + {trade_signal} → {action} ({transition['description']})")
     record["transition"] = action
 
     if action in ("HOLD", "STAY_NEUTRAL"):
