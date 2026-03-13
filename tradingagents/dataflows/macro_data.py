@@ -304,23 +304,26 @@ def get_economic_calendar_summary() -> str:
 def get_fedwatch_probabilities() -> str | None:
     """Derive rate cut/hike probabilities from 30-day Fed Funds futures (Yahoo Finance).
 
-    Uses CME FedWatch methodology:
-    - Implied rate for each meeting month = 100 - futures_price
-    - Cumulative ease probability = (current_eff - implied_rate) / step
-    - "Ease" on CME = cumulative probability of being at a lower rate by that meeting
+    Uses CME FedWatch methodology with day-weighted post-meeting rate isolation:
+    - For early/mid-month meetings: isolate post-rate from month average
+    - For late-month meetings (<=7 post-days): use next month's contract directly
+    - Chain meetings: each meeting's post-rate becomes the next meeting's pre-rate
+    - Cumulative ease = (effective_rate - post_rate) / 0.25
 
     Reference: https://www.cmegroup.com/articles/2023/understanding-the-cme-group-fedwatch-tool-methodology.html
     """
     import requests
     import logging
+    import calendar as _cal
     log = logging.getLogger(__name__)
 
     try:
-        # Fetch current Fed Funds effective rate from FRED (live)
         STEP = 0.25
+
+        # Fetch live rates from FRED
         CURRENT_EFF = None
-        CURRENT_UPPER = 3.75  # Fallback
-        CURRENT_LOWER = 3.50  # Fallback
+        CURRENT_UPPER = 3.75
+        CURRENT_LOWER = 3.50
         fred_key = os.environ.get("FRED_API_KEY", "")
         if fred_key:
             for series, attr in [("DFF", "eff"), ("DFEDTARU", "upper"), ("DFEDTARL", "lower")]:
@@ -343,13 +346,11 @@ def get_fedwatch_probabilities() -> str | None:
                 except Exception:
                     pass
         if CURRENT_EFF is None:
-            # Fallback: midpoint of target range
             CURRENT_EFF = (CURRENT_UPPER + CURRENT_LOWER) / 2
-            log.debug("FedWatch: using midpoint as effective rate fallback")
 
         now = datetime.utcnow()
 
-        # FOMC meeting dates (day of announcement)
+        # FOMC meeting dates
         fomc_dates_2026 = [
             (1, 29), (3, 18), (4, 29), (6, 17),
             (7, 29), (9, 16), (10, 28), (12, 9),
@@ -377,10 +378,11 @@ def get_fedwatch_probabilities() -> str | None:
         if not upcoming:
             return None
 
-        # Fetch futures prices for each meeting's month
-        meeting_data = []
-        for year, m, d in upcoming:
-            code = month_codes.get(m)
+        # Fetch ALL month futures (need non-meeting months for chaining)
+        futures = {}
+        year = now.year
+        for m_num in range(now.month, 13):
+            code = month_codes.get(m_num)
             if not code:
                 continue
             yr_short = str(year)[-2:]
@@ -390,51 +392,94 @@ def get_fedwatch_probabilities() -> str | None:
                     f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d",
                     headers={"User-Agent": "Mozilla/5.0"}, timeout=8,
                 )
-                if r.status_code != 200:
-                    continue
-                data = r.json()
-                result = data.get("chart", {}).get("result", [])
-                if not result:
-                    continue
-                price = result[0].get("meta", {}).get("regularMarketPrice")
-                if price:
-                    implied = 100 - price
-                    meeting_data.append((year, m, d, implied))
+                if r.status_code == 200:
+                    data = r.json()
+                    result = data.get("chart", {}).get("result", [])
+                    if result:
+                        price = result[0].get("meta", {}).get("regularMarketPrice")
+                        if price:
+                            futures[(year, m_num)] = 100 - price
             except Exception:
                 continue
+        # Also fetch Jan-Jun of next year if needed
+        if any(y > year for y, _, _ in upcoming):
+            for m_num in range(1, 7):
+                code = month_codes.get(m_num)
+                yr_short = str(year + 1)[-2:]
+                ticker = f"ZQ{code}{yr_short}.CBT"
+                try:
+                    r = requests.get(
+                        f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=2d",
+                        headers={"User-Agent": "Mozilla/5.0"}, timeout=8,
+                    )
+                    if r.status_code == 200:
+                        data = r.json()
+                        result = data.get("chart", {}).get("result", [])
+                        if result:
+                            price = result[0].get("meta", {}).get("regularMarketPrice")
+                            if price:
+                                futures[(year + 1, m_num)] = 100 - price
+                except Exception:
+                    continue
 
-        if not meeting_data:
+        if not futures:
             return None
 
-        lines = ["## Fed Funds Futures — Rate Probabilities (FedWatch-style)"]
-        lines.append(f"Current target: {CURRENT_LOWER:.2f}%-{CURRENT_UPPER:.2f}% | Effective: {CURRENT_EFF:.2f}%")
-        lines.append("")
+        output = ["## Fed Funds Futures — Rate Probabilities (FedWatch-style)"]
+        output.append(f"Current target: {CURRENT_LOWER:.2f}%-{CURRENT_UPPER:.2f}% | Effective: {CURRENT_EFF:.2f}%")
+        output.append("")
 
-        for year, m, d, implied in meeting_data:
-            # Cumulative ease = probability of being below current target by this meeting
-            cum_ease_pct = max(0, min(100, (CURRENT_EFF - implied) / STEP * 100))
+        prev_post_rate = CURRENT_EFF
+
+        for year, m, d in upcoming:
+            key = (year, m)
+            if key not in futures:
+                continue
+
+            N = _cal.monthrange(year, m)[1]
+            post_days = N - d + 1
+            avg = futures[key]
+            pre_rate = prev_post_rate
+
+            # Post-meeting rate calculation
+            next_key = (year, m + 1) if m < 12 else (year + 1, 1)
+            if post_days <= 7 and next_key in futures:
+                # Late-month meeting: next month\'s implied IS the post-meeting rate
+                post_rate = futures[next_key]
+            else:
+                # Day-weighted isolation from this month\'s contract
+                # Find the prior non-meeting month\'s implied for pre_rate
+                prior_key = (year, m - 1) if m > 1 else (year - 1, 12)
+                pre_for_calc = futures.get(prior_key, CURRENT_EFF)
+                post_rate = (avg * N - pre_for_calc * (d - 1)) / post_days
+
+            # Meeting-specific ease probability
+            ease = max(0, min(1, (pre_rate - post_rate) / STEP))
+
+            # Cumulative ease from effective rate
+            cum_ease = max(0, min(1, (CURRENT_EFF - post_rate) / STEP))
+            cum_ease_pct = cum_ease * 100
             no_change_pct = max(0, 100 - cum_ease_pct)
-
-            # Cumulative cuts priced (can be fractional, e.g. 0.5 = half a cut)
-            cum_cuts = max(0, (CURRENT_EFF - implied) / STEP)
 
             label = f"{month_names[m]} {d}, {year}"
             if cum_ease_pct > 50:
-                emoji = "\U0001f7e2"  # green
+                emoji = "\U0001f7e2"
             elif cum_ease_pct > 20:
-                emoji = "\U0001f7e1"  # yellow
+                emoji = "\U0001f7e1"
             else:
-                emoji = "\U0001f534"  # red
+                emoji = "\U0001f534"
 
-            lines.append(
+            output.append(
                 f"  {emoji} {label}: Ease {cum_ease_pct:.1f}% / No Change {no_change_pct:.1f}% | "
-                f"Implied: {implied:.3f}% | Cuts priced: {cum_cuts:.2f}"
+                f"Implied post-mtg: {post_rate:.3f}% | Cuts priced: {cum_ease:.2f}"
             )
 
-        if len(lines) <= 2:
+            prev_post_rate = post_rate
+
+        if len(output) <= 2:
             return None
 
-        return "\n".join(lines)
+        return "\n".join(output)
 
     except Exception as e:
         log.debug(f"FedWatch probabilities failed: {e}")
