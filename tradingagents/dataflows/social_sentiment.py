@@ -19,12 +19,15 @@ import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
+import xml.etree.ElementTree as ET
+
 import requests
 
 log = logging.getLogger("social_sentiment")
 
 TIMEOUT = 15
 HEADERS = {"User-Agent": "TradingBot/1.0"}
+OLD_REDDIT_HEADERS = {"User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"}
 
 SUBREDDITS = ["bitcoin", "cryptocurrency", "CryptoMarkets", "BitcoinMarkets"]
 
@@ -95,37 +98,95 @@ def _score_text(text: str) -> Dict[str, float]:
     }
 
 
-def get_reddit_posts(subreddit: str, sort: str = "hot", limit: int = 25) -> List[Dict]:
-    """Fetch posts from a subreddit."""
-    url = f"https://www.reddit.com/r/{subreddit}/{sort}.json?limit={limit}"
-    data = _safe_get(url)
-    if not data:
-        return []
-
+def _parse_rss_posts(subreddit: str, xml_text: str, limit: int = 25) -> List[Dict]:
+    """Parse Reddit RSS feed XML into post dicts."""
     posts = []
-    for child in data.get("data", {}).get("children", []):
-        d = child.get("data", {})
-        if d.get("stickied"):
-            continue
-        title = d.get("title", "")
-        selftext = d.get("selftext", "")[:500]
-        score = d.get("score", 0)
-        comments = d.get("num_comments", 0)
-        created = d.get("created_utc", 0)
-        
-        sentiment = _score_text(f"{title} {selftext}")
-        
-        posts.append({
-            "subreddit": subreddit,
-            "title": title[:150],
-            "score": score,
-            "comments": comments,
-            "created_utc": created,
-            "age_hours": round((time.time() - created) / 3600, 1) if created else 0,
-            "sentiment": sentiment,
-        })
-
+    try:
+        root = ET.fromstring(xml_text)
+        # Atom feed namespace
+        ns = {"atom": "http://www.w3.org/2005/Atom"}
+        entries = root.findall("atom:entry", ns)
+        if not entries:
+            # Try without namespace
+            entries = root.findall("entry")
+        for entry in entries[:limit]:
+            title = (entry.findtext("atom:title", "", ns) or entry.findtext("title", "")).strip()
+            if not title:
+                continue
+            content_el = entry.find("atom:content", ns) or entry.find("content")
+            content = (content_el.text or "")[:500] if content_el is not None else ""
+            content = re.sub(r'<[^>]+>', '', content)  # strip HTML
+            updated = entry.findtext("atom:updated", "", ns) or entry.findtext("updated", "")
+            # Parse timestamp
+            created = 0
+            if updated:
+                try:
+                    from datetime import datetime as _dt
+                    dt = _dt.fromisoformat(updated.replace("Z", "+00:00"))
+                    created = dt.timestamp()
+                except Exception:
+                    pass
+            sentiment = _score_text(f"{title} {content}")
+            posts.append({
+                "subreddit": subreddit,
+                "title": title[:150],
+                "score": 1,  # RSS doesn't include score; approximate as 1
+                "comments": 0,
+                "created_utc": created,
+                "age_hours": round((time.time() - created) / 3600, 1) if created else 0,
+                "sentiment": sentiment,
+            })
+    except ET.ParseError as e:
+        log.warning(f"RSS parse error for r/{subreddit}: {e}")
     return posts
+
+
+def get_reddit_posts(subreddit: str, sort: str = "hot", limit: int = 25) -> List[Dict]:
+    """Fetch posts from a subreddit via RSS (primary) or JSON fallback."""
+    # Strategy 1: RSS feed (no auth needed, avoids 403)
+    rss_url = f"https://www.reddit.com/r/{subreddit}/{sort}/.rss?limit={limit}"
+    try:
+        r = requests.get(rss_url, headers=HEADERS, timeout=TIMEOUT)
+        if r.status_code == 200 and r.text.strip():
+            posts = _parse_rss_posts(subreddit, r.text, limit)
+            if posts:
+                return posts
+    except Exception as e:
+        log.info(f"RSS failed for r/{subreddit}: {e}")
+
+    # Strategy 2: old.reddit.com JSON with browser User-Agent
+    old_url = f"https://old.reddit.com/r/{subreddit}/{sort}.json?limit={limit}"
+    try:
+        r = requests.get(old_url, headers=OLD_REDDIT_HEADERS, timeout=TIMEOUT)
+        if r.status_code == 200:
+            data = r.json()
+            posts = []
+            for child in data.get("data", {}).get("children", []):
+                d = child.get("data", {})
+                if d.get("stickied"):
+                    continue
+                title = d.get("title", "")
+                selftext = d.get("selftext", "")[:500]
+                score = d.get("score", 0)
+                comments = d.get("num_comments", 0)
+                created = d.get("created_utc", 0)
+                sentiment = _score_text(f"{title} {selftext}")
+                posts.append({
+                    "subreddit": subreddit,
+                    "title": title[:150],
+                    "score": score,
+                    "comments": comments,
+                    "created_utc": created,
+                    "age_hours": round((time.time() - created) / 3600, 1) if created else 0,
+                    "sentiment": sentiment,
+                })
+            if posts:
+                return posts
+    except Exception as e:
+        log.info(f"old.reddit.com JSON failed for r/{subreddit}: {e}")
+
+    log.warning(f"All Reddit sources failed for r/{subreddit}")
+    return []
 
 
 def _fetch_all_posts() -> List[Dict]:

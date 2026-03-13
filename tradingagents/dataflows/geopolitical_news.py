@@ -131,29 +131,61 @@ def _fetch_rss(url: str, limit: int = 15) -> List[Dict]:
         return []
 
 
-def _fetch_gdelt(query: str = "bitcoin OR crypto OR cryptocurrency", limit: int = 20) -> List[Dict]:
-    """Fetch articles from GDELT API."""
-    try:
-        url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=artlist&maxrecords={limit}&format=json&sort=datedesc"
-        r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
-        if r.status_code != 200:
-            return []
-        
-        data = r.json()
-        articles = []
-        for article in data.get("articles", []):
-            title = article.get("title", "").strip()
-            if title:
-                articles.append({
-                    "title": title[:200],
-                    "link": article.get("url", ""),
-                    "source": article.get("domain", "GDELT"),
-                    "pub_date": article.get("seendate", ""),
-                })
-        return articles
-    except Exception as e:
-        log.debug(f"GDELT fetch failed: {e}")
-        return []
+_gdelt_cache: Dict[str, Any] = {}  # query -> {"ts": float, "data": list}
+GDELT_CACHE_TTL = 600  # 10 minutes
+
+
+def _fetch_gdelt(query: str = "bitcoin OR crypto OR cryptocurrency", limit: int = 75) -> List[Dict]:
+    """Fetch articles from GDELT API with cache and exponential backoff on 429."""
+    cache_key = f"{query}:{limit}"
+    now = time.time()
+
+    # Check cache first
+    if cache_key in _gdelt_cache and (now - _gdelt_cache[cache_key]["ts"]) < GDELT_CACHE_TTL:
+        return _gdelt_cache[cache_key]["data"]
+
+    url = f"https://api.gdeltproject.org/api/v2/doc/doc?query={query}&mode=artlist&maxrecords={limit}&format=json&sort=datedesc"
+    last_err = None
+
+    for attempt in range(3):
+        try:
+            r = requests.get(url, headers=HEADERS, timeout=TIMEOUT)
+            if r.status_code == 429:
+                wait = 2 ** (attempt + 1)  # 2s, 4s, 8s
+                log.info(f"GDELT rate limited (429), waiting {wait}s (attempt {attempt+1}/3)")
+                time.sleep(wait)
+                continue
+            if r.status_code != 200:
+                last_err = f"status {r.status_code}"
+                break
+
+            data = r.json()
+            articles = []
+            for article in data.get("articles", []):
+                title = article.get("title", "").strip()
+                if title:
+                    articles.append({
+                        "title": title[:200],
+                        "link": article.get("url", ""),
+                        "source": article.get("domain", "GDELT"),
+                        "pub_date": article.get("seendate", ""),
+                    })
+            # Update cache
+            _gdelt_cache[cache_key] = {"ts": now, "data": articles}
+            return articles
+        except Exception as e:
+            last_err = e
+            wait = 2 ** (attempt + 1)
+            log.info(f"GDELT error: {e}, retrying in {wait}s (attempt {attempt+1}/3)")
+            time.sleep(wait)
+
+    # All retries failed — return stale cache if available
+    if cache_key in _gdelt_cache:
+        log.warning(f"GDELT failed after retries ({last_err}), returning stale cache")
+        return _gdelt_cache[cache_key]["data"]
+
+    log.warning(f"GDELT unavailable: {last_err}")
+    return []
 
 
 def _score_headline(title: str) -> Dict:
@@ -245,7 +277,7 @@ def fetch_all_news(categories: List[str] = None, max_per_feed: int = 10) -> Dict
                 source_stats[name] = 0
 
     # GDELT for crypto-specific global coverage
-    gdelt_articles = _fetch_gdelt("bitcoin OR crypto OR cryptocurrency", 20)
+    gdelt_articles = _fetch_gdelt("bitcoin OR crypto OR cryptocurrency", 75)
     for article in gdelt_articles:
         article["category"] = "gdelt"
         article["scoring"] = _score_headline(article["title"])

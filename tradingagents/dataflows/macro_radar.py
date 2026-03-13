@@ -246,13 +246,37 @@ def signal_flow_structure() -> dict:
 
 # === Signal 6: Hash Rate ===
 
+MEMPOOL_MIRRORS = [
+    "mempool.space",
+    "mempool.emzy.de/api",
+    "mempool.bisq.services/api",
+]
+
+
+def _cached_get_mempool(path: str, ttl: int = CACHE_TTL) -> Optional[requests.Response]:
+    """Try mempool.space mirrors with cache. Falls back to blockchain.info for hashrate."""
+    for mirror in MEMPOOL_MIRRORS:
+        url = f"https://{mirror}{path}"
+        r = _cached_get(url, ttl=ttl, timeout=15)
+        if r:
+            return r
+    # Hashrate fallback via blockchain.info
+    if "/mining/hashrate/" in path:
+        return _cached_get("https://api.blockchain.info/stats", ttl=ttl)
+    return None
+
+
 def signal_hash_rate() -> dict:
     """Bitcoin mining hashrate 30-day change. Bullish when growing > 3%."""
     try:
-        r = _cached_get("https://mempool.space/api/v1/mining/hashrate/1m", timeout=15)
+        r = _cached_get_mempool("/api/v1/mining/hashrate/1m")
         if not r:
             return {"name": "Hash Rate", "value": None, "bullish": None, "reason": "API unavailable"}
-        hashrates = r.json().get("hashrates", [])
+        data = r.json()
+        # blockchain.info fallback returns hash_rate directly
+        if "hash_rate" in data and "hashrates" not in data:
+            return {"name": "Hash Rate", "value": None, "bullish": None, "reason": "Only single-point data from fallback"}
+        hashrates = data.get("hashrates", [])
 
         if len(hashrates) < 2:
             return {"name": "Hash Rate", "value": None, "bullish": None, "reason": "Insufficient hashrate data"}

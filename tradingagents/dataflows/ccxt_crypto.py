@@ -445,6 +445,56 @@ def get_fear_greed_index() -> str:
         return f"Error fetching Fear & Greed Index: {e}"
 
 
+def get_binance_long_short_ratio(
+    symbol: str = "BTCUSDT",
+    period: str = "4h",
+    limit: int = 10,
+) -> str:
+    """Get global long/short account ratio from Binance futures via ccxt (free, no key)."""
+    try:
+        exchange = ccxt.binance({"options": {"defaultType": "future"}})
+        data = exchange.fapidata_get_globallongshortaccountratio(
+            {"symbol": symbol, "period": period, "limit": limit}
+        )
+
+        lines = [f"# Binance Global Long/Short Ratio ({symbol}, {period})\n"]
+        for entry in data:
+            ts = datetime.fromtimestamp(int(entry["timestamp"]) / 1000).strftime("%Y-%m-%d %H:%M")
+            ratio = float(entry["longShortRatio"])
+            long_pct = float(entry["longAccount"]) * 100
+            short_pct = float(entry["shortAccount"]) * 100
+            lines.append(f"{ts}: L/S={ratio:.3f} (Long {long_pct:.1f}% | Short {short_pct:.1f}%)")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Binance long/short ratio unavailable: {e}"
+
+
+def get_binance_top_trader_ratio(
+    symbol: str = "BTCUSDT",
+    period: str = "4h",
+    limit: int = 10,
+) -> str:
+    """Get top trader long/short account ratio from Binance futures via ccxt (free, no key)."""
+    try:
+        exchange = ccxt.binance({"options": {"defaultType": "future"}})
+        data = exchange.fapidata_get_toplongshortaccountratio(
+            {"symbol": symbol, "period": period, "limit": limit}
+        )
+
+        lines = [f"# Binance Top Trader Long/Short Ratio ({symbol}, {period})\n"]
+        for entry in data:
+            ts = datetime.fromtimestamp(int(entry["timestamp"]) / 1000).strftime("%Y-%m-%d %H:%M")
+            ratio = float(entry["longShortRatio"])
+            long_pct = float(entry["longAccount"]) * 100
+            short_pct = float(entry["shortAccount"]) * 100
+            lines.append(f"{ts}: L/S={ratio:.3f} (Long {long_pct:.1f}% | Short {short_pct:.1f}%)")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"Binance top trader ratio unavailable: {e}"
+
+
 def get_crypto_liquidations_summary(
     symbol: Annotated[str, "trading pair e.g. BTC/USDT"],
     exchange_id: str = "bybit",

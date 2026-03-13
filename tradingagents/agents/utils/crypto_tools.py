@@ -14,6 +14,8 @@ from tradingagents.dataflows.ccxt_crypto import (
     get_crypto_orderbook,
     get_fear_greed_index,
     get_crypto_liquidations_summary,
+    get_binance_long_short_ratio,
+    get_binance_top_trader_ratio,
 )
 from tradingagents.dataflows.macd_divergence import check_macd_divergence_for_symbol
 from tradingagents.dataflows.pattern_scanner import scan_all_patterns
@@ -117,6 +119,27 @@ def get_liquidation_info(
     Get liquidation activity summary and risk indicators.
     """
     return get_crypto_liquidations_summary(symbol)
+
+
+def get_binance_long_short(
+    symbol: Annotated[str, "Binance futures symbol e.g. BTCUSDT"] = "BTCUSDT",
+) -> str:
+    """
+    Get Binance global long/short account ratio (free, no API key).
+    Shows what percentage of accounts are long vs short over recent periods.
+    Useful as a crowd positioning indicator — extreme readings may signal contrarian opportunities.
+    """
+    return get_binance_long_short_ratio(symbol)
+
+
+def get_binance_top_traders(
+    symbol: Annotated[str, "Binance futures symbol e.g. BTCUSDT"] = "BTCUSDT",
+) -> str:
+    """
+    Get Binance top trader long/short account ratio (free, no API key).
+    Shows positioning of top traders specifically — more signal than the global ratio.
+    """
+    return get_binance_top_trader_ratio(symbol)
 
 
 def get_macro_signal_radar() -> str:

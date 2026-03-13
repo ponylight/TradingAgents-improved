@@ -35,24 +35,57 @@ def _get_cached(key: str, fetcher, ttl: int = CACHE_TTL) -> Any:
     return data
 
 
+MEMPOOL_MIRRORS = [
+    "mempool.space",
+    "mempool.emzy.de/api",
+    "mempool.bisq.services/api",
+]
+
+
 def _safe_get(url: str, params: dict = None, timeout: int = TIMEOUT) -> Optional[dict]:
-    """Safe HTTP GET with error handling and mempool.space fallback."""
+    """Safe HTTP GET with error handling and mempool.space mirror fallback."""
+    # If it's a mempool.space URL, try all mirrors
+    if "mempool.space" in url:
+        last_err = None
+        for mirror in MEMPOOL_MIRRORS:
+            mirror_url = url.replace("mempool.space", mirror, 1)
+            try:
+                r = requests.get(mirror_url, params=params, timeout=timeout)
+                r.raise_for_status()
+                return r.json()
+            except Exception as e:
+                log.info(f"Mempool mirror {mirror} failed: {e}")
+                last_err = e
+        # For fee endpoints, try blockchain.info as last resort
+        if "/fees/" in url:
+            try:
+                r = requests.get("https://blockchain.info/q/fees", timeout=timeout)
+                r.raise_for_status()
+                # blockchain.info returns a simple number (sat/byte)
+                fee = int(r.text.strip())
+                return {"fastestFee": fee, "halfHourFee": fee, "hourFee": max(fee // 2, 1),
+                        "economyFee": max(fee // 4, 1), "minimumFee": 1}
+            except Exception:
+                pass
+        # For hashrate endpoints, try blockchain.info/stats
+        if "/mining/hashrate/" in url:
+            try:
+                r = requests.get("https://api.blockchain.info/stats", timeout=timeout)
+                r.raise_for_status()
+                stats = r.json()
+                hr = stats.get("hash_rate", 0)
+                # Return minimal structure compatible with get_hashrate_history
+                return {"hashrates": [{"avgHashrate": hr, "timestamp": int(time.time())}]}
+            except Exception:
+                pass
+        log.warning(f"All mempool mirrors failed for {url}: {last_err}")
+        return None
+
     try:
         r = requests.get(url, params=params, timeout=timeout)
         r.raise_for_status()
         return r.json()
     except Exception as e:
-        # Fallback: try mempool.space mirror if primary fails
-        if "mempool.space" in url:
-            fallback = url.replace("mempool.space", "mempool.emzy.de", 1)
-            try:
-                log.info(f"Trying mempool mirror: {fallback}")
-                r = requests.get(fallback, params=params, timeout=timeout)
-                r.raise_for_status()
-                return r.json()
-            except Exception as e2:
-                log.warning(f"Both mempool endpoints failed: {e} / {e2}")
-                return None
         log.warning(f"API error {url}: {e}")
         return None
 
