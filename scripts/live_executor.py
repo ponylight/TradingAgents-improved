@@ -278,7 +278,7 @@ def update_mfe_from_candles(exchange, trade_info):
 
 
 def check_daily_loss_limit(executor_state, equity):
-    """Check if daily losses exceed limit. Returns True if locked out."""
+    """Check if daily losses exceed limit. Returns daily loss in dollars for risk manager."""
     from zoneinfo import ZoneInfo
     today = datetime.now(ZoneInfo("Australia/Sydney")).strftime("%Y-%m-%d")
     trades_today = []
@@ -294,15 +294,16 @@ def check_daily_loss_limit(executor_state, equity):
             if ts.startswith(today):
                 trades_today.append(t)
     
-    daily_loss = sum(t["close_pnl_pct"] for t in trades_today if t["close_pnl_pct"] < 0)
-    daily_loss_abs = abs(daily_loss) / 100  # Convert from % to fraction
+    daily_loss_pct = sum(t["close_pnl_pct"] for t in trades_today if t["close_pnl_pct"] < 0)
+    # Convert % loss to dollar loss (negative value)
+    daily_loss_dollars = (daily_loss_pct / 100) * equity
     
-    if daily_loss_abs >= DAILY_LOSS_LIMIT:
-        log.error(f"🔒 DAILY LOSS LIMIT: {daily_loss:.2f}% today (limit: {DAILY_LOSS_LIMIT*100:.0f}%). Locked out until next session.")
+    if abs(daily_loss_dollars) >= DAILY_LOSS_LIMIT * equity:
+        log.error(f"🔒 DAILY LOSS LIMIT: {daily_loss_pct:.2f}% (${abs(daily_loss_dollars):,.0f}) today (limit: {DAILY_LOSS_LIMIT*100:.0f}% / ${DAILY_LOSS_LIMIT*equity:,.0f}). Locked out until next session.")
     
     if trades_today:
-        log.info(f"📊 Daily P&L: {daily_loss:+.2f}% | Limit: {DAILY_LOSS_LIMIT*100:.0f}%")
-    return daily_loss_abs  # Numeric fraction (0.0 to 1.0)
+        log.info(f"📊 Daily P&L: {daily_loss_pct:+.2f}% (${daily_loss_dollars:+,.0f}) | Limit: {DAILY_LOSS_LIMIT*100:.0f}%")
+    return daily_loss_dollars  # Returns dollar loss (negative) for risk manager
 
 
 def get_cold_streak(executor_state):
