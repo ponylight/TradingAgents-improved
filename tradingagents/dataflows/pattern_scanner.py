@@ -369,9 +369,10 @@ def detect_hh_hl_reversal(df: pd.DataFrame) -> Dict[str, Any]:
     low = df["low"].values[-60:]
 
     # Find swing points in last 60 candles
+    # Use wider window (7) to filter out tiny wiggles
     swing_highs = []
     swing_lows = []
-    window = 5
+    window = 7
 
     for i in range(window, len(close) - window):
         if all(high[i] >= high[j] for j in range(i-window, i+window+1)):
@@ -386,6 +387,20 @@ def detect_hh_hl_reversal(df: pd.DataFrame) -> Dict[str, Any]:
     # Check last 2 swing highs and lows (比特皇: B > A and D > C)
     sh1, sh2 = swing_highs[-2], swing_highs[-1]
     sl1, sl2 = swing_lows[-2], swing_lows[-1]
+
+    # Minimum swing magnitude filter: swings must be at least 3% apart
+    # This eliminates noise from tiny price wiggles
+    current_price = close[-1]
+    min_swing_pct = 0.03  # 3%
+
+    high_swing_magnitude = abs(sh2[1] - sh1[1]) / current_price
+    low_swing_magnitude = abs(sl2[1] - sl1[1]) / current_price
+    if high_swing_magnitude < min_swing_pct and low_swing_magnitude < min_swing_pct:
+        return result  # Swings too small — noise, not structure
+
+    # Minimum time separation: swing points must be at least 10 bars apart
+    if abs(sh2[0] - sh1[0]) < 10 or abs(sl2[0] - sl1[0]) < 10:
+        return result  # Swing points too close — not genuine structure
 
     score = 0
     details = []
@@ -405,18 +420,28 @@ def detect_hh_hl_reversal(df: pd.DataFrame) -> Dict[str, Any]:
         score += 2
         details.append("prior downtrend present")
 
+    # Bonus: larger swing magnitude = higher conviction
+    max_magnitude = max(high_swing_magnitude, low_swing_magnitude)
+    if max_magnitude >= 0.08:  # 8%+ swing = very significant
+        score += 2
+        details.append(f"significant structure ({max_magnitude:.1%} swing)")
+    elif max_magnitude >= 0.05:  # 5%+ swing = meaningful
+        score += 1
+        details.append(f"meaningful structure ({max_magnitude:.1%} swing)")
+
     # If B < A (lower high) → bearish continuation flag
     if sh2[1] < sh1[1] and sl2[1] < sl1[1]:
-        result["detected"] = True
-        result["confidence"] = 5
-        result["details"] = f"BEARISH — Lower highs + lower lows: " \
-                           f"highs ${sh1[1]:.0f} → ${sh2[1]:.0f}, " \
-                           f"lows ${sl1[1]:.0f} → ${sl2[1]:.0f}. " \
-                           f"比特皇: likely downtrend continuation."
-        result["direction"] = "SELL"
+        if score >= 5:  # Only flag if structure is significant
+            result["detected"] = True
+            result["confidence"] = min(10, score)
+            result["details"] = f"BEARISH — Lower highs + lower lows: " \
+                               f"highs ${sh1[1]:.0f} → ${sh2[1]:.0f}, " \
+                               f"lows ${sl1[1]:.0f} → ${sl2[1]:.0f}. " \
+                               f"比特皇: likely downtrend continuation."
+            result["direction"] = "SELL"
         return result
 
-    if score >= 5:
+    if score >= 7:  # Raised from 5 to 7 — only fire on high conviction
         result["detected"] = True
         result["confidence"] = min(10, score)
         result["details"] = f"BULLISH — HH+HL reversal: {', '.join(details)}. " \
