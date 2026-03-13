@@ -1935,6 +1935,7 @@ def run_agents(ta, trade_date, portfolio_context=None, analysts_to_run=None, ana
         "market": agent_state.get("market_report", ""),
         "sentiment": agent_state.get("sentiment_report", ""),
         "news": agent_state.get("news_report", ""),
+        "trader": agent_state.get("trader_investment_decision", "") or agent_state.get("trader_investment_plan", ""),
         "final": full_decision[:2000],
         "decision": decision,
         "parsed_params": trade_params,
