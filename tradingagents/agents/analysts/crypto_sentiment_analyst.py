@@ -112,7 +112,8 @@ Do NOT output FINAL TRANSACTION PROPOSAL. You report sentiment, not trade decisi
         messages = [
             SystemMessage(content=system_message),
             HumanMessage(content=f"Analyze current sentiment and positioning for {ticker}. "
-                         f"Call all five tools (get_funding_rate, get_oi_timeseries, get_open_interest, get_crypto_fear_greed, get_cross_venue_snapshot), then synthesize with the pre-fetched social data above."),
+                         f"Call get_funding_rate, get_oi_timeseries, get_crypto_fear_greed, and get_cross_venue_snapshot. "
+                         f"Use get_open_interest only if get_oi_timeseries fails. Then synthesize with the pre-fetched social data above."),
         ]
 
         # Agentic tool-calling loop

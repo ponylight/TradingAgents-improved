@@ -30,14 +30,10 @@ from tradingagents.dataflows.config import set_config
 
 # Crypto tools
 from tradingagents.agents.utils.crypto_tools import (
-    get_crypto_price_data,
     get_funding_rate,
     get_open_interest,
     get_oi_timeseries,
-    get_orderbook_depth,
     get_crypto_fear_greed,
-    get_macro_signal_radar,
-    get_stablecoin_peg_health,
     get_cross_venue_snapshot,
     )
 
@@ -197,18 +193,29 @@ class CryptoTradingAgentsGraph:
 
     def _create_crypto_tool_nodes(self) -> Dict[str, ToolNode]:
         """Create crypto-specific tool nodes with clean ownership.
-        
-        Technical Analyst: TechnicalBrief (pre-computed, minimal tools)
+
+        NOTE: Analysts with internal tool loops (market, sentiment, news) handle
+        tool calls themselves. Their graph ToolNodes are kept for structural
+        completeness but are effectively dead code — the conditional edge
+        `should_continue` only routes to the ToolNode if the LLM's last message
+        has tool_calls, but the internal loop consumes them first.
+
+        Technical Analyst: TechnicalBrief (pre-computed) + backtest/pattern/MACD/cross-venue tools
         Sentiment Analyst: positioning + social (funding, OI, Fear & Greed)
-        Fundamentals Analyst: on-chain data
+        Fundamentals Analyst: on-chain data (macro/stablecoin are pre-fetched, not LLM-called)
         News Analyst: news + macro (DXY, yields, CPI, economic calendar)
         """
+        # Import backtest wrappers (same as market analyst binds)
+        from tradingagents.agents.utils.crypto_tools import check_macd_divergence, run_pattern_scan
+
         return {
+            # Dead code — market analyst now uses internal tool loop
             "market": ToolNode([
-                get_crypto_price_data,
-                get_orderbook_depth,
+                check_macd_divergence,
+                run_pattern_scan,
                 get_cross_venue_snapshot,
             ]),
+            # Dead code — sentiment analyst uses internal tool loop
             "sentiment": ToolNode([
                 get_crypto_fear_greed,
                 get_funding_rate,
@@ -218,10 +225,10 @@ class CryptoTradingAgentsGraph:
             ]),
             "fundamentals": ToolNode([
                 get_onchain_fundamentals,
-                get_macro_signal_radar,
-                get_stablecoin_peg_health,
-                # GDELT CII removed — too many 429s, low decision value
+                # get_macro_signal_radar and get_stablecoin_peg_health removed —
+                # these are pre-fetched in the analyst node, not called via LLM tools
             ]),
+            # Dead code — news analyst uses internal tool loop
             "news": ToolNode([
                 get_news,
                 get_global_news,

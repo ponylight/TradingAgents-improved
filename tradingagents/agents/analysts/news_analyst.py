@@ -23,7 +23,10 @@ log = logging.getLogger("news_analyst")
 
 MAX_TOOL_ROUNDS = 3
 
-# News/macro data older than 4h is considered stale
+# News/macro data older than 4h is considered stale.
+# Intentionally aggressive: even economic calendar data (which updates daily) benefits
+# from fresh context because the analyst needs to assess proximity to upcoming events.
+# The staleness gate caps confidence, it doesn't block analysis.
 NEWS_STALENESS_HOURS = 4.0
 
 

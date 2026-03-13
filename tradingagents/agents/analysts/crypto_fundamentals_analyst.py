@@ -14,6 +14,7 @@ The LLM interprets the pre-fetched data.
 """
 
 import logging
+from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 
 from tradingagents.dataflows.onchain_fundamentals import (
@@ -195,17 +196,21 @@ Provide your fundamentals analysis.""",
             },
         ]
 
-        result = llm_with_tools.invoke(messages)
+        # Tool-calling loop with dedup: if LLM calls get_onchain_fundamentals,
+        # return the pre-fetched data instead of hitting the API again.
+        for _round in range(3):
+            result = llm_with_tools.invoke(messages)
 
-        # If the LLM called tools (shouldn't need to, but handle it)
-        if hasattr(result, 'tool_calls') and result.tool_calls:
+            if not hasattr(result, 'tool_calls') or not result.tool_calls:
+                break
+
+            messages.append(result)
             for tc in result.tool_calls:
                 if tc['name'] == 'get_onchain_fundamentals':
-                    # Return pre-fetched data instead of re-calling the API
                     tool_result = _prefetched_fundamentals
-                    messages.append({"role": "assistant", "content": "", "tool_calls": [tc]})
-                    messages.append({"role": "tool", "content": tool_result, "tool_call_id": tc["id"]})
-            result = llm_with_tools.invoke(messages)
+                else:
+                    tool_result = f"Unknown tool: {tc['name']}"
+                messages.append(ToolMessage(content=str(tool_result), tool_call_id=tc["id"]))
 
         return {
             "fundamentals_report": result.content,

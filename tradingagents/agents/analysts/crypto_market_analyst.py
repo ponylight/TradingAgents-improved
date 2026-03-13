@@ -10,9 +10,12 @@ NOT the LLM's job: fetch data or calculate indicators (that's Tier 1).
 """
 
 import logging
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
 log = logging.getLogger("crypto_market_analyst")
+
+MAX_TOOL_ROUNDS = 3
 
 
 def create_crypto_market_analyst(llm):
@@ -38,11 +41,12 @@ def create_crypto_market_analyst(llm):
         return compare_strategies(strategies, symbol, days)
 
     tools = [run_backtest, compare_strats, check_macd_divergence, run_pattern_scan, get_cross_venue_snapshot]
+    tool_map = {t.name: t for t in tools}
     llm_with_tools = llm.bind_tools(tools) if tools else llm
 
     def analyst_node(state) -> dict:
         company_name = state.get("company_of_interest", "BTC/USDT")
-        
+
         # Build deterministic technical brief (~8 seconds, zero LLM)
         try:
             brief = build_crypto_technical_brief(company_name.split(":")[0])
@@ -52,9 +56,7 @@ def create_crypto_market_analyst(llm):
             brief_json = f"Error computing technical brief: {e}"
 
         messages = [
-            {
-                "role": "system",
-                "content": f"""You are a multi-timeframe crypto technical analyst. Your input is a pre-computed Technical Brief (JSON) covering 1h, 4h, and 1d timeframes.
+            SystemMessage(content=f"""You are a multi-timeframe crypto technical analyst. Your input is a pre-computed Technical Brief (JSON) covering 1h, 4h, and 1d timeframes.
 
 ## Technical Brief JSON Structure
 The brief is a nested JSON with this layout:
@@ -81,8 +83,18 @@ If data quality is degraded (>2 contradictions across timeframes), open with a D
 ## Your Workflow
 1. Audit the Technical Brief for data quality issues
 2. Read the indicators — all are pre-calculated
-3. Identify the dominant setup across timeframes
-4. Produce a structured analysis
+3. Use tools to validate your hypothesis (MACD divergence, pattern scan, backtest)
+4. Check cross-venue confirmation
+5. Produce a structured analysis
+
+## Available Tools
+You have 5 tools. Call them as needed to strengthen your analysis:
+
+1. **check_macd_divergence** — Detects MACD triple divergence (半木夏 strategy) across timeframes. Call this when you see RSI divergence in the brief to check if MACD confirms. Returns divergence type, strength, and timeframe.
+2. **run_pattern_scan** — Scans for chart patterns (double top/bottom, head & shoulders, triangles, wedges). Call this to identify structural setups that complement the brief's market_structure data.
+3. **run_backtest** — Backtests a strategy (ma_crossover, macd, breakout, rsi_reversal, bollinger_bands) on recent data. Use to validate whether the setup you've identified has worked recently. Pass `strategy`, optional `symbol` and `days`.
+4. **compare_strats** — Compares multiple strategies side-by-side. Use when the brief suggests multiple valid setups. Pass comma-separated `strategies` string.
+5. **get_cross_venue_snapshot** — Checks price/funding/OI alignment across Bybit, Binance, and Coinbase.
 
 ## Cross-Venue Confirmation
 Call `get_cross_venue_snapshot` to check price/funding/OI alignment across Bybit, Binance, and Coinbase.
@@ -130,23 +142,43 @@ Use key levels (support/resistance) to determine stop distance and R:R estimate.
 | Stop | $xxx |
 | R:R | x.x : 1 |
 
-Do NOT output FINAL TRANSACTION PROPOSAL. You are an analyst — you report data, not trade decisions.""",
-            },
-            {
-                "role": "user",
-                "content": f"""Technical Brief for {company_name}:
+Do NOT output FINAL TRANSACTION PROPOSAL. You are an analyst — you report data, not trade decisions."""),
+            HumanMessage(content=f"""Technical Brief for {company_name}:
 
 {brief_json}
 
-Analyze the brief and produce your structured technical report.""",
-            },
+Analyze the brief. Call check_macd_divergence and get_cross_venue_snapshot at minimum, plus any other tools that would strengthen your analysis. Then produce your structured technical report."""),
         ]
 
-        result = llm_with_tools.invoke(messages)
+        # Agentic tool-calling loop (handles tool calls internally, not via graph ToolNode)
+        for round_num in range(MAX_TOOL_ROUNDS):
+            result = llm_with_tools.invoke(messages)
+            messages.append(result)
+
+            if not result.tool_calls:
+                break
+
+            for tc in result.tool_calls:
+                tool_fn = tool_map.get(tc["name"])
+                if tool_fn:
+                    try:
+                        output = tool_fn.invoke(tc["args"])
+                        log.info(f"Tool {tc['name']} returned {len(str(output))} chars")
+                    except Exception as e:
+                        output = f"Error calling {tc['name']}: {e}"
+                        log.warning(output)
+                else:
+                    output = f"Unknown tool: {tc['name']}"
+                messages.append(ToolMessage(content=str(output), tool_call_id=tc["id"]))
+
+        report = result.content if result.content else ""
+        if not report:
+            log.warning("Market analyst produced no text report after tool loop")
+            report = f"Technical analysis incomplete. Brief:\n{brief_json[:500]}"
 
         return {
-            "messages": [result],
-            "market_report": result.content,
+            "messages": state["messages"] + [result],
+            "market_report": report,
         }
 
     return analyst_node

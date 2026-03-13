@@ -1,6 +1,15 @@
 """
 Macro Economy Analyst — Analyzes macroeconomic conditions affecting BTC.
 
+DEPRECATED: This analyst is NOT wired into the CryptoTradingAgentsGraph.
+The News Analyst already covers the same macro data (DXY, yields, S&P 500,
+FRED, economic calendar) with the same tools. This module writes to a
+`macro_report` field that does not exist in AgentState.
+
+Kept for potential future use as an optional standalone analyst.
+To wire in: add "macro_report" to AgentState and "macro" to analyst_creators
+in crypto_trading_graph.py.
+
 Uses an agentic tool-calling loop to fetch DXY, yields, S&P 500, FRED data,
 and economic calendar, then produces a macro regime report.
 """
