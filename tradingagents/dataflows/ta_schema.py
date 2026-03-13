@@ -221,34 +221,3 @@ class TechnicalBrief(BaseModel):
         description="Weighted cross-timeframe direction resolution (1d>4h>1h)",
         default=None,
     )
-
-
-# ── Green Lane Signal ────────────────────────────────────────────────────
-
-class GreenLaneSignal(BaseModel):
-    triggered: bool
-    quality_score: int  # 1-10
-    direction: str  # "long" or "short"
-    entry_price: float
-    stop_loss: float
-    tp1: float  # 3:1 R:R
-    tp2: float  # 5:1 R:R
-    trail_ema: str  # "daily_ema9"
-    pinch_active: bool
-    pinch_width_pct: float
-    zone_width_pct: float
-    sweep_depth_pct: float
-    reversal_velocity: float
-    volume_ratio: float
-    mtf_alignment: str
-    timestamp: str
-    reasoning: str
-    # Qullamaggie-style fields
-    gap_up_pct: float = 0.0
-    consolidation_detected: bool = False
-    consolidation_days: int = 0
-    prior_rally_pct: float = 0.0
-    daily_ema10: float = 0.0
-    daily_ema20: float = 0.0
-    daily_atr: float = 0.0
-    max_hold_days: int = 0  # 0 = no limit (longs), >0 = time-based exit (shorts default: 3)

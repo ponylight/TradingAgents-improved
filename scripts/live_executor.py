@@ -1604,7 +1604,7 @@ def migrate_state(state: dict) -> dict:
     """Ensure state has positions dict. Backwards compatible."""
     if "positions" not in state:
         log.info("🔄 Migrating state to multi-position format")
-        state["positions"] = {"committee": None, "green_lane": None}
+        state["positions"] = {"committee": None}
         if state.get("active_trade"):
             state["positions"]["committee"] = dict(state["active_trade"])
             state["positions"]["committee"]["source"] = "committee"
@@ -1628,13 +1628,6 @@ def get_combined_exposure(state: dict) -> dict:
         position_count += 1
         positions_summary.append({"source": "committee", "side": committee.get("side", committee.get("direction", "?")), "size_pct": size})
 
-    green_lane = positions.get("green_lane")
-    if green_lane:
-        size = green_lane.get("size_pct", 2.0)
-        total_size_pct += size
-        position_count += 1
-        positions_summary.append({"source": "green_lane", "side": green_lane.get("side", "?"), "size_pct": size})
-
     total_leverage_est = 10.0 if total_size_pct > 0 else 0.0
 
     result = {
@@ -1646,183 +1639,6 @@ def get_combined_exposure(state: dict) -> dict:
     log.info(f"📊 Combined exposure: {position_count} position(s), {total_size_pct:.1f}% margin")
     return result
 
-
-def can_open_green_lane(state: dict, equity: float, direction: str = None) -> tuple:
-    """Check if a green lane position can be opened.
-    Rules: max 1 green lane, combined size <= 10%, combined leverage <= 20x,
-           no opposing direction vs committee.
-    Returns: (allowed: bool, reason: str)
-    """
-    positions = state.get("positions", {})
-    if positions.get("green_lane") is not None:
-        reason = "Already have an active green lane position"
-        log.info(f"🚫 Cannot open green lane: {reason}")
-        return False, reason
-
-    exposure = get_combined_exposure(state)
-    GREEN_LANE_SIZE_PCT = 2.0
-    projected_size = exposure["total_size_pct"] + GREEN_LANE_SIZE_PCT
-    if projected_size > 10.0:
-        reason = f"Combined margin would be {projected_size:.1f}% (max 10%)"
-        log.info(f"🚫 Cannot open green lane: {reason}")
-        return False, reason
-
-    # Block directional conflict: green lane opposing committee position
-    committee = positions.get("committee")
-    if committee and direction:
-        committee_side = committee.get("side", "").upper()
-        gl_side = direction.upper()
-        # Map BUY/SELL to LONG/SHORT for comparison
-        side_map = {"BUY": "LONG", "SELL": "SHORT", "LONG": "LONG", "SHORT": "SHORT"}
-        c_norm = side_map.get(committee_side, committee_side)
-        g_norm = side_map.get(gl_side, gl_side)
-        if c_norm and g_norm and c_norm != g_norm:
-            reason = f"Directional conflict: committee is {c_norm}, green lane wants {g_norm}"
-            log.info(f"🚫 Cannot open green lane: {reason}")
-            return False, reason
-    committee_notional = (committee.get("size_pct", DEFAULT_ALLOC_PCT * 100) * 10) if committee else 0.0
-    projected_leverage = (committee_notional + GREEN_LANE_SIZE_PCT * 10) / max(projected_size, 0.01)
-    if projected_leverage > 20.0:
-        reason = f"Estimated combined leverage would be {projected_leverage:.1f}x (max 20x)"
-        log.info(f"🚫 Cannot open green lane: {reason}")
-        return False, reason
-
-    log.info(f"✅ Green lane allowed: projected {projected_size:.1f}% margin, ~{projected_leverage:.1f}x lev")
-    return True, "OK"
-
-
-def open_green_lane_position(state: dict, signal, equity: float) -> dict:
-    """Create a green lane position entry from a GreenLaneSignal. Default size: 2% margin."""
-    GREEN_LANE_SIZE_PCT = 2.0
-    if "positions" not in state:
-        state["positions"] = {"committee": None, "green_lane": None}
-    state["positions"]["green_lane"] = {
-        "source": "green_lane",
-        "side": signal.direction,
-        "entry_price": signal.entry_price,
-        "stop_loss": signal.stop_loss,
-        "tp1": signal.tp1,
-        "tp2": signal.tp2,
-        "initial_tp1": signal.tp1,
-        "initial_tp2": signal.tp2,
-        "tp1_hit": False,
-        "tp2_hit": False,
-        "trail_stop": None,
-        "trail_ema": signal.trail_ema,
-        "size_pct": GREEN_LANE_SIZE_PCT,
-        "opened_at": signal.timestamp,
-        "quality_score": signal.quality_score,
-        "pnl_pct": 0.0,
-    }
-    log.info(f"🟢 Opened green lane {signal.direction} @ ${signal.entry_price:,.2f} | SL ${signal.stop_loss:,.2f} | TP1 ${signal.tp1:,.2f} | TP2 ${signal.tp2:,.2f} | Quality {signal.quality_score}/10")
-    return state
-
-
-def check_green_lane_exits(state: dict, current_price: float, daily_ema9: float) -> list:
-    """Check green lane exit conditions. Returns list of exit actions."""
-    pos = state.get("positions", {}).get("green_lane")
-    if not pos:
-        return []
-    actions = []
-    side = pos.get("side", "long")
-    entry = pos.get("entry_price", 0.0)
-    stop_loss = pos.get("stop_loss", 0.0)
-    tp1 = pos.get("tp1")
-    tp2 = pos.get("tp2")
-    tp1_hit = pos.get("tp1_hit", False)
-    tp2_hit = pos.get("tp2_hit", False)
-    trail_stop = pos.get("trail_stop")
-
-    if side == "long":
-        if current_price <= stop_loss:
-            log.info(f"🔴 Green lane STOP LOSS hit: ${current_price:,.2f} <= ${stop_loss:,.2f}")
-            return [{"type": "stop_loss", "price": current_price, "fraction": 1.0, "reason": "stop_loss"}]
-        if tp1 and not tp1_hit and current_price >= tp1:
-            log.info(f"🎯 Green lane TP1 hit: ${current_price:,.2f}")
-            actions.append({"type": "tp1", "price": current_price, "fraction": 1/3, "reason": "tp1"})
-            pos["tp1_hit"] = True
-            pos["stop_loss"] = entry
-            log.info(f"🛡️ Stop moved to breakeven: ${entry:,.2f}")
-        if tp2 and not tp2_hit and current_price >= tp2:
-            log.info(f"🎯 Green lane TP2 hit: ${current_price:,.2f}")
-            actions.append({"type": "tp2", "price": current_price, "fraction": 1/3, "reason": "tp2"})
-            pos["tp2_hit"] = True
-        if tp1_hit and tp2_hit and current_price < daily_ema9:
-            log.info(f"📉 Green lane trail stop hit: price ${current_price:,.2f} < EMA9 ${daily_ema9:,.2f}")
-            actions.append({"type": "trail_stop", "price": current_price, "fraction": 1.0, "reason": "trail_ema9_break"})
-        if trail_stop is None or daily_ema9 > trail_stop:
-            pos["trail_stop"] = daily_ema9
-    else:
-        if current_price >= stop_loss:
-            log.info(f"🔴 Green lane STOP LOSS hit (short): ${current_price:,.2f} >= ${stop_loss:,.2f}")
-            return [{"type": "stop_loss", "price": current_price, "fraction": 1.0, "reason": "stop_loss"}]
-        # Time-based exit for shorts
-        max_hold_days = pos.get("max_hold_days", 0)
-        if max_hold_days > 0:
-            entry_time_str = pos.get("entry_time") or pos.get("opened_at")
-            if entry_time_str:
-                try:
-                    from datetime import datetime, timezone
-                    entry_dt = datetime.fromisoformat(entry_time_str.replace("Z", "+00:00"))
-                    held_days = (datetime.now(timezone.utc) - entry_dt).days
-                    if held_days >= max_hold_days:
-                        log.info(f"⏰ Green lane short time exit: held {held_days}d >= max {max_hold_days}d")
-                        return [{"type": "time_exit", "price": current_price, "fraction": 1.0, "reason": f"max_hold_{max_hold_days}d"}]
-                except Exception as e:
-                    log.warning(f"Could not parse entry_time for time-based exit: {e}")
-        # Acceleration detection: big drop in a day → take remaining profits
-        daily_atr = pos.get("daily_atr", 0.0)
-        prev_day_price = pos.get("prev_day_price")
-        if prev_day_price and prev_day_price > 0:
-            day_drop_pct = (prev_day_price - current_price) / prev_day_price * 100
-            if day_drop_pct > 5.0:
-                log.info(f"🚀 Short acceleration: dropped {day_drop_pct:.2f}% in a day — closing remaining")
-                return [{"type": "acceleration", "price": current_price, "fraction": 1.0, "reason": "acceleration_5pct_day"}]
-            if daily_atr > 0:
-                atr_2x = 2 * daily_atr
-                gain = prev_day_price - current_price
-                if gain >= atr_2x:
-                    log.info(f"🚀 Short acceleration: gained {gain:.2f} >= 2x ATR ({atr_2x:.2f}) in one day — suggesting close")
-                    actions.append({"type": "acceleration", "price": current_price, "fraction": 1.0, "reason": "acceleration_2x_atr"})
-        if tp1 and not tp1_hit and current_price <= tp1:
-            log.info(f"🎯 Green lane TP1 hit (short): ${current_price:,.2f}")
-            actions.append({"type": "tp1", "price": current_price, "fraction": 1/3, "reason": "tp1"})
-            pos["tp1_hit"] = True
-            pos["stop_loss"] = entry
-        if tp2 and not tp2_hit and current_price <= tp2:
-            log.info(f"🎯 Green lane TP2 hit (short): ${current_price:,.2f}")
-            actions.append({"type": "tp2", "price": current_price, "fraction": 1/3, "reason": "tp2"})
-            pos["tp2_hit"] = True
-        if tp1_hit and tp2_hit and current_price > daily_ema9:
-            log.info(f"📈 Green lane trail stop hit (short): price ${current_price:,.2f} > EMA9 ${daily_ema9:,.2f}")
-            actions.append({"type": "trail_stop", "price": current_price, "fraction": 1.0, "reason": "trail_ema9_break"})
-        if trail_stop is None or daily_ema9 < trail_stop:
-            pos["trail_stop"] = daily_ema9
-
-    if actions:
-        log.info(f"📋 Green lane exit actions: {[a[chr(39)+'type'+chr(39)] for a in actions]}")
-    return actions
-
-
-def close_green_lane_position(state: dict, exit_price: float, reason: str) -> dict:
-    """Close green lane position and move to closed_trades."""
-    pos = state.get("positions", {}).get("green_lane")
-    if not pos:
-        log.warning("⚠️ close_green_lane_position called but no green lane position found")
-        return state
-    entry_price = pos.get("entry_price", exit_price)
-    side = pos.get("side", "long")
-    pnl_pct = ((exit_price - entry_price) / entry_price * 100) if side == "long" else ((entry_price - exit_price) / entry_price * 100)
-    state.setdefault("closed_trades", []).append({
-        **pos,
-        "exit_price": exit_price,
-        "exit_reason": reason,
-        "closed_at": datetime.now(timezone.utc).isoformat(),
-        "pnl_pct": round(pnl_pct, 4),
-    })
-    state["positions"]["green_lane"] = None
-    log.info(f"🔴 Closed green lane {side} | Entry ${entry_price:,.2f} → Exit ${exit_price:,.2f} | P&L {pnl_pct:+.2f}% | Reason: {reason}")
-    return state
 
 
 # === AGENTS ===
@@ -2450,7 +2266,7 @@ def main():
     # Build positions summary for fund manager awareness
     positions_lines = []
     pos_state = executor_state.get("positions", {})
-    for src in ("committee", "green_lane"):
+    for src in ("committee",):
         p = pos_state.get(src)
         if p:
             positions_lines.append(f"- {src}: {p.get('side', '?')} | entry ${p.get('entry_price', p.get('entry', 0)):,.0f} | size {p.get('size_pct', '?')}%")
@@ -2493,9 +2309,9 @@ def main():
                 break
         portfolio_ctx["consecutive_same_direction"] = count
 
-    # ─── Check for light layer / green lane overrides ───────────────────
+    # ─── Check for light layer overrides ────────────────────────────────
     override_decision = None
-    for override_name in ("green_lane_override.json", "light_override.json"):  # Green lane takes precedence
+    for override_name in ("light_override.json",):
         override_file = LOG_DIR / override_name
         if override_file.exists():
             try:

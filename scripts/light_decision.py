@@ -347,27 +347,6 @@ def should_act(decision: dict, state: dict, price_data: dict, report_age_hours: 
     return True
 
 
-def check_green_lane_setup() -> dict | None:
-    """Run green lane scanner, return signal dict if triggered."""
-    try:
-        from tradingagents.graph.green_lane import check_green_lane
-        signal = check_green_lane("BTC/USDT", min_quality=7)
-        if signal:
-            log.info(f"🟢 Green lane: {signal.direction.upper()} q={signal.quality_score} entry=${signal.entry_price:,.2f}")
-            return {
-                "action": "BUY" if signal.direction.lower() == "long" else "SELL",
-                "entry": signal.entry_price,
-                "stop_loss": signal.stop_loss,
-                "tp1": signal.tp1,
-                "tp2": signal.tp2,
-                "quality": signal.quality_score,
-                "reasoning": signal.reasoning,
-            }
-    except Exception as e:
-        log.debug(f"Green lane scan skipped: {e}")
-    return None
-
-
 def executor_running() -> bool:
     """Best-effort check: don't spawn executor if its lock is already held."""
     executor_lock = LOGS / ".executor.lock"
@@ -427,65 +406,6 @@ def main():
 
     if report_age_hours is not None:
         log.info(f"📦 Cached reports age: {report_age_hours:.1f}h")
-
-    # Check green lane setup (deterministic, no LLM cost)
-    gl_signal = check_green_lane_setup()
-    if gl_signal:
-        # Position gate: don't double up or conflict with existing position
-        active = state.get("active_trade") or state.get("positions", {}).get("committee")
-        if active:
-            existing_dir = active.get("direction") or active.get("side", "")
-            # Normalize: BUY/long → "long", SELL/short → "short"
-            existing_side = "long" if existing_dir in ("BUY", "long") else "short" if existing_dir in ("SELL", "short") else ""
-            gl_side = "long" if gl_signal["action"] == "BUY" else "short"
-
-            if existing_side == gl_side:
-                log.info(f"🟢 Green lane {gl_signal['action']} skipped: already {existing_side.upper()} — no doubling")
-                gl_signal = None  # Fall through to LLM evaluation
-            elif existing_side and existing_side != gl_side:
-                log.warning(
-                    f"🟢 Green lane OPPOSITE signal: {gl_signal['action']} vs existing {existing_side.upper()} — "
-                    f"waking full pipeline for evaluation"
-                )
-                # Opposite signal is a major event — spawn full executor for comprehensive analysis
-                # Write a special override that tells executor to run full pipeline with reversal context
-                reversal_file = LOGS / "green_lane_reversal.json"
-                tmp = LOGS / ".green_lane_reversal.tmp"
-                tmp.write_text(json.dumps({
-                    **gl_signal,
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "source": "light_green_lane_reversal",
-                    "existing_position": existing_side,
-                    "reason": f"Green lane detected {gl_side.upper()} while {existing_side.upper()} — potential structure flip",
-                }))
-                tmp.rename(reversal_file)
-                if executor_running():
-                    log.warning("⏸️ Executor already running — reversal override queued")
-                else:
-                    import subprocess
-                    log.warning("🚨 Spawning full executor for reversal evaluation")
-                    subprocess.Popen(
-                        [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
-                        cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                    )
-                return  # Don't fall through to LLM eval — full pipeline handles it
-
-    if gl_signal:
-        # Green lane found — write override and launch executor directly (no LLM needed)
-        log.warning(f"🟢 GREEN LANE TRIGGER: {gl_signal['action']} q={gl_signal['quality']}")
-        gl_file = LOGS / "green_lane_override.json"
-        tmp = LOGS / ".green_lane_override.tmp"
-        tmp.write_text(json.dumps({**gl_signal, "timestamp": datetime.now(timezone.utc).isoformat(), "source": "light_green_lane"}))
-        tmp.rename(gl_file)
-        if executor_running():
-            log.warning("⏸️ Executor already running — green lane override queued, not spawning another executor")
-        else:
-            import subprocess
-            subprocess.Popen(
-                [str(VENV_PYTHON), str(PROJECT_ROOT / "scripts" / "live_executor.py")],
-                cwd=str(PROJECT_ROOT), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-        return
 
     # Run evaluation
     result = run_light_evaluation(price_data, reports, state)

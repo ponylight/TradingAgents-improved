@@ -112,22 +112,6 @@ def api_status():
     # Multi-position support
     positions = state.get("positions", {})
 
-    # Green lane signal (last entry from logs/green_lane_signals.json)
-    gl_signal = None
-    gl_signals_path = LOGS_DIR / "green_lane_signals.json"
-    if gl_signals_path.exists():
-        try:
-            with open(gl_signals_path) as f:
-                signals = json.load(f)
-            if isinstance(signals, list) and signals:
-                gl_signal = signals[-1]
-            elif isinstance(signals, dict):
-                gl_signal = signals
-        except Exception:
-            pass
-
-    gl_last_scan = sentinel.get("green_lane_last_scan")
-
     return jsonify({
         "last_decision": state.get("last_decision"),
         "last_decision_time": state.get("last_decision_time"),
@@ -142,8 +126,6 @@ def api_status():
         "next_cron_seconds": int(diff),
         "next_cron_time": nxt.isoformat(),
         "sentinel": sentinel,
-        "green_lane_last_scan": gl_last_scan,
-        "green_lane_signal": gl_signal,
     })
 
 
@@ -330,15 +312,11 @@ tr:hover{background:rgba(68,138,255,.05)}
 .param-key{color:#888}.param-val{font-weight:600}
 .change-arrow{color:var(--yellow);font-weight:700}
 
-/* green lane */
-.gl-card{border-color:#10b981!important}
-.gl-card h3{color:#10b981!important}
+/* positions */
 .badge-committee{background:#3b82f633;color:#3b82f6;display:inline-block;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700}
-.badge-greenlane{background:#10b98133;color:#10b981;display:inline-block;padding:2px 8px;border-radius:10px;font-size:.72rem;font-weight:700}
 .position-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;margin-top:8px}
 .position-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:14px}
 .exposure-bar{background:var(--accent);border-radius:6px;padding:10px 14px;margin-bottom:12px;display:flex;gap:20px;flex-wrap:wrap;font-size:.85rem}
-.gl-table-section{margin-top:16px}
 
 @media(max-width:768px){
   .grid-2,.grid-3,.grid-4{grid-template-columns:1fr}
@@ -399,16 +377,6 @@ tr:hover{background:rgba(68,138,255,.05)}
         <div><div class="stat-label">Last Check</div><div id="sentinel-time" style="font-size:.8rem;color:#888">—</div></div>
       </div>
     </div>
-    <div class="card gl-card">
-      <h3>🟢 Green Lane</h3>
-      <div style="display:grid;gap:8px;font-size:.85rem">
-        <div><div class="stat-label">Last Scan</div><div id="gl-last-scan" style="font-size:.85rem;color:#888">—</div></div>
-        <div><div class="stat-label">Signal Status</div><div id="gl-signal-status" style="font-weight:600">—</div></div>
-        <div><div class="stat-label">AVWAP Pinch</div><div id="gl-avwap">—</div></div>
-        <div><div class="stat-label">Confluence Zone</div><div id="gl-confluence">—</div></div>
-        <div><div class="stat-label">Consolidation</div><div id="gl-consolidation">—</div></div>
-      </div>
-    </div>
   </div>
 
   <!-- Position Grid -->
@@ -417,18 +385,6 @@ tr:hover{background:rgba(68,138,255,.05)}
     <div id="exposure-bar" class="exposure-bar" style="display:none"></div>
     <div id="position-grid" class="position-grid"></div>
     <div id="no-positions" style="color:#888;font-size:.9rem;padding:8px 0">No active positions — FLAT</div>
-  </div>
-
-  <!-- Green Lane History -->
-  <div class="card gl-card gl-table-section">
-    <h3>Green Lane History (Last 7 Days)</h3>
-    <div style="overflow-x:auto">
-      <table id="gl-history-table">
-        <thead><tr><th>Time</th><th>Direction</th><th>Quality</th><th>Entry</th><th>Exit</th><th>PnL%</th><th>Duration</th><th>Reason</th></tr></thead>
-        <tbody id="gl-history-body"></tbody>
-      </table>
-    </div>
-    <div id="gl-no-history" style="color:#888;font-size:.85rem;padding:8px 0;display:none">No green lane trades yet</div>
   </div>
 
   <div class="card">
@@ -618,27 +574,6 @@ async function loadStatus(){
         new Date(s.last_check).toLocaleString('en-AU',{timeZone:'Australia/Sydney',hour12:false});
     }
 
-    /* ── Green Lane Status card ── */
-    const glScan=d.green_lane_last_scan;
-    document.getElementById('gl-last-scan').textContent=glScan?new Date(glScan).toLocaleString('en-AU',{timeZone:'Australia/Sydney',hour12:false}):'—';
-    const gl=d.green_lane_signal||{};
-    if(gl.triggered){
-      document.getElementById('gl-signal-status').innerHTML='<span style="color:#10b981">🟢 TRIGGERED</span>';
-    }else if(gl.quality!=null){
-      document.getElementById('gl-signal-status').textContent=`PATTERN (quality ${gl.quality}/10)`;
-    }else{
-      document.getElementById('gl-signal-status').textContent='NO PATTERN';
-    }
-    const avwap=gl.avwap_pinch||{};
-    document.getElementById('gl-avwap').innerHTML=avwap.active
-      ?`<span style="color:#10b981">Active ✅</span> — width ${fmt(avwap.width_pct,2)}%`
-      :`<span style="color:#888">Inactive ❌</span>`;
-    const conf=gl.confluence_zone||{};
-    document.getElementById('gl-confluence').textContent=conf.width_pct!=null?`${fmt(conf.width_pct,2)}% wide`:'—';
-    const consol=gl.consolidation||{};
-    document.getElementById('gl-consolidation').textContent=consol.detected
-      ?`Detected (${consol.duration||'?'})`:'None';
-
     /* ── Position Grid ── */
     const positions=d.positions||{};
     const posEntries=Object.entries(positions);
@@ -655,8 +590,7 @@ async function loadStatus(){
       expBar.innerHTML=`<span><strong>Positions:</strong> ${posEntries.length}</span><span><strong>Total Margin:</strong> ${fmt(totalMargin,1)}%</span><span><strong>Active:</strong> ${posEntries.map(([id])=>id).join(', ')}</span>`;
       const now=Date.now();
       posEntries.forEach(([posId,pos])=>{
-        const src=(pos.source||'committee').toLowerCase();
-        const badge=src.includes('green')?'<span class="badge-greenlane">GREEN LANE</span>':'<span class="badge-committee">COMMITTEE</span>';
+        const badge='<span class="badge-committee">COMMITTEE</span>';
         const dir=(pos.direction||pos.side||'').toUpperCase();
         const entry=pos.entry_price||pos.price||0;
         let pnlPct=pos.pnl_pct;
@@ -681,39 +615,6 @@ async function loadStatus(){
             <div class="param-row"><span class="param-key">TP2</span><span class="param-val">${fmtUsd(pos.tp2)} ${tp2Hit}</span></div>
             <div class="param-row"><span class="param-key">Trail Stop</span><span class="param-val">${fmtUsd(pos.trail_stop)}</span></div>
           </div>`);
-      });
-    }
-
-    /* ── Green Lane History ── */
-    const closedTrades=(d.closed_trades||[]).filter(t=>t.source==='green_lane');
-    const sevenDaysAgo=Date.now()-7*86400000;
-    const recentGL=closedTrades.filter(t=>!t.close_time||new Date(t.close_time).getTime()>sevenDaysAgo);
-    const glBody=document.getElementById('gl-history-body');
-    const glNoHist=document.getElementById('gl-no-history');
-    const glTable=document.getElementById('gl-history-table');
-    glBody.innerHTML='';
-    if(recentGL.length===0){
-      glTable.style.display='none';glNoHist.style.display='block';
-    }else{
-      glTable.style.display='';glNoHist.style.display='none';
-      recentGL.forEach(t=>{
-        const pnl=t.pnl_pct||t.close_pnl_pct;
-        const pnlColor=pnl==null?'':pnl>=0?'color:#00c853':'color:#ff5252';
-        const openT=t.opened_at||t.timestamp;
-        const closeT=t.close_time;
-        let dur='—';
-        if(openT&&closeT){const ms=new Date(closeT)-new Date(openT);const h=Math.floor(ms/3600000);const m=Math.floor((ms%3600000)/60000);dur=h>0?`${h}h ${m}m`:`${m}m`;}
-        const row=document.createElement('tr');
-        row.innerHTML=`
-          <td>${openT?new Date(openT).toLocaleString('en-AU',{timeZone:'Australia/Sydney',hour12:false,month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'}):'—'}</td>
-          <td style="color:${(t.direction||'').includes('LONG')?'var(--green)':'var(--red)'}">${t.direction||'—'}</td>
-          <td>${t.quality!=null?t.quality+'/10':'—'}</td>
-          <td>${fmtUsd(t.entry_price||t.price)}</td>
-          <td>${fmtUsd(t.close_price)}</td>
-          <td style="${pnlColor}">${fmtPct(pnl)}</td>
-          <td>${dur}</td>
-          <td style="font-size:.8rem;max-width:200px;overflow:hidden;text-overflow:ellipsis">${escHtml(t.close_reason||t.reason||'—')}</td>`;
-        glBody.appendChild(row);
       });
     }
 

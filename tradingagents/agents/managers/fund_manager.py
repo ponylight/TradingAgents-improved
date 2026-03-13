@@ -85,11 +85,8 @@ You DO:
 - Open orders: {open_orders}
 {portfolio_context.get("positions_summary", "")}
 
-## Multi-Position Awareness
-You manage the FULL portfolio across all position sources (committee trades + green lane scalps).
-If positions conflict directionally (e.g. committee short + green lane long), you MUST flag this
-and either: (a) reject the new trade, or (b) close the conflicting position first.
-Net exposure should always be intentional, never accidental.
+## Portfolio Awareness
+You manage the full portfolio. Net exposure should always be intentional, never accidental.
 
 ## Decision Rules
 
